@@ -101,9 +101,27 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 Girdiğiniz ayarlar tarayıcıda saklanır; her açılışta yeniden girmeniz
 gerekmez. "Ayarları sıfırla" varsayılanlara döndürür.
 
-Önizlemede dört sekme var: **3B** (duvardaki hâli, parmakla döndürülür),
+### Fotoğrafta olmayan derinliği vermek
+Düz bir fotoğrafta derinlik bilgisi yoktur — parlaklık, ışığın nereye
+vurduğunu anlatır, neyin önde olduğunu değil. Bu yüzden fotoğraflar çoğu
+zaman "çamurlu" kabartma verir. İki çözüm var:
+
+- **Silüet şişirme** — Konu zeminden ayrılır ve her noktanın kenara uzaklığı
+  yükseklik olarak kullanılır. Gövdenin ortası öne çıkar, kenarlara doğru
+  iner; madalyon mantığı. Silüeti belirgin konularda (logo, hayvan, figür)
+  çok iyi sonuç verir. *Yuvarlaklık* koni ile kubbe arasında geçiş yapar.
+- **Derinlik çizimi** — "Çizim" sekmesinde parmakla boyarsınız: gövdenin
+  ortasını yükseltir, kolu geri alırsınız. Fırça yükseltir, alçaltır veya
+  yumuşatır; mavi öne çıkan, kırmızı geri giden alanı gösterir. Çizilen
+  katman fotoğraftan gelen dokunun üstüne EKLENİR, onu silmez.
+
+Gerçek derinlik gerekiyorsa telefonla tarama uygulaması (Polycam,
+Scaniverse) ile STL çıkarıp yükleyin — o zaman yükseklik tahmin değil
+ölçümdür.
+
+Önizlemede beş sekme var: **3B** (duvardaki hâli, parmakla döndürülür),
 **Plan** (önden görünüm), **Levha** (kesim yerleşimi — dokunarak levhalar
-arasında geçilir), **Kaynak** (işlenmiş yükseklik haritası).
+arasında geçilir), **Kaynak** (işlenmiş yükseklik haritası), **Çizim** (derinlik boyama).
 
 ### Telefona uygulama gibi kurmak
 Safari'de sayfayı açın → Paylaş → **Ana Ekrana Ekle**. Tam ekran açılır ve
@@ -170,6 +188,8 @@ js/
   heightmap.js        görsel → 0..1 yükseklik haritası, filtreler
   stl.js              STL okuma + tepeden z-buffer taraması
   facet.js            poligonal (low-poly) yüzey — kaydırılmış üçgen ağ
+  relief.js           silüet şişirme: Otsu eşik, Öklid uzaklık dönüşümü
+  paint.js            elle derinlik boyama — fırça, yumuşatma, katman birleştirme
   marchingsquares.js  eş-yükselti halkaları (eyer çözümü dâhil)
   geom.js             alan, yön, sadeleştirme, ofset, delik sınıflandırma
   modes/ribs.js       lamel + kızak üretimi

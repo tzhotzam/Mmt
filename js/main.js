@@ -3,6 +3,7 @@
 import { gridFromImageData, applyFilters, makeGrid, suggestInvert } from './heightmap.js';
 import { parseStl, heightmapFromStl } from './stl.js';
 import { facetize } from './facet.js';
+import { inflateSilhouette, blendRelief } from './relief.js';
 import { demoMeshTris } from './demomesh.js';
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
@@ -11,7 +12,8 @@ import { nest, applyPlacement } from './nest.js';
 import { sheetToDxf } from './export/dxf.js';
 import { sheetToSvg } from './export/svg.js';
 import { buildCutList, cutListToCsv, assemblyGuide } from './cutlist.js';
-import { drawPlan, drawNest, drawSource, drawParts } from './preview2d.js';
+import { drawPlan, drawNest, drawSource, drawParts, drawPaintView, screenToGrid } from './preview2d.js';
+import { createPaintLayer, applyPaint, stroke, isEmpty } from './paint.js';
 import { createPreview3d } from './preview3d.js';
 
 // Yükseklik haritasının uzun kenardaki örnek sayısı. 320 idi; 2,6 m'lik bir
@@ -47,6 +49,10 @@ const state = {
   nestResult: null,
   cutList: null,
   sheetIndex: 0,
+  reliefInfo: null,
+  paintLayer: null,       // elle çizilen derinlik düzeltmesi (-1..1)
+  brushMode: 'raise',
+  undoStack: [],          // Int8'e nicemlenmiş anlık görüntüler
 };
 
 let preview3d = null;
@@ -127,6 +133,9 @@ function readFilters() {
     autoNormalize: true,
     facetCells: Math.round(num('p-facetCells', 0)),
     facetFlat: bool('p-facetFlat'),
+    inflate: num('p-inflate', 0),
+    roundness: num('p-roundness', 0.7),
+    reliefDetail: num('p-reliefDetail', 0.25),
   };
 }
 
@@ -162,6 +171,7 @@ async function loadImageFile(file) {
   bitmap.close?.();
 
   state.sourceGrid = gridFromImageData(img, cols, rows);
+  resetPaint();
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
   setInvert(suggestInvert(state.sourceGrid), true);
   syncAspect();
@@ -182,6 +192,7 @@ async function loadStlFile(file) {
   state.aspect = (maxX - minX) / (maxY - minY || 1) || 1;
   const [cols, rows] = gridDimsFor(state.aspect);
   state.sourceGrid = heightmapFromStl(tris, cols, rows);
+  resetPaint();
   setInvert(false);
   syncAspect();
   scheduleRegen();
@@ -212,6 +223,7 @@ function loadDemo() {
   }
   state.aspect = 1.5;
   state.sourceGrid = g;
+  resetPaint();
   setInvert(false);
   syncAspect();
   scheduleRegen();
@@ -275,6 +287,22 @@ function regenerate() {
     state.grid = facetize(state.grid, { cells: filters.facetCells, flat: filters.facetFlat });
   }
 
+  // Elle çizilen derinlik düzeltmesi — fotoğrafta olmayan biçim bilgisi.
+  if (state.paintLayer && !isEmpty(state.paintLayer)) {
+    state.grid = applyPaint(state.grid, state.paintLayer);
+  }
+
+  // Silüet şişirme: derinliği parlaklıktan değil, kenara uzaklıktan türetir.
+  state.reliefInfo = null;
+  if (filters.inflate > 0) {
+    const r = inflateSilhouette(state.grid, {
+      roundness: filters.roundness,
+      detail: filters.reliefDetail,
+    });
+    state.grid = blendRelief(state.grid, r.grid, filters.inflate);
+    state.reliefInfo = r.info;
+  }
+
   const params = readParams();
   const result = state.mode === 'ribs'
     ? generateRibs(state.grid, params)
@@ -333,7 +361,9 @@ function render() {
     else drawPlan(els['view-plan'], state);
   }
   else if (state.view === 'nest') drawNest(els['view-nest'], state.nestResult, state.sheetIndex);
-  else drawSource(els['view-source'], state.grid);
+  else if (state.view === 'paint') {
+    drawPaintView(els['view-paint'], state.grid, state.paintLayer);
+  } else drawSource(els['view-source'], state.grid);
 
   renderSummary();
   showWarnings(collectWarnings());
@@ -345,6 +375,16 @@ function collectWarnings() {
   if (state.nestResult?.oversized.length) {
     out.push(`Levhaya sığmayan parça(lar): ${state.nestResult.oversized.map((p) => p.id).join(', ')}. ` +
       'Levha ölçüsünü büyütün veya paneli küçültün.');
+  }
+  const ri = state.reliefInfo;
+  if (ri) {
+    if (ri.coverage < 0.02) {
+      out.push('Silüet şişirme: konu olarak neredeyse hiç alan seçilmedi. ' +
+        'Kabartma yönünü değiştirin veya kontrastı artırın.');
+    } else if (ri.coverage > 0.96) {
+      out.push('Silüet şişirme: görselin tamamı konu sayıldı, zemin ayrılamadı. ' +
+        'Yüksek kontrastlı bir görsel veya net bir zemin gerekir.');
+    }
   }
   const tool = num('p-toolDiameter', 6);
   if (state.mode === 'ribs' && num('p-gap', 6) > 0 && num('p-gap', 6) < tool) {
@@ -547,6 +587,99 @@ function applySettings(data) {
   syncRangeOutputs();
 }
 
+// ------------------------------------------------------------ derinlik çizimi
+
+function resetPaint() {
+  const g = state.sourceGrid;
+  state.paintLayer = g ? createPaintLayer(g.w, g.h) : null;
+  state.undoStack = [];
+}
+
+/** Anlık görüntü Int8'e nicemlenir — 768x530 katman 1,6 MB yerine 400 KB. */
+function pushUndo() {
+  const l = state.paintLayer;
+  if (!l) return;
+  const snap = new Int8Array(l.data.length);
+  for (let i = 0; i < snap.length; i++) snap[i] = Math.round(l.data[i] * 127);
+  state.undoStack.push(snap);
+  if (state.undoStack.length > 8) state.undoStack.shift();
+}
+
+function popUndo() {
+  const snap = state.undoStack.pop();
+  const l = state.paintLayer;
+  if (!snap || !l) return false;
+  for (let i = 0; i < snap.length; i++) l.data[i] = snap[i] / 127;
+  return true;
+}
+
+/** Fırça çapı mm cinsinden girilir; ızgara hücresine çevrilir. */
+function brushRadiusCells() {
+  return Math.max(1, mmToSamples(num('p-brushSize', 120)) / 2);
+}
+
+function setBrushMode(mode) {
+  state.brushMode = mode;
+  for (const m of ['raise', 'lower', 'smooth']) {
+    els[`brush-${m}`].classList.toggle('active', m === mode);
+  }
+}
+
+function paintAt(e, prev) {
+  const g = state.sourceGrid;
+  if (!g || !state.paintLayer) return null;
+  const [x, y] = screenToGrid(els['view-paint'], g, e.clientX, e.clientY);
+  const from = prev || [x, y];
+  stroke(state.paintLayer, state.grid || g, from[0], from[1], x, y, {
+    radius: brushRadiusCells(),
+    amount: num('p-brushAmount', 0.12),
+    hardness: num('p-brushHardness', 0.3),
+    mode: state.brushMode,
+  });
+  drawPaintView(els['view-paint'], applyPaint(state.grid || g, state.paintLayer), state.paintLayer);
+  return [x, y];
+}
+
+(function wirePaint() {
+  const cv = els['view-paint'];
+  let last = null;
+  let drawing = false;
+
+  cv.addEventListener('pointerdown', (e) => {
+    if (!state.sourceGrid) return;
+    cv.setPointerCapture(e.pointerId);
+    pushUndo();
+    drawing = true;
+    last = paintAt(e, null);
+    e.preventDefault();
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drawing) return;
+    last = paintAt(e, last);
+    e.preventDefault();
+  });
+  const finish = () => {
+    if (!drawing) return;
+    drawing = false;
+    last = null;
+    scheduleRegen();   // tam yeniden hesap ancak fırça kalkınca
+  };
+  cv.addEventListener('pointerup', finish);
+  cv.addEventListener('pointercancel', finish);
+  cv.addEventListener('pointerleave', finish);
+
+  els['brush-raise'].onclick = () => setBrushMode('raise');
+  els['brush-lower'].onclick = () => setBrushMode('lower');
+  els['brush-smooth'].onclick = () => setBrushMode('smooth');
+  els['btn-undo'].onclick = () => { if (popUndo()) scheduleRegen(); };
+  els['btn-clear-paint'].onclick = () => {
+    if (isEmpty(state.paintLayer)) return;
+    pushUndo();
+    state.paintLayer.data.fill(0);
+    scheduleRegen();
+  };
+})();
+
 // ------------------------------------------------- levha ölçüsü ve hafıza
 
 function applySheetPreset() {
@@ -642,6 +775,7 @@ function setView(view) {
   for (const v of document.querySelectorAll('.view')) {
     v.classList.toggle('active', v.id === `view-${view}`);
   }
+  els['paint-tools'].hidden = view !== 'paint';
   if (view === '3d') preview3d?.resize();
   render();
 }
@@ -675,6 +809,7 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
   const evt = input.type === 'range' ? 'input' : 'change';
   input.addEventListener(evt, () => {
     syncRangeOutputs();
+    if (input.id.startsWith('p-brush')) { saveSettings(); return; }
     if (input.id === 'p-panelW' || input.id === 'p-lockAspect') syncAspect();
     if (input.id === 'p-sheetW' || input.id === 'p-sheetH') syncSheetPreset();
     saveSettings();

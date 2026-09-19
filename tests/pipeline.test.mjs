@@ -12,6 +12,8 @@ import { sheetToSvg } from '../js/export/svg.js';
 import { buildCutList, assemblyGuide, cutListToCsv } from '../js/cutlist.js';
 import { heightmapFromStl, parseStl } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
+import { otsuThreshold, distanceTransform, inflateSilhouette, blendRelief } from '../js/relief.js';
+import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/paint.js';
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
 import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
@@ -196,6 +198,134 @@ test('facetize panel kenarlarını düz bırakır', () => {
     assert.ok(Number.isFinite(f.data[x]), `üst kenar @${x}`);
     assert.ok(Number.isFinite(f.data[119 * 120 + x]), `alt kenar @${x}`);
   }
+});
+
+console.log('fotoğraftan kabartma');
+
+function diskGrid(n = 200, r = 60) {
+  const g = makeGrid(n, n);
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) g.data[y * n + x] = Math.hypot(x - n / 2, y - n / 2) < r ? 1 : 0;
+  return g;
+}
+
+test('otsuThreshold iki kümenin arasına düşer', () => {
+  const g = makeGrid(60, 60);
+  for (let i = 0; i < g.data.length; i++) g.data[i] = i % 3 === 0 ? 0.15 : 0.85;
+  const thr = otsuThreshold(g);
+  assert.ok(thr > 0.15 && thr < 0.85, `eşik aralık dışı: ${thr}`);
+  // Eşiğin üstü konu sayıldığında yalnızca 0.85'ler kalmalı (üçte iki).
+  let fg = 0;
+  for (const v of g.data) if (v >= thr) fg++;
+  assert.ok(Math.abs(fg / g.data.length - 2 / 3) < 0.02, `konu oranı ${fg / g.data.length}`);
+});
+
+test('distanceTransform dairede yarıçapı verir', () => {
+  const n = 200, r = 60;
+  const g = diskGrid(n, r);
+  const mask = new Uint8Array(n * n);
+  for (let i = 0; i < mask.length; i++) mask[i] = g.data[i] > 0.5 ? 1 : 0;
+  const d = distanceTransform(mask, n, n);
+  const center = d[(n / 2) * n + (n / 2)];
+  assert.ok(Math.abs(center - r) < 1.5, `merkez uzaklığı ${center}, ~${r} olmalı`);
+  // Dışarısı sıfır
+  assert.equal(d[5 * n + 5], 0);
+});
+
+test('inflateSilhouette merkezi 1, kenarı 0 yapar', () => {
+  const r = inflateSilhouette(diskGrid(), { threshold: 0.5, roundness: 0, detail: 0 });
+  const n = 200;
+  assert.ok(Math.abs(r.grid.data[100 * n + 100] - 1) < 1e-6, 'merkez en yüksek olmalı');
+  assert.equal(r.grid.data[100 * n + 190], 0, 'silüet dışı sıfır olmalı');
+  assert.ok(r.info.maxDist > 55 && r.info.maxDist < 65);
+  assert.ok(r.info.coverage > 0.2 && r.info.coverage < 0.35);
+});
+
+test('inflateSilhouette yükseklik merkeze doğru monoton artar', () => {
+  const n = 200;
+  const r = inflateSilhouette(diskGrid(n, 60), { threshold: 0.5, roundness: 0.7, detail: 0 });
+  let prev = -1;
+  for (let x = 45; x <= 100; x += 5) {
+    const v = r.grid.data[100 * n + x];
+    assert.ok(v >= prev - 1e-9, `x=${x}: ${v} < ${prev} — merkeze doğru azalmamalı`);
+    prev = v;
+  }
+});
+
+test('inflateSilhouette küçük lekeleri eler', () => {
+  const n = 200, g = makeGrid(n, n);
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const buyuk = Math.hypot(x - 60, y - 100) < 40;
+      const leke = Math.hypot(x - 170, y - 30) < 2;
+      g.data[y * n + x] = buyuk || leke ? 1 : 0;
+    }
+  const r = inflateSilhouette(g, { threshold: 0.5, minRegion: 50 });
+  assert.equal(r.info.dropped, 1, 'tek küçük leke elenmeliydi');
+  assert.equal(r.grid.data[30 * n + 170], 0, 'elenen leke sıfırlanmalı');
+});
+
+test('blendRelief uçlarda saf kaynakları verir', () => {
+  // Izgaralar Float32; tolerans buna göre (eps ~1.2e-7).
+  const EPS = 1e-6;
+  const a = makeGrid(10, 10, 0.2);
+  const b = makeGrid(10, 10, 0.9);
+  assert.ok(Math.abs(blendRelief(a, b, 0).data[0] - 0.2) < EPS);
+  assert.ok(Math.abs(blendRelief(a, b, 1).data[0] - 0.9) < EPS);
+  assert.ok(Math.abs(blendRelief(a, b, 0.5).data[0] - 0.55) < EPS);
+});
+
+console.log('derinlik çizimi');
+test('stamp merkezde en güçlü, yarıçap dışında sıfır', () => {
+  const l = createPaintLayer(60, 60);
+  stamp(l, 30, 30, 10, 0.5, 0);
+  assert.ok(Math.abs(l.data[30 * 60 + 30] - 0.5) < 1e-6, 'merkez tam güç almalı');
+  assert.ok(l.data[30 * 60 + 36] > 0 && l.data[30 * 60 + 36] < 0.5, 'kenara doğru sönmeli');
+  assert.equal(l.data[30 * 60 + 45], 0, 'yarıçap dışı dokunulmamalı');
+});
+
+test('stamp -1..1 aralığını aşmaz', () => {
+  const l = createPaintLayer(40, 40);
+  for (let i = 0; i < 30; i++) stamp(l, 20, 20, 8, 0.5, 1);
+  assert.ok(l.data[20 * 40 + 20] <= 1 + 1e-9, `üst sınır aşıldı: ${l.data[20 * 40 + 20]}`);
+  for (let i = 0; i < 80; i++) stamp(l, 20, 20, 8, -0.5, 1);
+  assert.ok(l.data[20 * 40 + 20] >= -1 - 1e-9, 'alt sınır aşıldı');
+});
+
+test('stroke iki nokta arasında boşluk bırakmaz', () => {
+  const l = createPaintLayer(120, 40);
+  const base = makeGrid(120, 40, 0.5);
+  stroke(l, base, 10, 20, 110, 20, { radius: 5, amount: 0.3, hardness: 1, mode: 'raise' });
+  for (let x = 12; x <= 108; x += 2) {
+    assert.ok(l.data[20 * 120 + x] > 0.01, `x=${x} boyanmamış — darbeler arası boşluk var`);
+  }
+});
+
+test('applyPaint tabana ekler ve 0..1 aralığında kırpar', () => {
+  const base = makeGrid(10, 10, 0.8);
+  const l = createPaintLayer(10, 10);
+  l.data.fill(0.5);
+  assert.equal(applyPaint(base, l).data[0], 1, 'üst sınıra kırpılmalı');
+  l.data.fill(-0.9);
+  assert.equal(applyPaint(base, l).data[0], 0, 'alt sınıra kırpılmalı');
+  l.data.fill(0.1);
+  assert.ok(Math.abs(applyPaint(base, l).data[0] - 0.9) < 1e-6);
+});
+
+test('isEmpty boş katmanı tanır', () => {
+  const l = createPaintLayer(20, 20);
+  assert.equal(isEmpty(l), true);
+  stamp(l, 10, 10, 3, 0.2, 0.5);
+  assert.equal(isEmpty(l), false);
+});
+
+test('lower modu yükseltmeyi geri alır', () => {
+  const l = createPaintLayer(60, 60);
+  const base = makeGrid(60, 60, 0.5);
+  stroke(l, base, 30, 30, 30, 30, { radius: 10, amount: 0.3, hardness: 1, mode: 'raise' });
+  const yukari = l.data[30 * 60 + 30];
+  stroke(l, base, 30, 30, 30, 30, { radius: 10, amount: 0.3, hardness: 1, mode: 'lower' });
+  assert.ok(l.data[30 * 60 + 30] < yukari, 'alçaltma yükseltmeyi azaltmalı');
 });
 
 console.log('lamel modu');

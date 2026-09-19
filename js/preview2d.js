@@ -240,3 +240,68 @@ function bboxOf(ring) {
   }
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
 }
+
+// ------------------------------------------------------------- ÇİZİM GÖRÜNÜMÜ
+
+/** Izgarayı tuvale oturtan dönüşüm — çizim ve tıklama eşlemesi aynı olsun diye. */
+export function gridTransform(canvas, grid, pad = 12) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(1, rect.width * dpr);
+  const h = Math.max(1, rect.height * dpr);
+  const s = Math.min((w - pad * 2) / grid.w, (h - pad * 2) / grid.h);
+  return { s, ox: (w - grid.w * s) / 2, oy: (h - grid.h * s) / 2, dpr, rect };
+}
+
+/** Ekran koordinatını ızgara koordinatına çevirir. */
+export function screenToGrid(canvas, grid, clientX, clientY) {
+  const t = gridTransform(canvas, grid);
+  const x = ((clientX - t.rect.left) * t.dpr - t.ox) / t.s;
+  const y = ((clientY - t.rect.top) * t.dpr - t.oy) / t.s;
+  return [x, y];
+}
+
+/**
+ * Taban + boyama katmanını gri tonlamalı gösterir; boyanan yerler renklenir
+ * (mavi = yükseltilmiş, kırmızı = alçaltılmış).
+ */
+export function drawPaintView(canvas, grid, layer) {
+  const { ctx, w, h } = setup(canvas);
+  if (!grid) return;
+
+  const img = ctx.createImageData(grid.w, grid.h);
+  for (let i = 0; i < grid.data.length; i++) {
+    const paint = layer ? layer.data[i] : 0;
+    const v = Math.max(0, Math.min(1, grid.data[i]));
+    const g = Math.round(v * 255);
+    let r = g, gg = g, b = g;
+    if (paint > 0.004) {
+      const k = Math.min(1, paint * 2);
+      r = Math.round(g * (1 - k * 0.55));
+      gg = Math.round(g * (1 - k * 0.2));
+      b = Math.min(255, Math.round(g + k * 90));
+    } else if (paint < -0.004) {
+      const k = Math.min(1, -paint * 2);
+      r = Math.min(255, Math.round(g + k * 90));
+      gg = Math.round(g * (1 - k * 0.45));
+      b = Math.round(g * (1 - k * 0.45));
+    }
+    img.data[i * 4] = r;
+    img.data[i * 4 + 1] = gg;
+    img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = 255;
+  }
+
+  const tmp = document.createElement('canvas');
+  tmp.width = grid.w;
+  tmp.height = grid.h;
+  tmp.getContext('2d').putImageData(img, 0, 0);
+
+  const t = gridTransform(canvas, grid);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(tmp, t.ox, t.oy, grid.w * t.s, grid.h * t.s);
+
+  ctx.strokeStyle = 'rgba(245,158,11,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(t.ox, t.oy, grid.w * t.s, grid.h * t.s);
+}

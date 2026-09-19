@@ -35,6 +35,7 @@
       <button class="tab" data-view="plan" role="tab" aria-selected="false">Plan</button>
       <button class="tab" data-view="nest" role="tab" aria-selected="false">Levha</button>
       <button class="tab" data-view="source" role="tab" aria-selected="false">Kaynak</button>
+      <button class="tab" data-view="paint" role="tab" aria-selected="false">Çizim</button>
     </div>
 
     <div class="stage">
@@ -42,8 +43,39 @@
       <canvas id="view-plan" class="view"></canvas>
       <canvas id="view-nest" class="view"></canvas>
       <canvas id="view-source" class="view"></canvas>
+      <canvas id="view-paint" class="view"></canvas>
       <div id="busy" class="busy" hidden><span class="spinner"></span> Hesaplanıyor…</div>
       <p id="stage-hint" class="stage-hint">Bir görsel yükleyin — hemen 3B önizleme çıkar.</p>
+    </div>
+
+    <div id="paint-tools" class="paint-tools" hidden>
+      <div class="segmented-buttons">
+        <button type="button" id="brush-raise" class="seg active">Yükselt</button>
+        <button type="button" id="brush-lower" class="seg">Alçalt</button>
+        <button type="button" id="brush-smooth" class="seg">Yumuşat</button>
+      </div>
+      <div class="grid">
+        <label>Fırça çapı (mm)
+          <input type="range" id="p-brushSize" min="10" max="600" step="10" value="120">
+          <output for="p-brushSize"></output>
+        </label>
+        <label>Güç
+          <input type="range" id="p-brushAmount" min="0.02" max="0.5" step="0.02" value="0.12">
+          <output for="p-brushAmount"></output>
+        </label>
+        <label>Kenar sertliği
+          <input type="range" id="p-brushHardness" min="0" max="1" step="0.05" value="0.3">
+          <output for="p-brushHardness"></output>
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="btn-undo" class="ghost">↶ Geri al</button>
+        <button type="button" id="btn-clear-paint" class="ghost">Çizimi temizle</button>
+      </div>
+      <p class="seg-hint">
+        Parmakla çizin. Mavi = öne çıkan, kırmızı = geri giden. Gövdenin ortasını
+        yükseltip kenarlarını alçaltmak fotoğrafta olmayan derinliği verir.
+      </p>
     </div>
 
     <div id="summary" class="summary"></div>
@@ -116,6 +148,18 @@
         </label>
         <label class="check">
           <input type="checkbox" id="p-facetFlat"> Düz yüzeyler <small>(kademeli)</small>
+        </label>
+        <label>Silüet şişirme <small>ortası öne çıksın</small>
+          <input type="range" id="p-inflate" min="0" max="1" step="0.05" value="0">
+          <output for="p-inflate"></output>
+        </label>
+        <label>Yuvarlaklık <small>koni ↔ kubbe</small>
+          <input type="range" id="p-roundness" min="0" max="1" step="0.05" value="0.7">
+          <output for="p-roundness"></output>
+        </label>
+        <label>Yüzey detayı <small>gölgelemeden</small>
+          <input type="range" id="p-reliefDetail" min="0" max="1" step="0.05" value="0.25">
+          <output for="p-reliefDetail"></output>
         </label>
       </div>
     </details>
