@@ -104,7 +104,28 @@ export async function createPreview3d(container) {
     }
     const { parts, info } = state;
 
-    if (info.mode === 'ribs') {
+    if (info.mode === 'facets') {
+      // Modeli olduğu gibi, düz gölgelemeyle göster — fasetler net görünsün.
+      const positions = new Float32Array(info.triangles.length * 9);
+      info.triangles.forEach((t, i) => {
+        for (let k = 0; k < 3; k++) {
+          positions[i * 9 + k * 3] = t[k][0];
+          positions[i * 9 + k * 3 + 1] = t[k][2];
+          positions[i * 9 + k * 3 + 2] = -t[k][1];
+        }
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.computeVertexNormals();
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x8f9499, roughness: 0.45, metalness: 0.55,
+        flatShading: true, side: THREE.DoubleSide,
+      });
+      group.add(new THREE.Mesh(geo, mat));
+      // Serbest duran heykel — arkasına duvar koyma.
+      wall.visible = false;
+    } else if (info.mode === 'ribs') {
+      wall.visible = true;
       const horizontal = info.params.orientation === 'horizontal';
       const t = info.params.thickness;
       for (const part of parts) {
@@ -127,6 +148,7 @@ export async function createPreview3d(container) {
         group.add(new THREE.Mesh(geo, part.kind === 'lamel' ? material : railMaterial));
       }
     } else {
+      wall.visible = true;
       const t = info.params.thickness;
       for (const part of parts) {
         const geo = extrude(part, t);
@@ -142,8 +164,10 @@ export async function createPreview3d(container) {
     const center = box.getCenter(new THREE.Vector3());
     group.position.sub(center);
 
-    wall.scale.set(Math.max(size.x, 1) * 2.2, Math.max(size.y, 1) * 2.2, 1);
-    wall.position.set(0, 0, -size.z / 2 - 2);
+    if (wall.visible) {
+      wall.scale.set(Math.max(size.x, 1) * 2.2, Math.max(size.y, 1) * 2.2, 1);
+      wall.position.set(0, 0, -size.z / 2 - 2);
+    }
 
     const radius = Math.max(size.x, size.y, size.z) || 500;
     const dist = radius * 1.7;

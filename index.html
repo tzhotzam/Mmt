@@ -23,6 +23,7 @@
   <div class="modes" role="tablist" aria-label="Üretim modu">
     <button id="mode-ribs" class="mode active" role="tab" aria-selected="true">Lamel / Dalga</button>
     <button id="mode-contour" class="mode" role="tab" aria-selected="false">Katman / Rölyef</button>
+    <button id="mode-facets" class="mode" role="tab" aria-selected="false">Poligonal Kabuk</button>
   </div>
 </header>
 
@@ -129,7 +130,7 @@
       <label class="check">
         <input type="checkbox" id="p-lockAspect" checked> Görselin en-boy oranını koru
       </label>
-      <label>Malzeme kalınlığı (mm)
+      <label id="lbl-thickness">Malzeme kalınlığı (mm)
         <input type="number" id="p-thickness" value="18" min="3" max="50" step="0.5" list="thicknesses">
         <datalist id="thicknesses">
           <option value="8"><option value="10"><option value="12">
@@ -162,6 +163,29 @@
       </label>
       <label>Geçme boşluğu (mm)
         <input type="number" id="p-fit" value="0.2" min="-0.5" max="1" step="0.05">
+      </label>
+    </div>
+
+    <div id="facets-params" class="grid" hidden>
+      <label>Heykel boyu (mm) <small>en uzun kenar</small>
+        <input type="number" id="p-targetSize" value="600" min="50" max="4000" step="10">
+      </label>
+      <label>Ölçü ekseni
+        <select id="p-sizeAxis">
+          <option value="max">En uzun kenar</option>
+          <option value="x">X (en)</option>
+          <option value="y">Y (derinlik)</option>
+          <option value="z">Z (yükseklik)</option>
+        </select>
+      </label>
+      <label>Yüzey birleştirme (°) <small>büyütmek parça sayısını düşürür</small>
+        <input type="number" id="p-angleTol" value="1" min="0" max="40" step="0.5">
+      </label>
+      <label>En küçük faset (mm²)
+        <input type="number" id="p-facetMinArea" value="150" min="0" max="20000" step="50">
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-thicknessComp" checked> Kalınlık telafisi <small>(model dış yüzeyse)</small>
       </label>
     </div>
 

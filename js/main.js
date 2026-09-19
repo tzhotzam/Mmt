@@ -5,11 +5,12 @@ import { parseStl, heightmapFromStl } from './stl.js';
 import { facetize } from './facet.js';
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
+import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
 import { nest, applyPlacement } from './nest.js';
 import { sheetToDxf } from './export/dxf.js';
 import { sheetToSvg } from './export/svg.js';
 import { buildCutList, cutListToCsv, assemblyGuide } from './cutlist.js';
-import { drawPlan, drawNest, drawSource } from './preview2d.js';
+import { drawPlan, drawNest, drawSource, drawParts } from './preview2d.js';
 import { createPreview3d } from './preview3d.js';
 
 const GRID_MAX = 320;
@@ -21,6 +22,8 @@ const state = {
   mode: 'ribs',
   view: '3d',
   invert: false,         // false = açık alanlar öne, true = koyu alanlar öne
+  tris: null,            // STL üçgenleri (poligonal kabuk modu için)
+  seams: [],
   sourceGrid: null,      // filtresiz ham harita
   grid: null,            // filtrelenmiş harita
   aspect: 1,
@@ -53,6 +56,18 @@ function readParams() {
     offset: num('p-offset', 0),
     toolDiameter: num('p-toolDiameter', 6),
   };
+  if (state.mode === 'facets') {
+    return {
+      ...FACET_DEFAULTS,
+      thickness: common.thickness,
+      offset: common.offset,
+      targetSize: num('p-targetSize', 600),
+      sizeAxis: els['p-sizeAxis'].value,
+      angleTol: num('p-angleTol', 1),
+      minArea: num('p-facetMinArea', 150),
+      thicknessComp: bool('p-thicknessComp'),
+    };
+  }
   if (state.mode === 'ribs') {
     return {
       ...RIB_DEFAULTS, ...common,
@@ -134,6 +149,7 @@ async function loadStlFile(file) {
     minX = Math.min(minX, x); maxX = Math.max(maxX, x);
     minY = Math.min(minY, y); maxY = Math.max(maxY, y);
   }
+  state.tris = tris;
   state.aspect = (maxX - minX) / (maxY - minY || 1) || 1;
   const [cols, rows] = gridDimsFor(state.aspect);
   state.sourceGrid = heightmapFromStl(tris, cols, rows);
@@ -213,6 +229,10 @@ function scheduleRegen() {
 }
 
 function regenerate() {
+  if (state.mode === 'facets') {
+    regenerateFacets();
+    return;
+  }
   if (!state.sourceGrid) return;
   const filters = readFilters();
   state.grid = applyFilters(state.sourceGrid, filters);
@@ -239,11 +259,42 @@ function regenerate() {
   render();
 }
 
+function regenerateFacets() {
+  state.seams = [];
+  if (!state.tris) {
+    state.parts = [];
+    state.info = null;
+    state.cutList = null;
+    state.nestResult = null;
+    els['stage-hint'].hidden = false;
+    els['stage-hint'].textContent = 'Bu mod için bir STL dosyası yükleyin — görsel yeterli değil.';
+    els.summary.innerHTML = '';
+    showWarnings([]);
+    return;
+  }
+  const result = generateFacets(state.tris, readParams());
+  state.parts = result.parts;
+  state.info = result.info;
+  state.seams = result.seams;
+  state.warnings = result.warnings;
+
+  state.nestResult = nest(state.parts, readNestOpts());
+  state.sheetIndex = Math.min(state.sheetIndex, Math.max(0, state.nestResult.sheets.length - 1));
+  state.cutList = buildCutList(state.parts, state.nestResult, state.info, {
+    feedRate: num('p-feedRate', 3000),
+  });
+  els['stage-hint'].hidden = true;
+  render();
+}
+
 // ------------------------------------------------------------ görselleştirme
 
 function render() {
   if (state.view === '3d') preview3d?.update(state);
-  else if (state.view === 'plan') drawPlan(els['view-plan'], state);
+  else if (state.view === 'plan') {
+    if (state.mode === 'facets') drawParts(els['view-plan'], state.parts);
+    else drawPlan(els['view-plan'], state);
+  }
   else if (state.view === 'nest') drawNest(els['view-nest'], state.nestResult, state.sheetIndex);
   else drawSource(els['view-source'], state.grid);
 
@@ -269,7 +320,16 @@ function collectWarnings() {
 function renderSummary() {
   const s = state.cutList?.summary;
   if (!s) { els.summary.innerHTML = ''; return; }
-  const chips = [
+  const i = state.info;
+  const chips = i.mode === 'facets' ? [
+    ['Boyut', `${Math.round(i.modelSize.x)}×${Math.round(i.modelSize.y)}×${Math.round(i.modelSize.z)} mm`],
+    ['Faset', i.facetCount],
+    ['Kaynak dikişi', i.seamCount],
+    ['Sac', `${i.params.thickness} mm`],
+    ['Levha', `${s.sheetCount} × ${s.sheetSize}`],
+    ['Doluluk', `%${s.utilisation}`],
+    ['Kesim yolu', `${(s.totalCutLength / 1000).toFixed(1)} m`],
+  ] : [
     ['Panel', s.panel],
     ['Derinlik', `${Math.round(s.totalDepth)} mm`],
     ['Parça', s.partCount],
@@ -399,7 +459,7 @@ els['dl-guide'].onclick = () => {
   const text = [
     `${baseName()}`,
     '='.repeat(60),
-    assemblyGuide(state.info),
+    assemblyGuide(state.info, state.seams),
     '',
     'MALZEME ÖZETİ',
     `  Parça sayısı      : ${s.partCount}`,
@@ -453,12 +513,17 @@ function applySettings(data) {
 
 function setMode(mode) {
   state.mode = mode;
-  els['mode-ribs'].classList.toggle('active', mode === 'ribs');
-  els['mode-contour'].classList.toggle('active', mode === 'contour');
-  els['mode-ribs'].setAttribute('aria-selected', String(mode === 'ribs'));
-  els['mode-contour'].setAttribute('aria-selected', String(mode === 'contour'));
-  els['ribs-params'].hidden = mode !== 'ribs';
-  els['contour-params'].hidden = mode === 'ribs';
+  for (const m of ['ribs', 'contour', 'facets']) {
+    const btn = els[`mode-${m}`];
+    btn.classList.toggle('active', mode === m);
+    btn.setAttribute('aria-selected', String(mode === m));
+    els[`${m}-params`].hidden = mode !== m;
+  }
+  // Poligonal kabukta panel ölçüleri modelden gelir, "malzeme kalınlığı" sac kalınlığıdır.
+  els['lbl-thickness'].firstChild.nodeValue =
+    mode === 'facets' ? 'Sac kalınlığı (mm)' : 'Malzeme kalınlığı (mm)';
+  if (mode === 'facets' && num('p-thickness', 18) > 8) els['p-thickness'].value = 3;
+  if (mode !== 'facets' && num('p-thickness', 3) < 6) els['p-thickness'].value = 18;
   scheduleRegen();
 }
 
@@ -488,6 +553,7 @@ els['dir-dark'].onclick = () => { setInvert(true); scheduleRegen(); };
 
 els['mode-ribs'].onclick = () => setMode('ribs');
 els['mode-contour'].onclick = () => setMode('contour');
+els['mode-facets'].onclick = () => setMode('facets');
 
 for (const tab of document.querySelectorAll('.tab')) {
   tab.onclick = () => setView(tab.dataset.view);

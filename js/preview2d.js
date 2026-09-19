@@ -187,3 +187,56 @@ export function drawSource(canvas, grid) {
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(tmp, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
+
+// ---------------------------------------------------------- PARÇA KATALOĞU
+
+/**
+ * Poligonal kabuk modunda parçaları ızgara hâlinde, numaralarıyla gösterir.
+ * Kaynakçının hangi parçanın nasıl göründüğünü görmesi için.
+ */
+export function drawParts(canvas, parts) {
+  const { ctx, w, h } = setup(canvas);
+  if (!parts?.length) return;
+
+  const cols = Math.ceil(Math.sqrt(parts.length * (w / h)));
+  const rows = Math.ceil(parts.length / cols);
+  const cellW = w / cols;
+  const cellH = h / rows;
+  const pad = Math.min(cellW, cellH) * 0.12;
+
+  parts.forEach((part, i) => {
+    const b = bboxOf(part.outline);
+    const s = Math.min((cellW - pad * 2) / (b.w || 1), (cellH - pad * 2) / (b.h || 1));
+    const cx = (i % cols) * cellW + cellW / 2;
+    const cy = Math.floor(i / cols) * cellH + cellH / 2;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(s, -s);
+    ctx.translate(-(b.minX + b.maxX) / 2, -(b.minY + b.maxY) / 2);
+
+    ctx.beginPath();
+    tracePath(ctx, part.outline);
+    ctx.fillStyle = 'rgba(245,158,11,0.18)';
+    ctx.fill();
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.4 / s;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = '#9aa5b1';
+    ctx.font = `${Math.max(9, cellH * 0.11)}px -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(part.id, cx, cy + cellH / 2 - 3);
+  });
+  ctx.textAlign = 'start';
+}
+
+function bboxOf(ring) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+}

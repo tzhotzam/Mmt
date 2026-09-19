@@ -10,7 +10,7 @@ cihazınızdan hiç çıkmaz. iPhone/iPad dâhil her tarayıcıda açılır.
 
 ## Ne yapıyor?
 
-İki farklı üretim yöntemi var:
+Üç farklı üretim yöntemi var:
 
 ### 1. Lamel / Dalga modu
 Panel, dik (veya yatay) duran ince lamellerden oluşur. Her lamelin ön kenarı
@@ -30,6 +30,22 @@ kademeli bir kabartma çıkar.
 - Her katmanın üstüne, bir sonraki katmanın oturacağı sınır **gravürle**
   işaretlenir — hizalama derdi kalmaz.
 - Çok küçük adacıklar otomatik elenir, takım çapına göre uyarı verilir.
+
+### 3. Poligonal Kabuk modu (metal / kaynak)
+Kapalı bir 3B modeli (STL) düz yüzeylerine ayırır. Her yüzey sacdan ayrı bir
+parça olarak kesilir, parçalar kenarlarından **kaynakla** birleştirilir —
+katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
+
+- Low-poly modellerde her görünen yüzey birden çok üçgene bölünmüştür;
+  bunlar **geri birleştirilir**, böylece düz bir yüzeyin ortasından gereksiz
+  kaynak çekilmez. (Küp = 12 üçgen → 6 kare parça.)
+- Her parçaya kendi numarası, her kaynak dikişine ortak numara gravürlenir.
+  Aynı numaralı iki kenarı karşı karşıya getirip puntalarsınız.
+- **Kalınlık telafisi**: dış yüzey modellendiyse parçalar orta yüzey
+  ölçüsüne çekilir — her kenar (t/2)·cot(θ/2) kadar. 100 mm dış ölçülü bir
+  küp, 4 mm sacdan 96×96 plakalarla yapılır.
+- Montaj kılavuzu her dikişin uzunluğunu, iç açısını ve dışbükey/içbükey
+  olduğunu listeler.
 
 ---
 
@@ -122,6 +138,8 @@ js/
   geom.js             alan, yön, sadeleştirme, ofset, delik sınıflandırma
   modes/ribs.js       lamel + kızak üretimi
   modes/contour.js    katman üretimi
+  modes/facets.js     poligonal kabuk: faset parçaları + kaynak dikişleri
+  mesh.js             köşe kaynaklama, eş düzlem birleştirme, dihedral açı
   nest.js             levha yerleşimi
   cutlist.js          kesim listesi, malzeme özeti, montaj kılavuzu
   export/dxf.js       R12 DXF yazıcı

@@ -12,6 +12,8 @@ import { sheetToSvg } from '../js/export/svg.js';
 import { buildCutList, assemblyGuide, cutListToCsv } from '../js/cutlist.js';
 import { heightmapFromStl, parseStl } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
+import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
+import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -271,6 +273,129 @@ test('her katmanın Z yüksekliği artıyor', () => {
   const zs = cont.parts.map((p) => p.meta.z);
   assert.equal(Math.min(...zs), 0);
   assert.equal(Math.max(...zs), 6 * 12);
+});
+
+console.log('poligonal kabuk (kaynak) modu');
+
+function cubeTris(s = 1) {
+  const v = [];
+  for (const dz of [0, 1]) for (const dy of [0, 1]) for (const dx of [0, 1]) v.push([dx * s, dy * s, dz * s]);
+  const q = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [1, 3, 7, 5], [3, 2, 6, 7], [2, 0, 4, 6]];
+  const t = [];
+  for (const [a, b, c, d] of q) { t.push([v[a], v[b], v[c]]); t.push([v[a], v[c], v[d]]); }
+  return t;
+}
+
+function icoTris() {
+  const g = (1 + Math.sqrt(5)) / 2;
+  const v = [[-1, g, 0], [1, g, 0], [-1, -g, 0], [1, -g, 0], [0, -1, g], [0, 1, g],
+             [0, -1, -g], [0, 1, -g], [g, 0, -1], [g, 0, 1], [-g, 0, -1], [-g, 0, 1]];
+  const f = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4],
+             [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8],
+             [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+  return f.map(([a, b, c]) => [v[a], v[b], v[c]]);
+}
+
+test('buildMesh köşeleri kaynaklar', () => {
+  const mesh = buildMesh(cubeTris(10));
+  assert.equal(mesh.vertices.length, 8, `küpte 8 köşe olmalı, ${mesh.vertices.length} çıktı`);
+  assert.equal(mesh.faces.length, 12);
+});
+
+test('groupCoplanar küpün 12 üçgenini 6 yüzeye indirir', () => {
+  const groups = groupCoplanar(buildMesh(cubeTris(10)), 1);
+  assert.equal(groups.length, 6);
+  assert.ok(groups.every((g) => g.faces.length === 2));
+});
+
+test('küp: 6 kare parça, 12 dikiş, hepsi 90°', () => {
+  const r = generateFacets(cubeTris(), { targetSize: 100, thickness: 3, thicknessComp: false });
+  assert.equal(r.parts.length, 6);
+  assert.equal(r.seams.length, 12);
+  for (const part of r.parts) {
+    assert.equal(part.outline.length, 4, `${part.id} 4 köşeli olmalı`);
+    assert.ok(Math.abs(part.w - 100) < 1e-6 && Math.abs(part.h - 100) < 1e-6);
+    assert.ok(signedArea(part.outline) > 0, `${part.id} CCW olmalı`);
+  }
+  for (const s of r.seams) assert.ok(Math.abs(s.angle - 90) < 1e-6, `açı ${s.angle}`);
+  assert.equal(r.warnings.length, 0, `beklenmeyen uyarı: ${r.warnings}`);
+});
+
+test('kalınlık telafisi: 100 mm dış ölçülü küpün plakaları 100-t olur', () => {
+  // Her yüzün orta düzlemi dış yüzeyden t/2 içeride; plaka iki komşu orta
+  // düzlem arasını kapatır, yani her kenardan t/2 → toplam t kısalır.
+  for (const t of [3, 4, 6]) {
+    const r = generateFacets(cubeTris(), { targetSize: 100, thickness: t, thicknessComp: true });
+    for (const part of r.parts) {
+      assert.ok(Math.abs(part.w - (100 - t)) < 1e-6, `t=${t}: beklenen ${100 - t}, gelen ${part.w}`);
+      assert.ok(Math.abs(part.h - (100 - t)) < 1e-6);
+    }
+  }
+});
+
+test('ikosahedron: 20 üçgen faset, 30 dikiş, dihedral 138.19°', () => {
+  const r = generateFacets(icoTris(), { targetSize: 200, thickness: 2, thicknessComp: false, minArea: 10 });
+  assert.equal(r.parts.length, 20);
+  assert.equal(r.seams.length, 30);
+  assert.ok(r.parts.every((p) => p.outline.length === 3));
+  for (const s of r.seams) assert.ok(Math.abs(s.angle - 138.1897) < 0.01, `açı ${s.angle}`);
+});
+
+test('her dikiş numarası tam iki parçada geçer', () => {
+  const r = generateFacets(icoTris(), { targetSize: 200, thicknessComp: false, minArea: 10 });
+  const tally = new Map();
+  for (const part of r.parts) {
+    for (const id of part.meta.seams) tally.set(id, (tally.get(id) || 0) + 1);
+  }
+  assert.equal(tally.size, r.seams.length, 'her dikiş bir parçada geçmeli');
+  for (const [id, n] of tally) assert.equal(n, 2, `dikiş ${id} ${n} parçada geçiyor, 2 olmalı`);
+});
+
+test('dikiş listesindeki parça numaraları gerçek parçalara işaret eder', () => {
+  const r = generateFacets(cubeTris(), { targetSize: 100, thicknessComp: false });
+  const ids = new Set(r.parts.map((p) => p.id));
+  for (const s of r.seams) {
+    assert.ok(ids.has(s.aId), `bilinmeyen parça ${s.aId}`);
+    assert.ok(ids.has(s.bId), `bilinmeyen parça ${s.bId}`);
+    assert.notEqual(s.aId, s.bId, 'dikiş parçayı kendine bağlayamaz');
+  }
+});
+
+test('gravürlenen dikiş numarası, parçanın kendi dikiş listesiyle tutarlı', () => {
+  const r = generateFacets(cubeTris(), { targetSize: 200, thicknessComp: false });
+  for (const part of r.parts) {
+    const engraved = part.engrave.filter((e) => e.type === 'text' && /^\d+$/.test(e.text))
+      .map((e) => Number(e.text)).sort((a, b) => a - b);
+    const listed = part.meta.seams.slice().sort((a, b) => a - b);
+    assert.deepEqual(engraved, listed, `${part.id} gravür/liste uyuşmuyor`);
+  }
+});
+
+test('açık (kapalı olmayan) model uyarı verir', () => {
+  const open = cubeTris(10).slice(0, 10); // bir yüzü eksik
+  const r = generateFacets(open, { targetSize: 100, thicknessComp: false });
+  assert.ok(r.info.openEdges > 0);
+  assert.ok(r.warnings.some((w) => w.includes('kapalı bir hacim değil')), r.warnings.join('|'));
+});
+
+test('seamInset işaretleri ve sınırları', () => {
+  assert.ok(Math.abs(seamInset(90, 4) - 2) < 1e-9);
+  assert.ok(Math.abs(seamInset(180, 4)) < 1e-9);
+  assert.ok(seamInset(270, 4) < 0, 'içbükey kenar uzatılmalı');
+  assert.ok(Math.abs(seamInset(1, 4)) <= 12 + 1e-9, 'çok dar açıda sınırlanmalı');
+});
+
+test('offsetPerEdge kareyi her kenardan eşit içeri çeker', () => {
+  const sq = [[0, 0], [10, 0], [10, 10], [0, 10]];
+  const r = offsetPerEdge(sq, [1, 1, 1, 1]);
+  assert.ok(Math.abs(Math.abs(signedArea(r)) - 64) < 1e-9, `beklenen 8x8, alan ${signedArea(r)}`);
+});
+
+test('dihedralAngle dışbükey/içbükey ayrımı', () => {
+  // Dışbükey: normaller birbirinden uzaklaşır
+  assert.ok(Math.abs(dihedralAngle([0, 0, 1], [1, 0, 0], [0, 0, 0], [1, 0, -1]) - 90) < 1e-6);
+  // İçbükey: B'nin merkezi A'nın normali yönünde
+  assert.ok(dihedralAngle([0, 0, 1], [1, 0, 0], [0, 0, 0], [1, 0, 1]) > 180);
 });
 
 console.log('yerleşim ve dışa aktarım');
