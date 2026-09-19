@@ -40,8 +40,13 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 
 - **Açınım (önerilen)** — Komşu yüzeyler, düzleme serildiğinde üst üste
   binmeyecek öbekler ("yaprak") hâlinde tek parça kesilir. İç kenarlar
-  **kertikli** (kesik çizgili) kesilir, elle bükülür, sonra kertikler
-  kaynakla doldurulup taşlanır. Abkant gerekmez, açıyı büküm çizgisi tutar.
+  kısmen kesilir, kalan **köprü**ler parçayı bir arada tutar; elle bükülür.
+  Abkant gerekmez, açıyı büküm çizgisi tutar. Köprüleri kaynakla doldurup
+  taşlayabilir ya da açık bırakabilirsiniz (dekoratif heykellerde yaygın).
+  Üç köprü biçimi: **dağıtık** (çizgi boyunca çok sayıda kısa köprü, büküm
+  ekseni sabit kalır), **tek** (ortada 2-3 cm'lik tek köprü — bükmesi kolay
+  ama uzun kenarda kanatlar burulur) ve **otomatik** (kısa kenarda tek,
+  uzunda dağıtık).
   Her büküm çizgisinin yanına kaç dereceye bükeceğiniz gravürlenir.
   *İkosahedron: 20 gevşek parça + 30 kaynak yerine → 1 yaprak + 19 büküm + 11 kaynak.*
 - **Gevşek faset** — Her yüzey ayrı parça, tamamı kaynakla birleşir. Basit,

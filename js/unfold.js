@@ -209,17 +209,54 @@ export function patchOutline(patch, tol = 0.01) {
 }
 
 /**
- * Büküm çizgisini kesik kesik kesmek için parçalara böler.
- * Uçlarda dolu pay bırakılır ki parça ikiye ayrılmasın.
+ * Büküm çizgisi köprüleri.
+ *
+ * Çizgi boyunca malzemenin bir kısmı kesilir, kalan "köprü"ler parçayı bir
+ * arada tutar ve bükümden sonra istenirse kaynakla doldurulur. İki strateji:
+ *
+ *   DAĞITIK — çizgi boyunca birçok kısa köprü. Büküm ekseni iyi tutulur,
+ *             kanatlar birbirine göre burulmaz. Uzun kenarlarda tek seçenek.
+ *   TEK      — ortada tek bir köprü, gerisi kesik. Elle bükmesi çok daha
+ *             kolay; ama eksen serbest kaldığı için uzun kenarda kanatlar
+ *             burulur. Kısa kenarlarda idealdir.
+ *
+ * @param {object} opts
+ *  - mode: 'dagitik' | 'tek' | 'oto'
+ *  - cut, gap: dağıtık modda kesim ve köprü uzunluğu (mm)
+ *  - bridge: tek modda ortadaki köprünün genişliği (mm)
+ *  - autoLimit: 'oto' modda bu uzunluğun altı tek köprü sayılır (mm)
+ *  - endMargin: uçlarda bırakılacak dolu pay (mm)
  */
-export function dashLine(p1, p2, cut, gap, endMargin) {
+export function bridgeLine(p1, p2, opts = {}) {
+  const {
+    mode = 'dagitik', cut = 8, gap = 4, bridge = 25,
+    autoLimit = 250, endMargin,
+  } = opts;
+
   const dx = p2[0] - p1[0], dy = p2[1] - p1[1];
   const len = Math.hypot(dx, dy);
-  const margin = endMargin ?? Math.max(gap, len * 0.08);
+  if (len < 1e-9) return [];
+  const ux = dx / len, uy = dy / len;
+  // Uç payı köşeyi sağlam tutar ama büyümemeli: 3 mm sacda 5-12 mm yeterli.
+  const margin = endMargin ?? Math.min(Math.max(4, len * 0.06), 12, len * 0.3);
+  const at = (t) => [p1[0] + ux * t, p1[1] + uy * t];
+
+  const single = mode === 'tek' || (mode === 'oto' && len <= autoLimit);
+  if (single) {
+    const usable = len - margin * 2;
+    // Köprü, kalan boşluğun yarısından geniş olamaz — yoksa kesim kalmaz.
+    const b = Math.min(bridge, usable * 0.6);
+    if (usable - b < 4) return [];       // kesilecek yer yok, çizgiyi dolu bırak
+    const a1 = margin, a2 = (len - b) / 2;
+    const b1 = (len + b) / 2, b2 = len - margin;
+    const segs = [];
+    if (a2 - a1 > 1) segs.push([at(a1), at(a2)]);
+    if (b2 - b1 > 1) segs.push([at(b1), at(b2)]);
+    return segs;
+  }
+
   const usable = len - margin * 2;
   if (usable <= cut) return [];
-  const ux = dx / len, uy = dy / len;
-
   const period = cut + gap;
   const n = Math.max(1, Math.floor((usable + gap) / period));
   const span = n * period - gap;
@@ -227,13 +264,15 @@ export function dashLine(p1, p2, cut, gap, endMargin) {
 
   const segs = [];
   for (let i = 0; i < n; i++) {
-    segs.push([
-      [p1[0] + ux * t, p1[1] + uy * t],
-      [p1[0] + ux * (t + cut), p1[1] + uy * (t + cut)],
-    ]);
+    segs.push([at(t), at(t + cut)]);
     t += period;
   }
   return segs;
+}
+
+/** Geriye dönük uyum: dağıtık kertik. */
+export function dashLine(p1, p2, cut, gap, endMargin) {
+  return bridgeLine(p1, p2, { mode: 'dagitik', cut, gap, endMargin });
 }
 
 /**

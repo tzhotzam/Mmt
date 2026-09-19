@@ -16,7 +16,7 @@ import {
   dihedralAngle, centroidOf, groupArea, scaleTriangles,
 } from '../mesh.js';
 import { signedArea, bbox } from '../geom.js';
-import { unfoldPatches, patchOutline, dashLine, bendDeduction } from '../unfold.js';
+import { unfoldPatches, patchOutline, bridgeLine, bendDeduction } from '../unfold.js';
 
 export const FACET_DEFAULTS = {
   targetSize: 600,
@@ -31,8 +31,11 @@ export const FACET_DEFAULTS = {
   // Açınım
   unfold: false,
   maxFacetsPerPatch: 24,
-  dashCut: 8,
-  dashGap: 4,
+  bridgeMode: 'oto',  // 'dagitik' | 'tek' | 'oto'
+  dashCut: 30,
+  dashGap: 8,
+  bridgeWidth: 25,    // tek köprü modunda ortada kalan dolu pay (mm)
+  autoLimit: 250,     // 'oto' modda bu uzunluğun altı tek köprü
   bendRadius: 0,   // 0 → sac kalınlığı kadar varsayılır
   kFactor: 0.4,
   maxPatchW: Infinity,
@@ -348,7 +351,10 @@ function buildPatchParts(a, p, warnings) {
       engrave.push({ type: 'polyline', points: [f.p1, f.p2], closed: false, layer: 'BUKUM' });
 
       // Kertikler — TAM KESİM. Sacı delip geçer; büküm buradan olur.
-      for (const seg of dashLine(f.p1, f.p2, p.dashCut, p.dashGap)) {
+      for (const seg of bridgeLine(f.p1, f.p2, {
+        mode: p.bridgeMode, cut: p.dashCut, gap: p.dashGap,
+        bridge: p.bridgeWidth, autoLimit: p.autoLimit,
+      })) {
         engrave.push({ type: 'polyline', points: seg, closed: false, layer: 'KESIM' });
       }
 

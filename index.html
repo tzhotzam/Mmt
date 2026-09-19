@@ -193,11 +193,24 @@
       <label>Yaprak başına en çok faset
         <input type="number" id="p-maxFacetsPerPatch" value="24" min="1" max="200" step="1">
       </label>
-      <label>Kertik kesim (mm)
-        <input type="number" id="p-dashCut" value="8" min="1" max="60" step="1">
+      <label>Büküm köprüsü
+        <select id="p-bridgeMode">
+          <option value="oto">Otomatik (kısa kenar tek, uzun dağıtık)</option>
+          <option value="tek">Tek köprü (ortada)</option>
+          <option value="dagitik">Dağıtık kertik</option>
+        </select>
       </label>
-      <label>Kertik boşluk (mm) <small>kalan dolu pay</small>
-        <input type="number" id="p-dashGap" value="4" min="0.5" max="40" step="0.5">
+      <label>Tek köprü genişliği (mm)
+        <input type="number" id="p-bridgeWidth" value="25" min="5" max="120" step="5">
+      </label>
+      <label>Tek/dağıtık sınırı (mm)
+        <input type="number" id="p-autoLimit" value="250" min="50" max="1500" step="10">
+      </label>
+      <label>Dağıtık: kesim (mm)
+        <input type="number" id="p-dashCut" value="30" min="2" max="200" step="1">
+      </label>
+      <label>Dağıtık: köprü (mm)
+        <input type="number" id="p-dashGap" value="8" min="0.5" max="60" step="0.5">
       </label>
     </div>
 

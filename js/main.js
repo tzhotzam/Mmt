@@ -70,8 +70,11 @@ function readParams() {
       thicknessComp: bool('p-thicknessComp'),
       unfold: bool('p-unfold'),
       maxFacetsPerPatch: Math.round(num('p-maxFacetsPerPatch', 24)),
-      dashCut: num('p-dashCut', 8),
-      dashGap: num('p-dashGap', 4),
+      bridgeMode: els['p-bridgeMode'].value,
+      bridgeWidth: num('p-bridgeWidth', 25),
+      autoLimit: num('p-autoLimit', 250),
+      dashCut: num('p-dashCut', 30),
+      dashGap: num('p-dashGap', 8),
       // Yaprak levhaya sığmalı.
       maxPatchW: num('p-sheetW', 2440) - 2 * num('p-margin', 10),
       maxPatchH: num('p-sheetH', 1220) - 2 * num('p-margin', 10),

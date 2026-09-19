@@ -14,7 +14,7 @@ import { heightmapFromStl, parseStl } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
-import { dashLine, bendDeduction, polysOverlap } from '../js/unfold.js';
+import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -494,6 +494,73 @@ test('dashLine uçlarda dolu pay bırakır ve çizgiyi aşmaz', () => {
     assert.ok(a[0] >= 0 && b[0] <= 100);
   }
   assert.equal(dashLine(p1, [5, 0], 8, 4).length, 0, 'kısa çizgide kertik olmaz');
+  assert.ok(segs.every(([a, b]) => b[0] - a[0] <= 8 + 1e-9), 'kesim boyu aşılmamalı');
+});
+
+test('tek köprü: ortada tam istenen genişlikte dolu pay bırakır', () => {
+  // Köprünün sığdığı uzunluklarda genişlik tam korunmalı.
+  for (const len of [80, 150, 300, 500]) {
+    const segs = bridgeLine([0, 0], [len, 0], { mode: 'tek', bridge: 25 });
+    assert.equal(segs.length, 2, `${len}mm: iki kesim beklenir`);
+    const bridge = segs[1][0][0] - segs[0][1][0];
+    assert.ok(Math.abs(bridge - 25) < 1e-6, `${len}mm: köprü ${bridge}, 25 olmalı`);
+    // Köprü tam ortada olmalı
+    const mid = (segs[0][1][0] + segs[1][0][0]) / 2;
+    assert.ok(Math.abs(mid - len / 2) < 1e-6, `${len}mm: köprü ortada değil (${mid})`);
+    // Uçlarda dolu pay kalmalı, çizgi dışına taşmamalı
+    assert.ok(segs[0][0][0] > 0 && segs[1][1][0] < len);
+  }
+});
+
+test('tek köprü: sığmayan köprü kısaltılır, çok kısa kenarda hiç kesilmez', () => {
+  // 30 mm kenara 25 mm köprü sığmaz; köprü kısalır ama kenar yine rahatlatılır.
+  const dar = bridgeLine([0, 0], [30, 0], { mode: 'tek', bridge: 25 });
+  assert.equal(dar.length, 2);
+  const bridge = dar[1][0][0] - dar[0][1][0];
+  assert.ok(bridge > 0 && bridge < 25, `köprü kısaltılmalıydı: ${bridge}`);
+  assert.ok(dar.every(([a, b]) => b[0] - a[0] > 1), 'anlamsız minik kesim üretilmemeli');
+
+  // Hiç yer kalmayan kenarda kesim yapılmaz, çizgi dolu bırakılır.
+  assert.equal(bridgeLine([0, 0], [15, 0], { mode: 'tek', bridge: 25 }).length, 0);
+});
+
+test('oto mod: sınırın altı tek köprü, üstü dağıtık', () => {
+  const kisa = bridgeLine([0, 0], [150, 0], { mode: 'oto', autoLimit: 250, bridge: 25, cut: 30, gap: 8 });
+  const uzun = bridgeLine([0, 0], [400, 0], { mode: 'oto', autoLimit: 250, bridge: 25, cut: 30, gap: 8 });
+  assert.equal(kisa.length, 2, 'kısa kenar tek köprü olmalı');
+  assert.ok(uzun.length > 3, `uzun kenar dağıtık olmalı, ${uzun.length} kesim`);
+});
+
+test('her modda kesimler çizgi içinde ve birbirine değmez', () => {
+  for (const mode of ['tek', 'dagitik', 'oto']) {
+    for (const len of [60, 120, 350, 700]) {
+      const segs = bridgeLine([0, 0], [len, 0], { mode, bridge: 25, cut: 30, gap: 8, autoLimit: 250 });
+      let prevEnd = 0;
+      for (const [a, b] of segs) {
+        assert.ok(a[0] >= 0 && b[0] <= len, `${mode}/${len}: kesim çizgiyi aşıyor`);
+        assert.ok(a[0] > prevEnd, `${mode}/${len}: kesimler üst üste biniyor`);
+        assert.ok(b[0] > a[0], `${mode}/${len}: sıfır uzunlukta kesim`);
+        prevEnd = b[0];
+      }
+      assert.ok(prevEnd <= len, `${mode}/${len}: son kesim taşıyor`);
+    }
+  }
+});
+
+test('parça hiçbir modda ikiye ayrılmaz — daima dolu pay kalır', () => {
+  for (const mode of ['tek', 'dagitik', 'oto']) {
+    for (const len of [60, 200, 600]) {
+      const segs = bridgeLine([0, 0], [len, 0], { mode, bridge: 25, cut: 30, gap: 8 });
+      const cut = segs.reduce((s2, [a, b]) => s2 + (b[0] - a[0]), 0);
+      assert.ok(len - cut > 5, `${mode}/${len}: dolu pay ${len - cut} mm — çok az`);
+    }
+  }
+});
+
+test('dashLine eski çağrı biçimi çalışmaya devam eder', () => {
+  const segs = dashLine([0, 0], [100, 0], 8, 4);
+  assert.ok(segs.length >= 3);
+  assert.ok(segs.every(([a, b]) => b[0] - a[0] <= 8 + 1e-9));
 });
 
 test('bendDeduction: düz kenarda sıfır, büküm arttıkça büyür', () => {
