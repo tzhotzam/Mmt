@@ -3,6 +3,7 @@
 import { gridFromImageData, applyFilters, makeGrid, suggestInvert } from './heightmap.js';
 import { parseStl, heightmapFromStl } from './stl.js';
 import { facetize } from './facet.js';
+import { demoMeshTris } from './demomesh.js';
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
 import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
@@ -167,6 +168,12 @@ async function loadStlFile(file) {
 }
 
 function loadDemo() {
+  if (state.mode === 'facets') {
+    state.tris = demoMeshTris();
+    setInvert(false);
+    scheduleRegen();
+    return;
+  }
   const [cols, rows] = gridDimsFor(1.5);
   const g = makeGrid(cols, rows);
   for (let y = 0; y < rows; y++) {
@@ -275,7 +282,8 @@ function regenerateFacets() {
     state.cutList = null;
     state.nestResult = null;
     els['stage-hint'].hidden = false;
-    els['stage-hint'].textContent = 'Bu mod için bir STL dosyası yükleyin — görsel yeterli değil.';
+    els['stage-hint'].textContent =
+      'Bu mod için STL gerekir (görsel yeterli değil). Denemek için "Örnek desen"e dokunun.';
     els.summary.innerHTML = '';
     showWarnings([]);
     return;

@@ -1,6 +1,6 @@
 // Kesim listesi, malzeme özeti ve montaj kılavuzu.
 
-import { perimeter, bbox } from './geom.js';
+import { perimeter, bbox, signedArea } from './geom.js';
 
 /**
  * @param {Array} parts üretilen parçalar
@@ -30,9 +30,12 @@ export function buildCutList(parts, nestResult, info, opts = {}) {
   const totalCut = rows.reduce((s, r) => s + r.cutLength, 0);
   const sheetCount = nestResult.sheets.length;
   const sheetArea = sheetCount * (nestResult.opts.sheetW * nestResult.opts.sheetH) / 1e6; // m²
+  // Gerçek poligon alanı — dikdörtgen sınırıyla hesaplamak düzensiz
+  // parçalarda doluluğu %100'ün üstüne çıkarıyordu.
   const partArea = parts.reduce((s, p) => {
-    const b = bbox(p.outline);
-    return s + (b.w * b.h) / 1e6;
+    let a = Math.abs(signedArea(p.outline));
+    for (const h of p.holes) a -= Math.abs(signedArea(h));
+    return s + Math.max(0, a) / 1e6;
   }, 0);
 
   return {
@@ -45,7 +48,7 @@ export function buildCutList(parts, nestResult, info, opts = {}) {
       totalCutLength: round(totalCut),
       estimatedMinutes: round(totalCut / feedRate, 1),
       sheetArea: round(sheetArea, 2),
-      partBBoxArea: round(partArea, 2),
+      partArea: round(partArea, 2),
       utilisation: sheetArea > 0 ? round((partArea / sheetArea) * 100, 1) : 0,
       oversized: nestResult.oversized.map((p) => p.id),
       totalDepth: info.totalDepth,

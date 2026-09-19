@@ -572,6 +572,10 @@ test('kesim listesi ve montaj kılavuzu', () => {
   assert.ok(cl.summary.totalCutLength > 0);
   assert.ok(cl.summary.sheetCount >= 1);
   assert.ok(cutListToCsv(cl).split('\n').length === ribs.parts.length + 2);
+  assert.ok(cl.summary.utilisation > 0 && cl.summary.utilisation <= 100,
+    `doluluk %0-100 arasında olmalı: ${cl.summary.utilisation}`);
+  assert.ok(cl.summary.partArea <= cl.summary.sheetArea + 1e-9,
+    'parça alanı levha alanını aşamaz');
   assert.ok(assemblyGuide(ribs.info).includes('Montaj sırası'));
   assert.ok(assemblyGuide(cont.info).includes('Montaj sırası'));
 });

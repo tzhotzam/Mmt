@@ -1,7 +1,7 @@
 // Çevrimdışı çalışma için basit önbellek. three.js CDN'den geldiği için
 // 3B önizleme çevrimdışı devre dışı kalır; üretim ve dışa aktarma çalışır.
 
-const CACHE = 'cnc-panel-v4';
+const CACHE = 'cnc-panel-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -18,6 +18,7 @@ const ASSETS = [
   './js/facet.js',
   './js/mesh.js',
   './js/unfold.js',
+  './js/demomesh.js',
   './js/preview2d.js',
   './js/preview3d.js',
   './js/modes/ribs.js',
