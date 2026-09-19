@@ -73,8 +73,19 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
    zemin konudan açıksa (beyaz fonda logo, silüet, ürün fotoğrafı) "koyu
    alanlar", aksi hâlde "açık alanlar" öne çıkar. Konu panele gömülüyorsa
    diğer seçeneğe dokunun.
-3. **Görseli ayarlayın** — Yumuşatma gürültüyü siler (fotoğraflarda 3–6 iyi
-   sonuç verir), kontrast derinlik farkını açar. **Poligon yoğunluğu** yüzeyi
+3. **Görseli ayarlayın** — Yumuşatma (mm) gürültüyü siler, **Netlik** yerel
+   kontrastı yükseltip biçimleri belirginleştirir, kontrast derinlik farkını
+   açar.
+
+   **Netlik hakkında bilinmesi gereken:** lamel modunda panelin yatay
+   çözünürlüğü lamel sayısı kadardır. 900 mm panel + 18 mm malzeme + 6 mm
+   boşluk = 37 lamel, yani *37 piksel genişliğinde bir ekran*. Kaç
+   megapiksellik görsel yüklenirse yüklensin bu sınır değişmez. Daha net
+   sonuç için sırasıyla: malzemeyi inceltin ve boşluğu daraltın (12+4 mm
+   → 56 lamel), paneli büyütün, ince ayrıntının lamel BOYUNCA uzandığı bir
+   yön seçin (o yönde çözünürlük çok daha yüksektir), yüksek kontrastlı bir
+   görsel kullanın. Her iki yönde de ayrıntı gerekiyorsa Katman modu daha
+   uygundur; orada çözünürlük her yönde eşittir. **Poligon yoğunluğu** yüzeyi
    düz üçgen fasetlere böler (low-poly görünüm); "Düz yüzeyler" her faseti
    tek yüksekliğe sabitleyip kademeli, papercraft benzeri bir yüzey verir.
 4. **Ölçüleri girin** — Panel eni/boyu, malzeme kalınlığı (12 mm, 18 mm…),

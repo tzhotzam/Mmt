@@ -14,7 +14,19 @@ import { buildCutList, cutListToCsv, assemblyGuide } from './cutlist.js';
 import { drawPlan, drawNest, drawSource, drawParts } from './preview2d.js';
 import { createPreview3d } from './preview3d.js';
 
-const GRID_MAX = 320;
+// Yükseklik haritasının uzun kenardaki örnek sayısı. 320 idi; 2,6 m'lik bir
+// panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
+// 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
+// adımıyla örtüşüyor.
+const GRID_MAX = 768;
+
+/** Filtre yarıçapları mm cinsinden girilir; ızgara örneğine burada çevrilir. */
+function mmToSamples(mm) {
+  const g = state.sourceGrid;
+  if (!g) return 0;
+  const mmPerSample = num('p-panelW', 900) / Math.max(1, g.w);
+  return mmPerSample > 0 ? mm / mmPerSample : 0;
+}
 
 const els = {};
 for (const el of document.querySelectorAll('[id]')) els[el.id] = el;
@@ -101,9 +113,13 @@ function readParams() {
   };
 }
 
+const SHARPEN_RADIUS_MM = 5;
+
 function readFilters() {
   return {
-    blur: num('p-blur', 0),
+    blur: mmToSamples(num('p-blur', 0)),
+    sharpen: num('p-sharpen', 0),
+    sharpenRadius: Math.max(1, Math.round(mmToSamples(SHARPEN_RADIUS_MM))),
     contrast: num('p-contrast', 0),
     brightness: num('p-brightness', 0),
     gamma: num('p-gamma', 1),

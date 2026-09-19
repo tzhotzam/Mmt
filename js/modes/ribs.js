@@ -19,7 +19,8 @@ export const RIB_DEFAULTS = {
   maxDepth: 60,
   baseDepth: 40,
   orientation: 'vertical', // 'vertical' | 'horizontal'
-  profileSamples: 220,
+  profileSamples: 0,      // 0 = otomatik (profileStep'ten hesaplanır)
+  profileStep: 1.5,       // mm — profil üzerinde iki örnek arası mesafe
   simplifyTol: 0.12,
   offset: 0,               // + parçayı büyütür (kerf telafisi elle yapılacaksa)
   railCount: 2,
@@ -59,6 +60,12 @@ export function generateRibs(grid, userParams = {}) {
     );
   }
 
+  // Profil örnek sayısı lamel boyuna göre belirlenir. Sabit 220 örnek,
+  // 2,6 m'lik bir lamelde 12 mm'lik adım demekti — eğri köşeli çıkıyordu.
+  const samples = p.profileSamples > 0
+    ? Math.round(p.profileSamples)
+    : Math.max(150, Math.min(2000, Math.round(ribLength / Math.max(0.3, p.profileStep))));
+
   const railPositions = computeRailPositions(p.railCount, p.railInset, ribLength);
 
   const parts = [];
@@ -68,8 +75,8 @@ export function generateRibs(grid, userParams = {}) {
     const u1 = (a0 + p.thickness) / actualAcross;
 
     const profile = [];
-    for (let s = 0; s < p.profileSamples; s++) {
-      const t = s / (p.profileSamples - 1);
+    for (let s = 0; s < samples; s++) {
+      const t = s / (samples - 1);
       const pos = t * ribLength;
       // Görsel koordinatı: v=0 üst satır. Dikey lamelde lamel boyu panel
       // yüksekliğidir ve x=0 panelin altıdır, bu yüzden v ters çevrilir.
@@ -131,6 +138,7 @@ export function generateRibs(grid, userParams = {}) {
       panelW: horizontal ? p.panelW : actualAcross,
       panelH: horizontal ? actualAcross : p.panelH,
       totalDepth: p.baseDepth + p.maxDepth,
+      profileSamples: samples,
       railPositions,
       params: p,
     },

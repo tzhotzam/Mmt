@@ -90,9 +90,13 @@
     <details open>
       <summary>Görsel işleme</summary>
       <div class="grid">
-        <label>Yumuşatma <small>(gürültüyü siler)</small>
-          <input type="range" id="p-blur" min="0" max="12" step="1" value="2">
+        <label>Yumuşatma (mm) <small>gürültüyü siler</small>
+          <input type="range" id="p-blur" min="0" max="20" step="0.5" value="3">
           <output for="p-blur"></output>
+        </label>
+        <label>Netlik <small>biçimleri belirginleştirir</small>
+          <input type="range" id="p-sharpen" min="0" max="2" step="0.1" value="0.6">
+          <output for="p-sharpen"></output>
         </label>
         <label>Kontrast
           <input type="range" id="p-contrast" min="-0.8" max="0.8" step="0.05" value="0">

@@ -95,6 +95,8 @@ function clamp(v, lo, hi) {
  *  - brightness: -1..1
  *  - contrast: -1..1
  *  - gamma:    >0 (1 = değişiklik yok)
+ *  - sharpen:  netlik miktarı (unsharp mask), 0 = kapalı
+ *  - sharpenRadius: netlik yarıçapı (ızgara örneği)
  *  - posterize: 0 = kapalı, >1 ise o kadar kademeye yuvarlar
  *  - autoNormalize: boolean
  */
@@ -108,6 +110,8 @@ export function applyFilters(g, opts = {}) {
     gamma = 1,
     posterize = 0,
     autoNormalize = true,
+    sharpen = 0,          // 0 = kapalı, 0.5-1.5 arası tipik
+    sharpenRadius = 3,    // ızgara örneği cinsinden
   } = opts;
 
   if (blur > 0) {
@@ -125,6 +129,19 @@ export function applyFilters(g, opts = {}) {
     if (gamma !== 1) v = Math.pow(v, 1 / gamma);
     if (invert) v = 1 - v;
     grid.data[i] = v;
+  }
+
+  // Netlik (unsharp mask): görselin kendi bulanık kopyasından farkı geri
+  // eklenir. Düşük çözünürlüklü panelde yerel kontrastı yükseltip biçimleri
+  // okunur kılar — yumuşatmanın zıttı değil, tamamlayıcısıdır.
+  if (sharpen > 0 && sharpenRadius >= 1) {
+    const blurred = cloneGrid(grid);
+    const r = Math.max(1, Math.round(sharpenRadius));
+    boxBlurPass(blurred, r);
+    boxBlurPass(blurred, r);
+    for (let i = 0; i < grid.data.length; i++) {
+      grid.data[i] = clamp(grid.data[i] + sharpen * (grid.data[i] - blurred.data[i]), 0, 1);
+    }
   }
 
   if (autoNormalize) normalize(grid);
