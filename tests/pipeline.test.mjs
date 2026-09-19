@@ -1,7 +1,7 @@
 // Tarayıcıya gerek duymadan üretim zincirini doğrular:  node tests/pipeline.test.mjs
 import assert from 'node:assert/strict';
 
-import { makeGrid, applyFilters, gridFromImageData, sampleBilinear } from '../js/heightmap.js';
+import { makeGrid, applyFilters, gridFromImageData, sampleBilinear, suggestInvert } from '../js/heightmap.js';
 import { contourRings } from '../js/marchingsquares.js';
 import { signedArea, classifyRings, simplify, pointInRing, offsetRing } from '../js/geom.js';
 import { generateRibs } from '../js/modes/ribs.js';
@@ -120,6 +120,26 @@ test('posterize kademe sayısını sınırlar', () => {
   const g = applyFilters(testGrid(), { posterize: 5 });
   const uniq = new Set(Array.from(g.data).map((v) => v.toFixed(4)));
   assert.ok(uniq.size <= 5, `kademe sayısı ${uniq.size}`);
+});
+
+test('suggestInvert: açık zeminde koyu konu için ters çevirme önerir', () => {
+  // Beyaz zemin, ortada koyu bir logo
+  const g = makeGrid(120, 120, 1);
+  for (let y = 30; y < 90; y++)
+    for (let x = 30; x < 90; x++) g.data[y * 120 + x] = 0.05;
+  assert.equal(suggestInvert(g), true);
+});
+
+test('suggestInvert: koyu zeminde açık konu için ters çevirmez', () => {
+  const g = makeGrid(120, 120, 0.05);
+  for (let y = 30; y < 90; y++)
+    for (let x = 30; x < 90; x++) g.data[y * 120 + x] = 1;
+  assert.equal(suggestInvert(g), false);
+});
+
+test('suggestInvert: düz görselde ters çevirmez', () => {
+  assert.equal(suggestInvert(makeGrid(120, 120, 0.5)), false);
+  assert.equal(suggestInvert(testGrid()), false);
 });
 
 test('sampleBilinear sınırları kırpar', () => {

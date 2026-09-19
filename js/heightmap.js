@@ -139,6 +139,39 @@ export function applyFilters(g, opts = {}) {
   return grid;
 }
 
+/**
+ * Kabartmanın hangi yöne çıkması gerektiğini tahmin eder.
+ *
+ * Görselin kenar şeridi ortasından belirgin şekilde açıksa, konu koyu bir
+ * nesne ve zemin açıktır (logo, silüet, beyaz fonda ürün fotoğrafı). Bu
+ * durumda ters çevrilmezse konu panele gömülür, zemin öne çıkar.
+ *
+ * @returns {boolean} true ise "koyu alanlar öne çıksın" seçilmeli
+ */
+export function suggestInvert(grid, borderFraction = 0.12, threshold = 0.05) {
+  const { w, h, data } = grid;
+  if (w < 8 || h < 8) return false;
+  const bx = Math.max(1, Math.round(w * borderFraction));
+  const by = Math.max(1, Math.round(h * borderFraction));
+
+  let borderSum = 0, borderN = 0, centerSum = 0, centerN = 0;
+  for (let y = 0; y < h; y++) {
+    const inCenterBand = y >= h * 0.25 && y < h * 0.75;
+    for (let x = 0; x < w; x++) {
+      const v = data[y * w + x];
+      if (x < bx || x >= w - bx || y < by || y >= h - by) {
+        borderSum += v;
+        borderN++;
+      } else if (inCenterBand && x >= w * 0.25 && x < w * 0.75) {
+        centerSum += v;
+        centerN++;
+      }
+    }
+  }
+  if (!borderN || !centerN) return false;
+  return borderSum / borderN > centerSum / centerN + threshold;
+}
+
 /** u,v ∈ [0,1] normalize koordinatlarda çift doğrusal örnekleme. */
 export function sampleBilinear(grid, u, v) {
   const { w, h, data } = grid;

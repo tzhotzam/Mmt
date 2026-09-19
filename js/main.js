@@ -1,6 +1,6 @@
 // Uygulama kabuğu: girdi → yükseklik haritası → parça üretimi → önizleme → dışa aktarma.
 
-import { gridFromImageData, applyFilters, makeGrid } from './heightmap.js';
+import { gridFromImageData, applyFilters, makeGrid, suggestInvert } from './heightmap.js';
 import { parseStl, heightmapFromStl } from './stl.js';
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
@@ -19,6 +19,7 @@ for (const el of document.querySelectorAll('[id]')) els[el.id] = el;
 const state = {
   mode: 'ribs',
   view: '3d',
+  invert: false,         // false = açık alanlar öne, true = koyu alanlar öne
   sourceGrid: null,      // filtresiz ham harita
   grid: null,            // filtrelenmiş harita
   aspect: 1,
@@ -78,7 +79,7 @@ function readFilters() {
     contrast: num('p-contrast', 0),
     brightness: num('p-brightness', 0),
     gamma: num('p-gamma', 1),
-    invert: bool('p-invert'),
+    invert: state.invert,
     autoNormalize: true,
   };
 }
@@ -114,6 +115,8 @@ async function loadImageFile(file) {
   bitmap.close?.();
 
   state.sourceGrid = gridFromImageData(img, cols, rows);
+  // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
+  setInvert(suggestInvert(state.sourceGrid), true);
   syncAspect();
   scheduleRegen();
 }
@@ -131,6 +134,7 @@ async function loadStlFile(file) {
   state.aspect = (maxX - minX) / (maxY - minY || 1) || 1;
   const [cols, rows] = gridDimsFor(state.aspect);
   state.sourceGrid = heightmapFromStl(tris, cols, rows);
+  setInvert(false);
   syncAspect();
   scheduleRegen();
 }
@@ -154,8 +158,32 @@ function loadDemo() {
   }
   state.aspect = 1.5;
   state.sourceGrid = g;
+  setInvert(false);
   syncAspect();
   scheduleRegen();
+}
+
+/**
+ * Kabartma yönünü ayarlar.
+ * @param {boolean} v true ise koyu alanlar öne çıkar
+ * @param {boolean} auto otomatik seçildiyse kullanıcıya nedenini söyler
+ */
+function setInvert(v, auto = false) {
+  state.invert = !!v;
+  const light = !state.invert;
+  els['dir-light'].classList.toggle('active', light);
+  els['dir-dark'].classList.toggle('active', !light);
+  els['dir-light'].setAttribute('aria-checked', String(light));
+  els['dir-dark'].setAttribute('aria-checked', String(!light));
+
+  const hint = els['dir-hint'];
+  hint.classList.toggle('auto', auto && state.invert);
+  if (auto && state.invert) {
+    hint.textContent = 'Zemin konudan açık olduğu için otomatik olarak "koyu alanlar" seçildi. ' +
+      'Ters isterseniz diğerine dokunun.';
+  } else {
+    hint.textContent = 'Görsel yüklediğinizde otomatik seçilir. Konu panele gömülüyorsa diğerine geçin.';
+  }
 }
 
 function syncAspect() {
@@ -403,7 +431,9 @@ els['load-json'].onchange = async (e) => {
 
 function applySettings(data) {
   const all = { ...(data.params || {}), ...(data.filters || {}), ...(data.nest || {}) };
+  if ('invert' in all) setInvert(all.invert);
   for (const [k, v] of Object.entries(all)) {
+    if (k === 'invert') continue;
     const el = els[`p-${k}`];
     if (!el) continue;
     if (el.type === 'checkbox') el.checked = !!v;
@@ -445,6 +475,9 @@ function syncRangeOutputs() {
     if (out) out.textContent = input.value;
   }
 }
+
+els['dir-light'].onclick = () => { setInvert(false); scheduleRegen(); };
+els['dir-dark'].onclick = () => { setInvert(true); scheduleRegen(); };
 
 els['mode-ribs'].onclick = () => setMode('ribs');
 els['mode-contour'].onclick = () => setMode('contour');

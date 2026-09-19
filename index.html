@@ -67,9 +67,23 @@
       </label>
       <button id="btn-demo" class="upload ghost"><span>✨ Örnek desen</span></button>
     </div>
+    <div class="segmented" role="radiogroup" aria-label="Kabartma yönü">
+      <span class="segmented-title">Kabartma yönü — ne öne çıksın?</span>
+      <div class="segmented-buttons">
+        <button type="button" id="dir-light" class="seg active" role="radio" aria-checked="true">
+          Açık alanlar
+        </button>
+        <button type="button" id="dir-dark" class="seg" role="radio" aria-checked="false">
+          Koyu alanlar
+        </button>
+      </div>
+      <p id="dir-hint" class="seg-hint">
+        Görsel yüklediğinizde otomatik seçilir. Konu panele gömülüyorsa diğerine geçin.
+      </p>
+    </div>
+
     <p class="hint">
-      En iyi sonuç için yüksek kontrastlı görseller kullanın. Açık bölgeler öne çıkar,
-      koyu bölgeler geri gider (tersini istiyorsanız “Tersine çevir”).
+      En iyi sonuç için yüksek kontrastlı görseller kullanın.
     </p>
 
     <details open>
@@ -90,9 +104,6 @@
         <label>Gama
           <input type="range" id="p-gamma" min="0.3" max="3" step="0.05" value="1">
           <output for="p-gamma"></output>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="p-invert"> Tersine çevir
         </label>
       </div>
     </details>

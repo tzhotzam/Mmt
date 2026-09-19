@@ -37,13 +37,16 @@ kademeli bir kabartma çıkar.
 
 1. **Kaynak seç** — Görsel yükleyin, telefonla fotoğraf çekin, STL atın veya
    "Örnek desen"e dokunun.
-2. **Görseli ayarlayın** — Yumuşatma gürültüyü siler (fotoğraflarda 3–6 iyi
-   sonuç verir), kontrast derinlik farkını açar. Açık bölgeler öne çıkar;
-   tersini isterseniz "Tersine çevir".
-3. **Ölçüleri girin** — Panel eni/boyu, malzeme kalınlığı (12 mm, 18 mm…),
+2. **Kabartma yönünü kontrol edin** — Görsel yüklendiğinde otomatik seçilir:
+   zemin konudan açıksa (beyaz fonda logo, silüet, ürün fotoğrafı) "koyu
+   alanlar", aksi hâlde "açık alanlar" öne çıkar. Konu panele gömülüyorsa
+   diğer seçeneğe dokunun.
+3. **Görseli ayarlayın** — Yumuşatma gürültüyü siler (fotoğraflarda 3–6 iyi
+   sonuç verir), kontrast derinlik farkını açar.
+4. **Ölçüleri girin** — Panel eni/boyu, malzeme kalınlığı (12 mm, 18 mm…),
    lameller arası boşluk, kabartma derinliği.
-4. **Levhayı tanımlayın** — 2440×1220 kontrplak, takım çapı, parça arası pay.
-5. **İndirin** — DXF, SVG, kesim listesi (CSV) ve montaj kılavuzu (TXT).
+5. **Levhayı tanımlayın** — 2440×1220 kontrplak, takım çapı, parça arası pay.
+6. **İndirin** — DXF, SVG, kesim listesi (CSV) ve montaj kılavuzu (TXT).
 
 Önizlemede dört sekme var: **3B** (duvardaki hâli, parmakla döndürülür),
 **Plan** (önden görünüm), **Levha** (kesim yerleşimi — dokunarak levhalar

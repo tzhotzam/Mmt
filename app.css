@@ -224,6 +224,51 @@ canvas.view { touch-action: none; }
   color: var(--muted);
 }
 
+/* Kabartma yönü — en çok karıştırılan ayar olduğu için öne alındı. */
+.segmented {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.segmented-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.segmented-buttons { display: flex; gap: 6px; }
+
+.seg {
+  flex: 1;
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.seg.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1206;
+}
+
+.seg-hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.seg-hint.auto { color: var(--accent-2); }
+
 code {
   background: var(--panel-2);
   padding: 1px 5px;
