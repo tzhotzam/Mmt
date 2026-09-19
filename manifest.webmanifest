@@ -1,0 +1,20 @@
+{
+  "name": "Parametrik CNC Duvar Paneli",
+  "short_name": "CNC Panel",
+  "description": "Görsel veya 3B modelden parametrik 3B duvar paneli üretir, CNC için DXF/SVG çıkarır.",
+  "lang": "tr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1216",
+  "theme_color": "#111418",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
+<title>Parametrik CNC Duvar Paneli</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🪵</text></svg>">
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Parametrik CNC Duvar Paneli</h1>
+  <div class="modes" role="tablist" aria-label="Üretim modu">
+    <button id="mode-ribs" class="mode active" role="tab" aria-selected="true">Lamel / Dalga</button>
+    <button id="mode-contour" class="mode" role="tab" aria-selected="false">Katman / Rölyef</button>
+  </div>
+</header>
+
+<main>
+  <!-- ---------------- ÖNİZLEME ---------------- -->
+  <section class="panel preview-panel">
+    <div class="tabs" role="tablist" aria-label="Önizleme">
+      <button class="tab active" data-view="3d" role="tab" aria-selected="true">3B</button>
+      <button class="tab" data-view="plan" role="tab" aria-selected="false">Plan</button>
+      <button class="tab" data-view="nest" role="tab" aria-selected="false">Levha</button>
+      <button class="tab" data-view="source" role="tab" aria-selected="false">Kaynak</button>
+    </div>
+
+    <div class="stage">
+      <div id="view-3d" class="view active"></div>
+      <canvas id="view-plan" class="view"></canvas>
+      <canvas id="view-nest" class="view"></canvas>
+      <canvas id="view-source" class="view"></canvas>
+      <div id="busy" class="busy" hidden><span class="spinner"></span> Hesaplanıyor…</div>
+      <p id="stage-hint" class="stage-hint">Bir görsel yükleyin — hemen 3B önizleme çıkar.</p>
+    </div>
+
+    <div id="summary" class="summary"></div>
+    <div id="warnings" class="warnings" hidden></div>
+  </section>
+
+  <!-- ---------------- GİRDİ ---------------- -->
+  <section class="panel">
+    <h2>1 · Kaynak</h2>
+    <div class="uploads">
+      <label class="upload">
+        <input type="file" id="file-image" accept="image/*">
+        <span>🖼️ Görsel seç</span>
+      </label>
+      <label class="upload">
+        <input type="file" id="file-image-cam" accept="image/*" capture="environment">
+        <span>📷 Fotoğraf çek</span>
+      </label>
+      <label class="upload">
+        <input type="file" id="file-stl" accept=".stl,model/stl,application/sla">
+        <span>🧊 STL yükle</span>
+      </label>
+      <button id="btn-demo" class="upload ghost"><span>✨ Örnek desen</span></button>
+    </div>
+    <p class="hint">
+      En iyi sonuç için yüksek kontrastlı görseller kullanın. Açık bölgeler öne çıkar,
+      koyu bölgeler geri gider (tersini istiyorsanız “Tersine çevir”).
+    </p>
+
+    <details open>
+      <summary>Görsel işleme</summary>
+      <div class="grid">
+        <label>Yumuşatma <small>(gürültüyü siler)</small>
+          <input type="range" id="p-blur" min="0" max="12" step="1" value="2">
+          <output for="p-blur"></output>
+        </label>
+        <label>Kontrast
+          <input type="range" id="p-contrast" min="-0.8" max="0.8" step="0.05" value="0">
+          <output for="p-contrast"></output>
+        </label>
+        <label>Parlaklık
+          <input type="range" id="p-brightness" min="-0.5" max="0.5" step="0.02" value="0">
+          <output for="p-brightness"></output>
+        </label>
+        <label>Gama
+          <input type="range" id="p-gamma" min="0.3" max="3" step="0.05" value="1">
+          <output for="p-gamma"></output>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="p-invert"> Tersine çevir
+        </label>
+      </div>
+    </details>
+  </section>
+
+  <!-- ---------------- ÖLÇÜLER ---------------- -->
+  <section class="panel">
+    <h2>2 · Ölçüler ve malzeme</h2>
+    <div class="grid">
+      <label>Panel eni (mm)
+        <input type="number" id="p-panelW" value="900" min="100" max="5000" step="10">
+      </label>
+      <label>Panel boyu (mm)
+        <input type="number" id="p-panelH" value="600" min="100" max="5000" step="10">
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-lockAspect" checked> Görselin en-boy oranını koru
+      </label>
+      <label>Malzeme kalınlığı (mm)
+        <input type="number" id="p-thickness" value="18" min="3" max="50" step="0.5" list="thicknesses">
+        <datalist id="thicknesses">
+          <option value="8"><option value="10"><option value="12">
+          <option value="15"><option value="18"><option value="22"><option value="25">
+        </datalist>
+      </label>
+    </div>
+
+    <div id="ribs-params" class="grid">
+      <label>Lameller arası boşluk (mm)
+        <input type="number" id="p-gap" value="6" min="0" max="80" step="1">
+      </label>
+      <label>Kabartma derinliği (mm)
+        <input type="number" id="p-maxDepth" value="60" min="5" max="400" step="5">
+      </label>
+      <label>Taban derinliği (mm) <small>profilin arkasında kalan et</small>
+        <input type="number" id="p-baseDepth" value="40" min="5" max="200" step="5">
+      </label>
+      <label>Lamel yönü
+        <select id="p-orientation">
+          <option value="vertical">Dikey</option>
+          <option value="horizontal">Yatay</option>
+        </select>
+      </label>
+      <label>Kızak sayısı
+        <input type="number" id="p-railCount" value="2" min="0" max="6" step="1">
+      </label>
+      <label>Kızak yüksekliği (mm)
+        <input type="number" id="p-railHeight" value="60" min="20" max="200" step="5">
+      </label>
+      <label>Geçme boşluğu (mm)
+        <input type="number" id="p-fit" value="0.2" min="-0.5" max="1" step="0.05">
+      </label>
+    </div>
+
+    <div id="contour-params" class="grid" hidden>
+      <label>Katman sayısı
+        <input type="number" id="p-layerCount" value="8" min="2" max="40" step="1">
+      </label>
+      <label>En küçük ada alanı (mm²)
+        <input type="number" id="p-minArea" value="400" min="0" max="20000" step="50">
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-withBase" checked> Taban levhası ekle
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-guideEngrave" checked> Hizalama çizgilerini gravürle
+      </label>
+    </div>
+  </section>
+
+  <!-- ---------------- KESİM ---------------- -->
+  <section class="panel">
+    <h2>3 · Levha ve kesim</h2>
+    <div class="grid">
+      <label>Levha eni (mm)
+        <input type="number" id="p-sheetW" value="2440" min="200" max="6000" step="10">
+      </label>
+      <label>Levha boyu (mm)
+        <input type="number" id="p-sheetH" value="1220" min="200" max="3000" step="10">
+      </label>
+      <label>Kenar payı (mm)
+        <input type="number" id="p-margin" value="10" min="0" max="100" step="1">
+      </label>
+      <label>Parça arası (mm)
+        <input type="number" id="p-spacing" value="6" min="0" max="100" step="1">
+      </label>
+      <label>Takım çapı (mm)
+        <input type="number" id="p-toolDiameter" value="6" min="0.1" max="30" step="0.1">
+      </label>
+      <label>Ofset (mm) <small>+ parçayı büyütür</small>
+        <input type="number" id="p-offset" value="0" min="-10" max="10" step="0.1">
+      </label>
+      <label>İlerleme hızı (mm/dk)
+        <input type="number" id="p-feedRate" value="3000" min="100" max="20000" step="100">
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-allowRotate" checked> Yerleşimde 90° döndürmeye izin ver
+      </label>
+    </div>
+  </section>
+
+  <!-- ---------------- ÇIKTI ---------------- -->
+  <section class="panel">
+    <h2>4 · Dışa aktar</h2>
+    <div class="actions">
+      <button id="dl-dxf" class="primary">DXF indir (levha başına)</button>
+      <button id="dl-svg">SVG indir</button>
+      <button id="dl-csv">Kesim listesi (CSV)</button>
+      <button id="dl-guide">Montaj kılavuzu (TXT)</button>
+      <button id="dl-json" class="ghost">Ayarları kaydet (JSON)</button>
+      <label class="upload ghost small">
+        <input type="file" id="load-json" accept=".json,application/json">
+        <span>Ayarları yükle</span>
+      </label>
+    </div>
+    <p class="hint">
+      DXF dosyaları R12 formatında, milimetre biriminde ve <code>KESIM</code> /
+      <code>GRAVUR</code> katmanlarına ayrılmış olarak çıkar. CAM yazılımınızda
+      <code>GRAVUR</code> katmanını yüzeysel dalma (1–2&nbsp;mm) ile işleyin.
+    </p>
+  </section>
+
+  <section class="panel" id="cutlist-panel" hidden>
+    <h2>Kesim listesi</h2>
+    <div class="table-wrap"><table id="cutlist"></table></div>
+  </section>
+</main>
+
+<footer>
+  <p>Tamamı tarayıcıda çalışır — görseliniz hiçbir sunucuya gönderilmez.</p>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
