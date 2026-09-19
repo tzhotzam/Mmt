@@ -576,6 +576,46 @@ test('polysOverlap: çakışanı bulur, sadece temas edeni bulmaz', () => {
   assert.equal(polysOverlap(a, [[20, 20], [30, 20], [30, 30], [20, 30]]), false);
 });
 
+console.log('levha yönü');
+test('autoOrient levhayı çeviremediğinde sonucu bozmaz', () => {
+  const kare = nest(ribs.parts, { sheetW: 2000, sheetH: 2000, autoOrient: true });
+  const kareOff = nest(ribs.parts, { sheetW: 2000, sheetH: 2000, autoOrient: false });
+  assert.equal(kare.sheets.length, kareOff.sheets.length);
+});
+
+test('autoOrient hiçbir zaman daha kötü sonuç seçmez', () => {
+  for (const [w, h] of [[2100, 2800], [2440, 1220], [3000, 1500]]) {
+    const a = nest(ribs.parts, { sheetW: w, sheetH: h, autoOrient: false });
+    const b = nest(ribs.parts, { sheetW: h, sheetH: w, autoOrient: false });
+    const oto = nest(ribs.parts, { sheetW: w, sheetH: h, autoOrient: true });
+    assert.ok(oto.oversized.length <= Math.min(a.oversized.length, b.oversized.length));
+    if (a.oversized.length === b.oversized.length) {
+      assert.ok(oto.sheets.length <= Math.min(a.sheets.length, b.sheets.length),
+        `${w}x${h}: oto ${oto.sheets.length}, dik ${a.sheets.length}, yatay ${b.sheets.length}`);
+    }
+  }
+});
+
+test('MDF 210x280 levhada 2600 mm lamel sığar, 2440 levhada sığmaz', () => {
+  const uzun = generateRibs(applyFilters(testGrid(), {}), {
+    panelW: 1200, panelH: 2600, thickness: 18, gap: 6,
+  });
+  const mdf = nest(uzun.parts, { sheetW: 2100, sheetH: 2800 });
+  const kontrplak = nest(uzun.parts, { sheetW: 2440, sheetH: 1220 });
+  assert.equal(mdf.oversized.length, 0, `MDF'de sığmayan: ${mdf.oversized.length}`);
+  assert.ok(kontrplak.oversized.length > 0, 'kontrplakta sığmaması beklenir');
+});
+
+test('seçilen yön dışa aktarıma da yansır', () => {
+  const r = nest(ribs.parts, { sheetW: 2100, sheetH: 2800, autoOrient: true });
+  for (const sh of r.sheets) {
+    assert.equal(sh.w, r.opts.sheetW);
+    assert.equal(sh.h, r.opts.sheetH);
+  }
+  assert.ok((r.opts.sheetW === 2100 && r.opts.sheetH === 2800) ||
+            (r.opts.sheetW === 2800 && r.opts.sheetH === 2100));
+});
+
 console.log('yerleşim ve dışa aktarım');
 const nr = nest(ribs.parts, { sheetW: 2440, sheetH: 1220, margin: 10, spacing: 6 });
 

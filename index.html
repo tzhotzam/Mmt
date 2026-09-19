@@ -234,11 +234,22 @@
   <section class="panel">
     <h2>3 · Levha ve kesim</h2>
     <div class="grid">
+      <label>Hazır levha ölçüsü
+        <select id="p-sheetPreset">
+          <option value="2100x2800">MDF / Suntalam — 210 × 280 cm</option>
+          <option value="2440x1220">Kontrplak — 244 × 122 cm</option>
+          <option value="2500x1250">Kontrplak — 250 × 125 cm</option>
+          <option value="1830x3660">MDF — 183 × 366 cm</option>
+          <option value="2000x1000">Sac — 200 × 100 cm</option>
+          <option value="3000x1500">Sac — 300 × 150 cm</option>
+          <option value="custom">Özel ölçü</option>
+        </select>
+      </label>
       <label>Levha eni (mm)
-        <input type="number" id="p-sheetW" value="2440" min="200" max="6000" step="10">
+        <input type="number" id="p-sheetW" value="2100" min="200" max="6000" step="10">
       </label>
       <label>Levha boyu (mm)
-        <input type="number" id="p-sheetH" value="1220" min="200" max="3000" step="10">
+        <input type="number" id="p-sheetH" value="2800" min="200" max="4000" step="10">
       </label>
       <label>Kenar payı (mm)
         <input type="number" id="p-margin" value="10" min="0" max="100" step="1">
@@ -258,6 +269,9 @@
       <label class="check">
         <input type="checkbox" id="p-allowRotate" checked> Yerleşimde 90° döndürmeye izin ver
       </label>
+      <label class="check">
+        <input type="checkbox" id="p-autoOrient" checked> Levha yönünü otomatik seç
+      </label>
     </div>
   </section>
 
@@ -270,6 +284,7 @@
       <button id="dl-csv">Kesim listesi (CSV)</button>
       <button id="dl-guide">Montaj kılavuzu (TXT)</button>
       <button id="dl-json" class="ghost">Ayarları kaydet (JSON)</button>
+      <button id="btn-reset" class="ghost">Ayarları sıfırla</button>
       <label class="upload ghost small">
         <input type="file" id="load-json" accept=".json,application/json">
         <span>Ayarları yükle</span>

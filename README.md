@@ -79,8 +79,16 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
    tek yüksekliğe sabitleyip kademeli, papercraft benzeri bir yüzey verir.
 4. **Ölçüleri girin** — Panel eni/boyu, malzeme kalınlığı (12 mm, 18 mm…),
    lameller arası boşluk, kabartma derinliği.
-5. **Levhayı tanımlayın** — 2440×1220 kontrplak, takım çapı, parça arası pay.
+5. **Levhayı tanımlayın** — Hazır ölçülerden seçin (MDF 210×280, kontrplak
+   244×122 …) veya özel ölçü girin. Program levhayı hem dik hem yatay deneyip
+   az levha kullanan yerleşimi seçer. Takım çapı ve parça arası payı da burada.
+
+   Levha ölçüsü panelin en büyük boyutunu sınırlar: 2440'lık kontrplakta
+   2,6 m'lik lamel kesilemez, 210×280 MDF'de rahat sığar.
 6. **İndirin** — DXF, SVG, kesim listesi (CSV) ve montaj kılavuzu (TXT).
+
+Girdiğiniz ayarlar tarayıcıda saklanır; her açılışta yeniden girmeniz
+gerekmez. "Ayarları sıfırla" varsayılanlara döndürür.
 
 Önizlemede dört sekme var: **3B** (duvardaki hâli, parmakla döndürülür),
 **Plan** (önden görünüm), **Levha** (kesim yerleşimi — dokunarak levhalar

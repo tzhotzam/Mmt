@@ -9,10 +9,36 @@ export const NEST_DEFAULTS = {
   margin: 10,   // levha kenarından boşluk
   spacing: 6,   // parçalar arası boşluk
   allowRotate: true,
+  autoOrient: true,   // levhayı hem dik hem yatay dene, az levha kullananı seç
 };
 
+/**
+ * Levha fiziksel olarak sabit; ama parçaları levha üzerinde 90° çevrilmiş bir
+ * düzende dizmek başka sonuç verir. Bu, paketleyiciye levha en/boyunu takas
+ * etmekle aynı şeydir. İki yönü de deneyip iyisini seçiyoruz.
+ */
 export function nest(parts, userOpts = {}) {
   const o = { ...NEST_DEFAULTS, ...userOpts };
+  if (o.autoOrient === false || o.sheetW === o.sheetH) return nestOnce(parts, o);
+
+  const a = nestOnce(parts, o);
+  const b = nestOnce(parts, { ...o, sheetW: o.sheetH, sheetH: o.sheetW });
+  return betterNest(a, b);
+}
+
+/** Önce sığmayanı az olan, sonra levhası az olan, sonra parçası çok olan kazanır. */
+function betterNest(a, b) {
+  if (a.oversized.length !== b.oversized.length) {
+    return a.oversized.length < b.oversized.length ? a : b;
+  }
+  if (a.sheets.length !== b.sheets.length) {
+    return a.sheets.length < b.sheets.length ? a : b;
+  }
+  const placed = (r) => r.sheets.reduce((s, sh) => s + sh.placements.length, 0);
+  return placed(a) >= placed(b) ? a : b;
+}
+
+function nestOnce(parts, o) {
   const usableW = o.sheetW - 2 * o.margin;
   const usableH = o.sheetH - 2 * o.margin;
 

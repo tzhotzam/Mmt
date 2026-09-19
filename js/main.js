@@ -121,6 +121,7 @@ function readNestOpts() {
     margin: num('p-margin', 10),
     spacing: num('p-spacing', 6),
     allowRotate: bool('p-allowRotate'),
+    autoOrient: bool('p-autoOrient'),
   };
 }
 
@@ -530,9 +531,75 @@ function applySettings(data) {
   syncRangeOutputs();
 }
 
+// ------------------------------------------------- levha ölçüsü ve hafıza
+
+function applySheetPreset() {
+  const v = els['p-sheetPreset'].value;
+  if (v === 'custom') return;
+  const [w, h] = v.split('x').map(Number);
+  els['p-sheetW'].value = w;
+  els['p-sheetH'].value = h;
+}
+
+/** Elle ölçü girilince hazır seçim "Özel"e düşsün. */
+function syncSheetPreset() {
+  const key = `${Math.round(num('p-sheetW', 0))}x${Math.round(num('p-sheetH', 0))}`;
+  const match = [...els['p-sheetPreset'].options].some((o) => o.value === key);
+  els['p-sheetPreset'].value = match ? key : 'custom';
+}
+
+const STORE_KEY = 'cnc-panel-ayarlar-v1';
+
+/**
+ * Ayarlar tarayıcıda saklanır — atölyede hep aynı levha ve takım kullanılır,
+ * her açılışta yeniden girmek anlamsız. Gizli sekmede veya site verisi
+ * kapalıyken erişim hata verebilir, o yüzden her erişim korumalı.
+ */
+function saveSettings() {
+  try {
+    const data = { mode: state.mode, invert: state.invert, fields: {} };
+    for (const el of document.querySelectorAll('.panel input, .panel select')) {
+      if (el.type === 'file' || !el.id) continue;
+      data.fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+    }
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  } catch { /* depolama yok — sorun değil */ }
+}
+
+function restoreSettings() {
+  let data;
+  try {
+    data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+  } catch { return false; }
+  if (!data || !data.fields) return false;
+
+  for (const [id, v] of Object.entries(data.fields)) {
+    const el = els[id];
+    if (!el || el.type === 'file') continue;
+    if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = v;
+  }
+  setInvert(!!data.invert);
+  if (data.mode && data.mode !== 'ribs') setMode(data.mode);
+  syncRangeOutputs();
+  return true;
+}
+
+els['p-sheetPreset'].onchange = () => {
+  applySheetPreset();
+  saveSettings();
+  scheduleRegen();
+};
+
+els['btn-reset'].onclick = () => {
+  if (!confirm('Tüm ayarlar varsayılana dönecek. Devam edilsin mi?')) return;
+  try { localStorage.removeItem(STORE_KEY); } catch { /* yoksay */ }
+  location.reload();
+};
+
 // ------------------------------------------------------------ arayüz olayları
 
-function setMode(mode) {
+function setMode(mode, persist = true) {
   state.mode = mode;
   for (const m of ['ribs', 'contour', 'facets']) {
     const btn = els[`mode-${m}`];
@@ -545,6 +612,7 @@ function setMode(mode) {
     mode === 'facets' ? 'Sac kalınlığı (mm)' : 'Malzeme kalınlığı (mm)';
   if (mode === 'facets' && num('p-thickness', 18) > 8) els['p-thickness'].value = 3;
   if (mode !== 'facets' && num('p-thickness', 3) < 6) els['p-thickness'].value = 18;
+  if (persist) saveSettings();
   scheduleRegen();
 }
 
@@ -569,8 +637,8 @@ function syncRangeOutputs() {
   }
 }
 
-els['dir-light'].onclick = () => { setInvert(false); scheduleRegen(); };
-els['dir-dark'].onclick = () => { setInvert(true); scheduleRegen(); };
+els['dir-light'].onclick = () => { setInvert(false); saveSettings(); scheduleRegen(); };
+els['dir-dark'].onclick = () => { setInvert(true); saveSettings(); scheduleRegen(); };
 
 els['mode-ribs'].onclick = () => setMode('ribs');
 els['mode-contour'].onclick = () => setMode('contour');
@@ -592,6 +660,8 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
   input.addEventListener(evt, () => {
     syncRangeOutputs();
     if (input.id === 'p-panelW' || input.id === 'p-lockAspect') syncAspect();
+    if (input.id === 'p-sheetW' || input.id === 'p-sheetH') syncSheetPreset();
+    saveSettings();
     scheduleRegen();
   });
 }
@@ -628,6 +698,8 @@ els['btn-demo'].onclick = () => loadDemo();
 
 // ------------------------------------------------------------ başlangıç
 
+restoreSettings();
+syncSheetPreset();
 syncRangeOutputs();
 createPreview3d(els['view-3d']).then((p) => {
   preview3d = p;
