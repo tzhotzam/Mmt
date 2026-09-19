@@ -30,9 +30,12 @@ export function buildCutList(parts, nestResult, info, opts = {}) {
   const totalCut = rows.reduce((s, r) => s + r.cutLength, 0);
   const sheetCount = nestResult.sheets.length;
   const sheetArea = sheetCount * (nestResult.opts.sheetW * nestResult.opts.sheetH) / 1e6; // m²
-  // Gerçek poligon alanı — dikdörtgen sınırıyla hesaplamak düzensiz
-  // parçalarda doluluğu %100'ün üstüne çıkarıyordu.
+  // Doluluk yalnızca levhaya YERLEŞEN parçalardan hesaplanır. Sığmayanları
+  // saymak, tek levhaya iki kızak konup 50 lamelin dışarıda kaldığı durumda
+  // %357 gibi anlamsız bir doluluk üretiyordu.
+  const unplaced = new Set(nestResult.oversized.map((p) => p.id));
   const partArea = parts.reduce((s, p) => {
+    if (unplaced.has(p.id)) return s;
     let a = Math.abs(signedArea(p.outline));
     for (const h of p.holes) a -= Math.abs(signedArea(h));
     return s + Math.max(0, a) / 1e6;
@@ -42,6 +45,7 @@ export function buildCutList(parts, nestResult, info, opts = {}) {
     rows,
     summary: {
       partCount: parts.length,
+      placedCount: parts.length - unplaced.size,
       sheetCount,
       sheetSize: `${nestResult.opts.sheetW} × ${nestResult.opts.sheetH} mm`,
       thickness,

@@ -643,6 +643,16 @@ test('kesim listesi ve montaj kılavuzu', () => {
     `doluluk %0-100 arasında olmalı: ${cl.summary.utilisation}`);
   assert.ok(cl.summary.partArea <= cl.summary.sheetArea + 1e-9,
     'parça alanı levha alanını aşamaz');
+  // Sığmayan parçalar doluluğa katılmamalı.
+  const tall = generateRibs(applyFilters(testGrid(), {}), {
+    panelW: 1200, panelH: 2600, thickness: 18, gap: 6,
+  });
+  const tallNest = nest(tall.parts, { sheetW: 2440, sheetH: 1220 });
+  const tallList = buildCutList(tall.parts, tallNest, tall.info, {});
+  assert.ok(tallNest.oversized.length > 0, 'bu senaryoda sığmayan parça olmalı');
+  assert.ok(tallList.summary.utilisation <= 100,
+    `doluluk %100'ü aşamaz: ${tallList.summary.utilisation}`);
+  assert.equal(tallList.summary.placedCount, tall.parts.length - tallNest.oversized.length);
   assert.ok(assemblyGuide(ribs.info).includes('Montaj sırası'));
   assert.ok(assemblyGuide(cont.info).includes('Montaj sırası'));
 });
