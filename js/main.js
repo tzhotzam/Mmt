@@ -2,6 +2,7 @@
 
 import { gridFromImageData, applyFilters, makeGrid, suggestInvert } from './heightmap.js';
 import { parseStl, heightmapFromStl } from './stl.js';
+import { facetize } from './facet.js';
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
 import { nest, applyPlacement } from './nest.js';
@@ -81,6 +82,8 @@ function readFilters() {
     gamma: num('p-gamma', 1),
     invert: state.invert,
     autoNormalize: true,
+    facetCells: Math.round(num('p-facetCells', 0)),
+    facetFlat: bool('p-facetFlat'),
   };
 }
 
@@ -211,7 +214,11 @@ function scheduleRegen() {
 
 function regenerate() {
   if (!state.sourceGrid) return;
-  state.grid = applyFilters(state.sourceGrid, readFilters());
+  const filters = readFilters();
+  state.grid = applyFilters(state.sourceGrid, filters);
+  if (filters.facetCells >= 6) {
+    state.grid = facetize(state.grid, { cells: filters.facetCells, flat: filters.facetFlat });
+  }
 
   const params = readParams();
   const result = state.mode === 'ribs'

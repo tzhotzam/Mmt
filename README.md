@@ -42,7 +42,9 @@ kademeli bir kabartma çıkar.
    alanlar", aksi hâlde "açık alanlar" öne çıkar. Konu panele gömülüyorsa
    diğer seçeneğe dokunun.
 3. **Görseli ayarlayın** — Yumuşatma gürültüyü siler (fotoğraflarda 3–6 iyi
-   sonuç verir), kontrast derinlik farkını açar.
+   sonuç verir), kontrast derinlik farkını açar. **Poligon yoğunluğu** yüzeyi
+   düz üçgen fasetlere böler (low-poly görünüm); "Düz yüzeyler" her faseti
+   tek yüksekliğe sabitleyip kademeli, papercraft benzeri bir yüzey verir.
 4. **Ölçüleri girin** — Panel eni/boyu, malzeme kalınlığı (12 mm, 18 mm…),
    lameller arası boşluk, kabartma derinliği.
 5. **Levhayı tanımlayın** — 2440×1220 kontrplak, takım çapı, parça arası pay.
@@ -115,6 +117,7 @@ js/
   main.js             akış: girdi → harita → parça → önizleme → dışa aktarma
   heightmap.js        görsel → 0..1 yükseklik haritası, filtreler
   stl.js              STL okuma + tepeden z-buffer taraması
+  facet.js            poligonal (low-poly) yüzey — kaydırılmış üçgen ağ
   marchingsquares.js  eş-yükselti halkaları (eyer çözümü dâhil)
   geom.js             alan, yön, sadeleştirme, ofset, delik sınıflandırma
   modes/ribs.js       lamel + kızak üretimi

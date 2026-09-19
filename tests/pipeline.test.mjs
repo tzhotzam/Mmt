@@ -11,6 +11,7 @@ import { sheetToDxf } from '../js/export/dxf.js';
 import { sheetToSvg } from '../js/export/svg.js';
 import { buildCutList, assemblyGuide, cutListToCsv } from '../js/cutlist.js';
 import { heightmapFromStl, parseStl } from '../js/stl.js';
+import { facetize } from '../js/facet.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -145,6 +146,53 @@ test('suggestInvert: düz görselde ters çevirmez', () => {
 test('sampleBilinear sınırları kırpar', () => {
   const g = testGrid();
   assert.ok(Number.isFinite(sampleBilinear(g, -5, 9)));
+});
+
+console.log('poligonal yüzey');
+test('facetize yüzeyi değiştirir ama aralığı korur', () => {
+  const g = testGrid(200, 200);
+  const f = facetize(g, { cells: 20 });
+  assert.notEqual(f, g);
+  let changed = 0, min = Infinity, max = -Infinity;
+  for (let i = 0; i < g.data.length; i++) {
+    if (Math.abs(f.data[i] - g.data[i]) > 1e-6) changed++;
+    min = Math.min(min, f.data[i]);
+    max = Math.max(max, f.data[i]);
+    assert.ok(Number.isFinite(f.data[i]), `geçersiz değer @${i}`);
+  }
+  assert.ok(changed > g.data.length * 0.3, `çok az piksel değişti: ${changed}`);
+  assert.ok(min >= -1e-6 && max <= 1 + 1e-6, `aralık taştı: ${min}..${max}`);
+});
+
+test('facetize düşük yoğunlukta ızgarayı aynen bırakır', () => {
+  const g = testGrid();
+  assert.equal(facetize(g, { cells: 4 }), g);
+  assert.equal(facetize(g, { cells: 0 }), g);
+});
+
+test('facetize deterministik — aynı ayar aynı sonucu verir', () => {
+  const g = testGrid(120, 120);
+  const a = facetize(g, { cells: 16, seed: 3 });
+  const b = facetize(g, { cells: 16, seed: 3 });
+  for (let i = 0; i < a.data.length; i++) assert.equal(a.data[i], b.data[i]);
+});
+
+test('facetize flat: her üçgen tek yükseklikte — kademe sayısı sınırlı', () => {
+  const g = testGrid(200, 200);
+  const f = facetize(g, { cells: 12, flat: true });
+  const uniq = new Set(Array.from(f.data).map((v) => v.toFixed(5)));
+  // 12x12 hücre x 2 üçgen = ~288 kademe; düzgün yüzeyde binlerce olurdu.
+  assert.ok(uniq.size < 400, `beklenenden fazla kademe: ${uniq.size}`);
+});
+
+test('facetize panel kenarlarını düz bırakır', () => {
+  const g = testGrid(120, 120);
+  const f = facetize(g, { cells: 14 });
+  // Kenar pikselleri kapsanmış olmalı (NaN/boşluk yok)
+  for (let x = 0; x < 120; x++) {
+    assert.ok(Number.isFinite(f.data[x]), `üst kenar @${x}`);
+    assert.ok(Number.isFinite(f.data[119 * 120 + x]), `alt kenar @${x}`);
+  }
 });
 
 console.log('lamel modu');
