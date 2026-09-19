@@ -24,6 +24,7 @@ const state = {
   invert: false,         // false = açık alanlar öne, true = koyu alanlar öne
   tris: null,            // STL üçgenleri (poligonal kabuk modu için)
   seams: [],
+  folds: [],
   sourceGrid: null,      // filtresiz ham harita
   grid: null,            // filtrelenmiş harita
   aspect: 1,
@@ -66,6 +67,13 @@ function readParams() {
       angleTol: num('p-angleTol', 1),
       minArea: num('p-facetMinArea', 150),
       thicknessComp: bool('p-thicknessComp'),
+      unfold: bool('p-unfold'),
+      maxFacetsPerPatch: Math.round(num('p-maxFacetsPerPatch', 24)),
+      dashCut: num('p-dashCut', 8),
+      dashGap: num('p-dashGap', 4),
+      // Yaprak levhaya sığmalı.
+      maxPatchW: num('p-sheetW', 2440) - 2 * num('p-margin', 10),
+      maxPatchH: num('p-sheetH', 1220) - 2 * num('p-margin', 10),
     };
   }
   if (state.mode === 'ribs') {
@@ -276,6 +284,7 @@ function regenerateFacets() {
   state.parts = result.parts;
   state.info = result.info;
   state.seams = result.seams;
+  state.folds = result.folds || [];
   state.warnings = result.warnings;
 
   state.nestResult = nest(state.parts, readNestOpts());
@@ -324,6 +333,7 @@ function renderSummary() {
   const chips = i.mode === 'facets' ? [
     ['Boyut', `${Math.round(i.modelSize.x)}×${Math.round(i.modelSize.y)}×${Math.round(i.modelSize.z)} mm`],
     ['Faset', i.facetCount],
+    ...(i.unfold ? [['Yaprak', i.partCount], ['Büküm', i.foldCount]] : []),
     ['Kaynak dikişi', i.seamCount],
     ['Sac', `${i.params.thickness} mm`],
     ['Levha', `${s.sheetCount} × ${s.sheetSize}`],
@@ -459,7 +469,7 @@ els['dl-guide'].onclick = () => {
   const text = [
     `${baseName()}`,
     '='.repeat(60),
-    assemblyGuide(state.info, state.seams),
+    assemblyGuide(state.info, state.seams, state.folds),
     '',
     'MALZEME ÖZETİ',
     `  Parça sayısı      : ${s.partCount}`,

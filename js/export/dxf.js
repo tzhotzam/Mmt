@@ -5,6 +5,7 @@
 const LAYERS = [
   { name: 'KESIM', color: 1 },    // kırmızı — dış kontur ve delikler
   { name: 'GRAVUR', color: 3 },   // yeşil — kılavuz çizgi ve etiketler
+  { name: 'BUKUM', color: 5 },    // mavi — büküm izi (kesilmez, yüzeysel iz)
   { name: 'LEVHA', color: 8 },    // gri — levha sınırı (kesilmez, referans)
 ];
 
@@ -88,8 +89,8 @@ export function sheetToDxf(sheet, applied, opts = {}) {
     for (const hole of a.holes) b.polyline(hole, 'KESIM', true);
     if (withEngrave) {
       for (const e of a.engrave) {
-        if (e.type === 'polyline') b.polyline(e.points, 'GRAVUR', e.closed !== false);
-        else b.text(e.text, e.x, e.y, e.size, 'GRAVUR', e.rot || 0);
+        if (e.type === 'polyline') b.polyline(e.points, e.layer || 'GRAVUR', e.closed !== false);
+        else b.text(e.text, e.x, e.y, e.size, e.layer || 'GRAVUR', e.rot || 0);
       }
     }
   }
@@ -106,8 +107,8 @@ export function partsToDxf(parts, opts = {}) {
     for (const hole of part.holes) b.polyline(hole, 'KESIM', true);
     if (withEngrave) {
       for (const e of part.engrave) {
-        if (e.type === 'polyline') b.polyline(e.points, 'GRAVUR', e.closed !== false);
-        else b.text(e.text, e.x, e.y, e.size, 'GRAVUR', 0);
+        if (e.type === 'polyline') b.polyline(e.points, e.layer || 'GRAVUR', e.closed !== false);
+        else b.text(e.text, e.x, e.y, e.size, e.layer || 'GRAVUR', 0);
       }
     }
   }

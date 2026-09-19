@@ -36,6 +36,17 @@ Kapalı bir 3B modeli (STL) düz yüzeylerine ayırır. Her yüzey sacdan ayrı 
 parça olarak kesilir, parçalar kenarlarından **kaynakla** birleştirilir —
 katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 
+**İki çıktı biçimi var:**
+
+- **Açınım (önerilen)** — Komşu yüzeyler, düzleme serildiğinde üst üste
+  binmeyecek öbekler ("yaprak") hâlinde tek parça kesilir. İç kenarlar
+  **kertikli** (kesik çizgili) kesilir, elle bükülür, sonra kertikler
+  kaynakla doldurulup taşlanır. Abkant gerekmez, açıyı büküm çizgisi tutar.
+  Her büküm çizgisinin yanına kaç dereceye bükeceğiniz gravürlenir.
+  *İkosahedron: 20 gevşek parça + 30 kaynak yerine → 1 yaprak + 19 büküm + 11 kaynak.*
+- **Gevşek faset** — Her yüzey ayrı parça, tamamı kaynakla birleşir. Basit,
+  ama montajda açıyı tutmak tamamen kaynakçıya kalır.
+
 - Low-poly modellerde her görünen yüzey birden çok üçgene bölünmüştür;
   bunlar **geri birleştirilir**, böylece düz bir yüzeyin ortasından gereksiz
   kaynak çekilmez. (Küp = 12 üçgen → 6 kare parça.)
@@ -83,6 +94,7 @@ Safari'de sayfayı açın → Paylaş → **Ana Ekrana Ekle**. Tam ekran açıl�
 - Katmanlar:
   - `KESIM` — malzemeyi tam kesin (kalınlık + ~1 mm dalma).
   - `GRAVUR` — 1–2 mm yüzeysel dalma: parça numaraları ve hizalama çizgileri.
+  - `BUKUM` — büküm izi. Kesmeyin, işlemeyin; nereden büküleceğini gösterir.
   - `LEVHA` — sadece referans çerçevesi, işlemeyin.
 - **Kerf telafisi**: Yazılım varsayılan olarak *nominal* konturu verir. CAM
   tarafında takım telafisi (dışa/içe ofset) uygularsanız "Ofset" alanını 0
@@ -140,6 +152,7 @@ js/
   modes/contour.js    katman üretimi
   modes/facets.js     poligonal kabuk: faset parçaları + kaynak dikişleri
   mesh.js             köşe kaynaklama, eş düzlem birleştirme, dihedral açı
+  unfold.js           açınım: çakışmasız öbekleme, sınır izi, kertik, büküm payı
   nest.js             levha yerleşimi
   cutlist.js          kesim listesi, malzeme özeti, montaj kılavuzu
   export/dxf.js       R12 DXF yazıcı

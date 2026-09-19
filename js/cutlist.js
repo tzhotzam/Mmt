@@ -54,8 +54,8 @@ export function buildCutList(parts, nestResult, info, opts = {}) {
   };
 }
 
-export function assemblyGuide(info, seams = []) {
-  if (info.mode === 'facets') return weldGuide(info, seams);
+export function assemblyGuide(info, seams = [], folds = []) {
+  if (info.mode === 'facets') return weldGuide(info, seams, folds);
   if (info.mode === 'ribs') {
     const p = info.params;
     return [
@@ -84,7 +84,7 @@ export function assemblyGuide(info, seams = []) {
   ].join('\n');
 }
 
-function weldGuide(info, seams) {
+function weldGuide(info, seams, folds = []) {
   const p = info.params;
   const m = info.modelSize;
   const convex = seams.filter((s) => s.angle < 179).length;
@@ -93,22 +93,47 @@ function weldGuide(info, seams) {
 
   const lines = [
     `Heykel ölçüsü: ${round(m.x)} × ${round(m.y)} × ${round(m.z)} mm`,
-    `${info.facetCount} faset, ${info.seamCount} kaynak dikişi, ${p.thickness} mm sac.`,
+    info.unfold
+      ? `${info.facetCount} faset → ${info.partCount} yaprak, ${info.foldCount} büküm, `
+        + `${info.seamCount} kaynak dikişi, ${p.thickness} mm sac.`
+      : `${info.facetCount} faset, ${info.seamCount} kaynak dikişi, ${p.thickness} mm sac.`,
     `Toplam yüzey alanı: ${round(info.totalArea / 1e6, 2)} m².`,
     '',
     'NASIL BİRLEŞİR',
-    '  Her parçanın üstünde kendi numarası (P01, P02, ...) yazar.',
-    '  Kenarların üstündeki küçük numaralar KAYNAK DİKİŞİ numaralarıdır.',
+    info.unfold
+      ? '  Her yaprağın üstünde kendi numarası (Y01, Y02, ...) yazar.'
+      : '  Her parçanın üstünde kendi numarası (P01, P02, ...) yazar.',
+    '  Dış kenarlardaki küçük numaralar KAYNAK DİKİŞİ numaralarıdır.',
     '  Aynı numaralı iki kenarı karşı karşıya getirip puntalayın.',
     '  Her kenar numarası tam iki parçada geçer — eşini aşağıdaki listeden bulun.',
+    ...(info.unfold ? [
+      '',
+      'BÜKÜM ÇİZGİLERİ',
+      '  Yaprağın İÇİNDEKİ kesik çizgiler büküm hattıdır — kesim değil, KERTİKTİR.',
+      '  Yanındaki derece, bükümden sonra iki yüzey arasında kalması gereken',
+      '  İÇ açıdır. 180° düz demektir; sayı küçüldükçe büküm sertleşir.',
+      '  Kertikli olduğu için abkant gerekmez, elle bükülür ve açı kendini tutar.',
+    ] : []),
     '',
     'MONTAJ SIRASI',
-    '  1. Tüm parçaları numaralarına göre dizin, gravürlü yüz DIŞA baksın.',
-    '  2. En büyük 3-4 parçadan gövdeyi kurun; önce sadece punta atın.',
-    '  3. Kalan parçaları numara eşleşmesine göre ekleyin.',
-    '  4. Tamamı puntalanıp geometri oturduktan sonra dikişleri doldurun.',
-    '  5. Çarpılmayı azaltmak için karşılıklı bölgelerde sırayla kaynatın.',
-    '  6. Taşları taşlayıp yüzeyi düzleyin, ardından astar + boya.',
+    ...(info.unfold ? [
+      '  1. Yaprakları kesin; kertikli iç çizgileri KESMEYİ unutmayın (KESIM katmanı).',
+      '  2. Her yaprağı kertik çizgisinin tam ortasından, yazan dereceye bükün.',
+      '     Gönye veya açıölçerle kontrol edin; çelik birkaç derece geri yaylanır,',
+      '     biraz fazla büküp bırakın.',
+      '  3. Büküm bitince kertikleri kaynakla doldurup taşlayın — kenar keskinleşir.',
+      '  4. Yaprakları dış kenar numaralarına göre birbirine puntalayın.',
+      '  5. Tamamı puntalanıp geometri oturduktan sonra dikişleri doldurun.',
+      '  6. Çarpılmayı azaltmak için karşılıklı bölgelerde sırayla kaynatın.',
+      '  7. Taşlayıp yüzeyi düzleyin, ardından astar + boya.',
+    ] : [
+      '  1. Tüm parçaları numaralarına göre dizin, gravürlü yüz DIŞA baksın.',
+      '  2. En büyük 3-4 parçadan gövdeyi kurun; önce sadece punta atın.',
+      '  3. Kalan parçaları numara eşleşmesine göre ekleyin.',
+      '  4. Tamamı puntalanıp geometri oturduktan sonra dikişleri doldurun.',
+      '  5. Çarpılmayı azaltmak için karşılıklı bölgelerde sırayla kaynatın.',
+      '  6. Taşları taşlayıp yüzeyi düzleyin, ardından astar + boya.',
+    ]),
     '',
     'KAYNAK NOTLARI',
     `  Dışbükey (dıştan V açılan) dikiş: ${convex} adet — V boşluğu kaynak metalini tutar.`,
@@ -127,6 +152,19 @@ function weldGuide(info, seams) {
       `  DİKKAT: ${sharp.length} dikişin açısı 60°'nin altında (en dar ${round(Math.min(...sharp.map((s) => s.angle)))}°).`,
       '     Bu kadar dar köşelerde iç tarafa erişemezsiniz — dıştan doldurun.'
     );
+  }
+
+  if (info.unfold && folds.length) {
+    const byPatch = new Map();
+    for (const f of folds) {
+      if (!byPatch.has(f.patch)) byPatch.set(f.patch, []);
+      byPatch.get(f.patch).push(f);
+    }
+    lines.push('', 'BÜKÜM LİSTESİ', '  Yaprak  Büküm sayısı   Açılar');
+    for (const [patch, list] of byPatch) {
+      const angles = list.map((f) => round(f.angle) + '°').join(', ');
+      lines.push(`  ${patch.padEnd(8)}${String(list.length).padEnd(15)}${angles}`);
+    }
   }
 
   lines.push('', 'KAYNAK DİKİŞİ LİSTESİ', '  No    Parçalar      Uzunluk   Açı      Tip');

@@ -3,6 +3,7 @@
 
 const CUT_STYLE = 'fill:none;stroke:#e11d48;stroke-width:0.15';
 const ENGRAVE_STYLE = 'fill:none;stroke:#0ea5e9;stroke-width:0.15';
+const BEND_STYLE = 'fill:none;stroke:#22c55e;stroke-width:0.2;stroke-dasharray:3,2';
 const SHEET_STYLE = 'fill:none;stroke:#9ca3af;stroke-width:0.4;stroke-dasharray:8,4';
 
 function d(ring, closed = true) {
@@ -37,7 +38,8 @@ export function sheetToSvg(sheet, applied, opts = {}) {
     if (withEngrave) {
       for (const e of a.engrave) {
         if (e.type === 'polyline') {
-          body.push(`<path d="${d(e.points, e.closed !== false)}" style="${ENGRAVE_STYLE}"/>`);
+          const style = e.layer === 'KESIM' ? CUT_STYLE : e.layer === 'BUKUM' ? BEND_STYLE : ENGRAVE_STYLE;
+          body.push(`<path d="${d(e.points, e.closed !== false)}" style="${style}"/>`);
         } else {
           // Metin ters çevrilmiş grubun içinde okunur kalsın diye yeniden çevrilir.
           body.push(

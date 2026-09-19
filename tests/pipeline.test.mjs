@@ -14,6 +14,7 @@ import { heightmapFromStl, parseStl } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
+import { dashLine, bendDeduction, polysOverlap } from '../js/unfold.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -396,6 +397,116 @@ test('dihedralAngle dışbükey/içbükey ayrımı', () => {
   assert.ok(Math.abs(dihedralAngle([0, 0, 1], [1, 0, 0], [0, 0, 0], [1, 0, -1]) - 90) < 1e-6);
   // İçbükey: B'nin merkezi A'nın normali yönünde
   assert.ok(dihedralAngle([0, 0, 1], [1, 0, 0], [0, 0, 0], [1, 0, 1]) > 180);
+});
+
+console.log('açınım (kertikli büküm)');
+
+test('açınım fasetlerin hepsini korur, hiçbirini iki kez saymaz', () => {
+  for (const tris of [cubeTris(), icoTris()]) {
+    const loose = generateFacets(tris, { targetSize: 300, thicknessComp: false, minArea: 10 });
+    const un = generateFacets(tris, { targetSize: 300, thicknessComp: false, minArea: 10, unfold: true });
+    const total = un.parts.reduce((s2, q) => s2 + q.meta.facets, 0);
+    assert.equal(total, loose.parts.length, `faset sayısı korunmadı: ${total} != ${loose.parts.length}`);
+  }
+});
+
+test('açınım: büküm + kaynak = gevşek moddaki toplam dikiş', () => {
+  for (const tris of [cubeTris(), icoTris()]) {
+    const loose = generateFacets(tris, { targetSize: 300, thicknessComp: false, minArea: 10 });
+    const un = generateFacets(tris, { targetSize: 300, thicknessComp: false, minArea: 10, unfold: true });
+    assert.equal(un.info.foldCount + un.seams.length, loose.seams.length,
+      `${un.info.foldCount}+${un.seams.length} != ${loose.seams.length}`);
+  }
+});
+
+test('her yaprak bir ağaçtır: büküm sayısı = faset - 1', () => {
+  const un = generateFacets(icoTris(), { targetSize: 300, thicknessComp: false, minArea: 10, unfold: true });
+  for (const part of un.parts) {
+    assert.equal(part.meta.folds, part.meta.facets - 1,
+      `${part.id}: ${part.meta.folds} büküm / ${part.meta.facets} faset`);
+  }
+});
+
+test('küp tek yaprağa açılır (klasik haç), 5 büküm 7 kaynak', () => {
+  const un = generateFacets(cubeTris(), { targetSize: 300, thicknessComp: false, unfold: true });
+  assert.equal(un.parts.length, 1);
+  assert.equal(un.info.foldCount, 5);
+  assert.equal(un.seams.length, 7);
+});
+
+test('açınım halkaları CCW ve kapalı', () => {
+  const un = generateFacets(icoTris(), { targetSize: 300, thicknessComp: false, minArea: 10, unfold: true });
+  for (const part of un.parts) {
+    assert.ok(signedArea(part.outline) > 0, `${part.id} CCW değil`);
+    assert.ok(part.outline.length >= 3);
+    for (const [x, y] of part.outline) assert.ok(Number.isFinite(x) && Number.isFinite(y));
+  }
+});
+
+test('levha sınırı aşılmaz — küçük levhada yaprak bölünür', () => {
+  const big = generateFacets(icoTris(), { targetSize: 400, thicknessComp: false, minArea: 10, unfold: true });
+  const small = generateFacets(icoTris(), {
+    targetSize: 400, thicknessComp: false, minArea: 10, unfold: true,
+    maxPatchW: 500, maxPatchH: 500,
+  });
+  assert.ok(small.parts.length > big.parts.length,
+    `dar levhada daha çok yaprak olmalı: ${small.parts.length} vs ${big.parts.length}`);
+  // Tek fasetli yaprak bölünemez (düz üçgen katlanarak küçülmez); büyümeyi
+  // durduran sınır yalnızca faset EKLERKEN uygulanabilir.
+  for (const part of small.parts) {
+    if (part.meta.facets < 2) continue;
+    assert.ok(part.w <= 500 + 1e-6 && part.h <= 500 + 1e-6,
+      `${part.id} (${part.meta.facets} faset) levhaya sığmıyor: ${part.w}x${part.h}`);
+  }
+  assert.ok(small.parts.some((q) => q.meta.facets >= 2), 'hiç birleşme olmamış');
+  // Sınır daraldıkça yaprak sayısı monoton artmalı.
+  const counts = [700, 500, 400, 300].map((lim) => generateFacets(icoTris(), {
+    targetSize: 400, thicknessComp: false, minArea: 10, unfold: true,
+    maxPatchW: lim, maxPatchH: lim,
+  }).parts.length);
+  for (let i = 1; i < counts.length; i++) {
+    assert.ok(counts[i] >= counts[i - 1], `sınır daralınca yaprak azalamaz: ${counts}`);
+  }
+});
+
+test('büküm çizgileri KESIM katmanında kertik, BUKUM katmanında iz üretir', () => {
+  const un = generateFacets(cubeTris(), { targetSize: 400, thicknessComp: false, unfold: true });
+  const part = un.parts[0];
+  const cuts = part.engrave.filter((e) => e.layer === 'KESIM');
+  const scribes = part.engrave.filter((e) => e.layer === 'BUKUM');
+  assert.equal(scribes.length, un.info.foldCount, 'her büküm için bir iz çizgisi olmalı');
+  assert.ok(cuts.length >= un.info.foldCount, 'her bükümde en az bir kertik olmalı');
+  const angles = part.engrave.filter((e) => e.type === 'text' && e.text.endsWith('°'));
+  assert.equal(angles.length, un.info.foldCount, 'her bükümün açısı yazılmalı');
+  assert.ok(angles.every((e) => Math.abs(parseFloat(e.text) - 90) < 1), 'küpte bükümler 90°');
+});
+
+test('dashLine uçlarda dolu pay bırakır ve çizgiyi aşmaz', () => {
+  const p1 = [0, 0], p2 = [100, 0];
+  const segs = dashLine(p1, p2, 8, 4);
+  assert.ok(segs.length >= 3, `az kertik: ${segs.length}`);
+  const first = segs[0][0][0];
+  const last = segs[segs.length - 1][1][0];
+  assert.ok(first > 3, `baş pay yok: ${first}`);
+  assert.ok(last < 97, `son pay yok: ${last}`);
+  for (const [a, b] of segs) {
+    assert.ok(b[0] > a[0] && b[0] - a[0] <= 8 + 1e-9);
+    assert.ok(a[0] >= 0 && b[0] <= 100);
+  }
+  assert.equal(dashLine(p1, [5, 0], 8, 4).length, 0, 'kısa çizgide kertik olmaz');
+});
+
+test('bendDeduction: düz kenarda sıfır, büküm arttıkça büyür', () => {
+  assert.equal(bendDeduction(180, 3), 0);
+  assert.ok(bendDeduction(90, 3) > bendDeduction(150, 3));
+  assert.ok(Number.isFinite(bendDeduction(5, 3)));
+});
+
+test('polysOverlap: çakışanı bulur, sadece temas edeni bulmaz', () => {
+  const a = [[0, 0], [10, 0], [10, 10], [0, 10]];
+  assert.equal(polysOverlap(a, [[5, 5], [15, 5], [15, 15], [5, 15]]), true);
+  assert.equal(polysOverlap(a, [[10, 0], [20, 0], [20, 10], [10, 10]]), false, 'ortak kenar çakışma değil');
+  assert.equal(polysOverlap(a, [[20, 20], [30, 20], [30, 30], [20, 30]]), false);
 });
 
 console.log('yerleşim ve dışa aktarım');
