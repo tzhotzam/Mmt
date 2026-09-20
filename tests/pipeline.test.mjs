@@ -10,7 +10,7 @@ import { nest, applyPlacement } from '../js/nest.js';
 import { sheetToDxf } from '../js/export/dxf.js';
 import { sheetToSvg } from '../js/export/svg.js';
 import { buildCutList, assemblyGuide, cutListToCsv } from '../js/cutlist.js';
-import { heightmapFromStl, parseStl } from '../js/stl.js';
+import { heightmapFromStl, parseStl, parseObj, parseMesh, validateMesh } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
 import { otsuThreshold, distanceTransform, inflateSilhouette, blendRelief } from '../js/relief.js';
 import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/paint.js';
@@ -404,6 +404,66 @@ test('her katmanın Z yüksekliği artıyor', () => {
   const zs = cont.parts.map((p) => p.meta.z);
   assert.equal(Math.min(...zs), 0);
   assert.equal(Math.max(...zs), 6 * 12);
+});
+
+test('OBJ okunur: çokgen yüzler üçgenlenir, negatif indis çalışır', () => {
+  const obj = [
+    '# yorum', 'mtllib m.mtl', 'o parca',
+    'v 0 0 0', 'v 10 0 0', 'v 10 10 0', 'v 0 10 5',
+    'vt 0 0', 'vn 0 0 1',
+    'f 1/1/1 2/1/1 3/1/1',      // üçgen, doku+normal indisli
+    'f 1 2 3 4',                 // dörtgen → 2 üçgen
+    'f -4 -3 -2',                // negatif indis
+  ].join('\n');
+  const tris = parseObj(obj);
+  assert.equal(tris.length, 4, `beklenen 4 üçgen, gelen ${tris.length}`);
+  for (const t of tris) {
+    assert.equal(t.length, 3);
+    for (const p of t) assert.ok(p.every(Number.isFinite));
+  }
+});
+
+test('parseMesh biçimi içerikten tanır, uzantıya güvenmez', () => {
+  const obj = 'v 0 0 0\nv 10 0 0\nv 10 10 0\nv 0 10 5\nf 1 2 3\nf 1 3 4\n';
+  const buf = new TextEncoder().encode(obj).buffer;
+  assert.equal(parseMesh(buf, 'model.obj').format, 'OBJ');
+  // Tarama uygulaması yanlış uzantıyla verse bile okunmalı
+  assert.equal(parseMesh(buf, 'tarama.stl').format, 'OBJ');
+  assert.equal(parseMesh(buf, '').format, 'OBJ');
+
+  const ascii = 'solid a\nfacet normal 0 0 1\n outer loop\n  vertex 0 0 0\n' +
+    '  vertex 10 0 0\n  vertex 0 10 5\n endloop\nendfacet\nendsolid a';
+  assert.equal(parseMesh(new TextEncoder().encode(ascii).buffer, 'a.stl').format, 'STL');
+});
+
+test('bozuk ikili STL çökmez — üçgen sayısı dosyaya göre kırpılır', () => {
+  // 80. bayttan okunan sayı dosyada olandan çok büyük
+  const buf = new ArrayBuffer(200);
+  new DataView(buf).setUint32(80, 999999, true);
+  const tris = parseStl(buf);
+  assert.ok(Array.isArray(tris));
+  assert.ok(tris.length <= Math.floor((200 - 84) / 50), `taşma: ${tris.length}`);
+});
+
+test('3B model olmayan dosyalar reddedilir', () => {
+  assert.equal(parseMesh(new ArrayBuffer(0), 'x.stl').format, null);
+
+  const rastgele = new Uint8Array(5000);
+  for (let i = 0; i < rastgele.length; i++) rastgele[i] = (i * 2654435761) % 256;
+  const r = parseMesh(rastgele.buffer, 'tarama.stl');
+  assert.equal(r.format, null, `rastgele bayt kabul edildi: ${r.tris.length} üçgen`);
+  assert.ok(r.reason, 'sebep bildirilmeli');
+
+  const jpeg = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, ...new Array(2000).fill(7)]);
+  assert.equal(parseMesh(jpeg.buffer, 'foto.stl').format, null);
+});
+
+test('validateMesh geçersiz koordinatı ve bozuk ölçeği yakalar', () => {
+  const saglam = [[[0, 0, 0], [10, 0, 0], [0, 10, 5]]];
+  assert.equal(validateMesh(saglam).ok, true);
+  assert.equal(validateMesh([]).ok, false);
+  assert.equal(validateMesh([[[0, 0, 0], [NaN, 0, 0], [0, 1, 1]]]).ok, false);
+  assert.equal(validateMesh([[[0, 0, 0], [1e15, 0, 0], [0, 1, 1]]]).ok, false);
 });
 
 console.log('poligonal kabuk (kaynak) modu');

@@ -116,8 +116,11 @@ zaman "çamurlu" kabartma verir. İki çözüm var:
   katman fotoğraftan gelen dokunun üstüne EKLENİR, onu silmez.
 
 Gerçek derinlik gerekiyorsa telefonla tarama uygulaması (Polycam,
-Scaniverse) ile STL çıkarıp yükleyin — o zaman yükseklik tahmin değil
-ölçümdür.
+Scaniverse) ile model çıkarıp yükleyin — o zaman yükseklik tahmin değil
+ölçümdür. **STL ve OBJ** desteklenir; biçim dosya içeriğinden anlaşılır,
+uzantı yanlış olsa da okunur. 3B model seçicisinde `accept` filtresi
+bilinçli olarak yoktur: iOS tanımadığı uzantıları soluklaştırıp
+seçilemez yapıyor.
 
 Önizlemede beş sekme var: **3B** (duvardaki hâli, parmakla döndürülür),
 **Plan** (önden görünüm), **Levha** (kesim yerleşimi — dokunarak levhalar

@@ -1,7 +1,7 @@
 // Uygulama kabuğu: girdi → yükseklik haritası → parça üretimi → önizleme → dışa aktarma.
 
 import { gridFromImageData, applyFilters, makeGrid, suggestInvert } from './heightmap.js';
-import { parseStl, heightmapFromStl } from './stl.js';
+import { parseMesh, heightmapFromStl } from './stl.js';
 import { facetize } from './facet.js';
 import { inflateSilhouette, blendRelief } from './relief.js';
 import { demoMeshTris } from './demomesh.js';
@@ -171,6 +171,7 @@ async function loadImageFile(file) {
   bitmap.close?.();
 
   state.sourceGrid = gridFromImageData(img, cols, rows);
+  setSourceStatus(`Görsel yüklendi: ${file.name} — ${bitmap.width}×${bitmap.height} piksel`);
   resetPaint();
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
   setInvert(suggestInvert(state.sourceGrid), true);
@@ -178,10 +179,30 @@ async function loadImageFile(file) {
   scheduleRegen();
 }
 
+const MAX_MESH_BYTES = 120 * 1024 * 1024;
+
 async function loadStlFile(file) {
+  if (file.size > MAX_MESH_BYTES) {
+    throw new Error(
+      `Dosya çok büyük (${(file.size / 1048576).toFixed(0)} MB). ` +
+      'Modeli Blender veya tarama uygulamasında sadeleştirip tekrar deneyin.'
+    );
+  }
   const buf = await file.arrayBuffer();
-  const tris = parseStl(buf);
-  if (!tris.length) throw new Error('STL dosyasında üçgen bulunamadı.');
+  const { tris, format, reason } = parseMesh(buf, file.name);
+  if (!tris.length) {
+    const aciklama = {
+      'gecersiz-koordinat': 'Dosya 3B model gibi görünmüyor (koordinatlar okunamadı).',
+      'olcek-bozuk': 'Dosya 3B model gibi görünmüyor (ölçüler anlamsız).',
+      duz: 'Model tek bir düzlemde — hacimli bir model gerekiyor.',
+      bos: 'Dosyada üçgen bulunamadı.',
+    }[reason] || 'Dosya okunamadı.';
+    throw new Error(
+      `${aciklama} Desteklenen biçimler: STL (ikili veya metin) ve OBJ. ` +
+      'Dosya ZIP veya USDZ ise önce açıp içinden STL/OBJ çıkarın.'
+    );
+  }
+  setSourceStatus(`${format} yüklendi: ${file.name} — ${tris.length.toLocaleString('tr-TR')} üçgen`);
   // Modelin en-boy oranını koru.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const t of tris) for (const [x, y] of t) {
@@ -589,6 +610,12 @@ function applySettings(data) {
 
 // ------------------------------------------------------------ derinlik çizimi
 
+function setSourceStatus(text, isError = false) {
+  const el = els['source-status'];
+  el.textContent = text || '';
+  el.style.color = isError ? 'var(--danger)' : 'var(--accent-2)';
+}
+
 function resetPaint() {
   const g = state.sourceGrid;
   state.paintLayer = g ? createPaintLayer(g.w, g.h) : null;
@@ -821,11 +848,12 @@ for (const id of ['file-image', 'file-image-cam']) {
   els[id].onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSourceStatus(`${file.name} okunuyor…`);
     els.busy.hidden = false;
     try {
       await loadImageFile(file);
     } catch (err) {
-      showWarnings([`Görsel okunamadı: ${err.message}`]);
+      setSourceStatus(`Görsel okunamadı: ${err.message}`, true);
       els.busy.hidden = true;
     }
     e.target.value = '';
@@ -835,11 +863,14 @@ for (const id of ['file-image', 'file-image-cam']) {
 els['file-stl'].onchange = async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
+  // Eski durum mesajı hemen silinir; yoksa başarısız yüklemede kullanıcı
+  // bir önceki dosyanın "yüklendi" yazısını görmeye devam eder.
+  setSourceStatus(`${file.name} okunuyor…`);
   els.busy.hidden = false;
   try {
     await loadStlFile(file);
   } catch (err) {
-    showWarnings([`STL okunamadı: ${err.message}`]);
+    setSourceStatus(err.message, true);
     els.busy.hidden = true;
   }
   e.target.value = '';

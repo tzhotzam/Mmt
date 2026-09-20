@@ -20,14 +20,20 @@ function isBinaryStl(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getUint32(80, true);
   if (84 + count * 50 === bytes.length) return true;
-  // Boyut uymuyorsa "solid" başlığına bak.
+  // Boyut uymuyorsa "solid" başlığına bak. Başlık da yoksa ikili sayılır,
+  // ama o durumda üçgen sayısına güvenilmez — parseBinaryStl kırpar.
   const head = String.fromCharCode(...bytes.subarray(0, 5)).toLowerCase();
   return head !== 'solid';
 }
 
 function parseBinaryStl(buffer) {
   const dv = new DataView(buffer);
-  const count = dv.getUint32(80, true);
+  // Bildirilen sayı, dosyada gerçekten yer olan üçgen sayısıyla sınırlanır.
+  // STL olmayan bir dosya seçildiğinde 80. bayttan okunan değer rastgeledir
+  // ve sınırsız güvenilirse arabellek dışına taşıp hata fırlatır.
+  const declared = dv.getUint32(80, true);
+  const fits = Math.max(0, Math.floor((buffer.byteLength - 84) / 50));
+  const count = Math.min(declared, fits);
   const tris = [];
   for (let i = 0; i < count; i++) {
     const o = 84 + i * 50 + 12; // normal atlanır
@@ -124,4 +130,113 @@ export function heightmapFromStl(tris, cols, rows, opts = {}) {
     data[i] = data[i] === -Infinity ? 0 : (data[i] - zMin) / range;
   }
   return { w: cols, h: rows, data };
+}
+
+/**
+ * OBJ okuma. Tarama uygulamalarının (Polycam, Scaniverse) çoğu OBJ verir;
+ * STL'e çevirmek için ayrı bir adım gerekmesin diye doğrudan destekleniyor.
+ *
+ * Sadece köşe (v) ve yüz (f) satırları okunur — doku, normal ve malzeme
+ * bilgisi geometriyi etkilemediği için atlanır.
+ */
+export function parseObj(text) {
+  const verts = [];
+  const tris = [];
+
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line[0] === '#') continue;
+    const sp = line.indexOf(' ');
+    if (sp < 0) continue;
+    const tag = line.slice(0, sp);
+
+    if (tag === 'v') {
+      const p = line.slice(sp + 1).trim().split(/\s+/);
+      const x = parseFloat(p[0]), y = parseFloat(p[1]), z = parseFloat(p[2]);
+      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) verts.push([x, y, z]);
+    } else if (tag === 'f') {
+      const parts = line.slice(sp + 1).trim().split(/\s+/);
+      const idx = [];
+      for (const part of parts) {
+        // "12", "12/3", "12/3/4", "12//4" biçimlerinin hepsi geçerli
+        const n = parseInt(part.split('/')[0], 10);
+        if (!Number.isFinite(n)) continue;
+        // OBJ 1'den başlar; negatif indis sondan sayar.
+        idx.push(n > 0 ? n - 1 : verts.length + n);
+      }
+      // Çokgen yüzler yelpaze biçiminde üçgenlenir.
+      for (let i = 1; i + 1 < idx.length; i++) {
+        const a = verts[idx[0]], b = verts[idx[i]], c = verts[idx[i + 1]];
+        if (a && b && c) tris.push([a, b, c]);
+      }
+    }
+  }
+  return tris;
+}
+
+/**
+ * Okunan geometrinin anlamlı olup olmadığını denetler.
+ *
+ * STL olmayan bir dosya (fotoğraf, ZIP, rastgele bayt) ikili STL gibi
+ * okunduğunda "başarıyla" çöp üçgenler üretir. Kullanıcının saçma bir model
+ * yerine net bir hata görmesi için sonuç burada elenir.
+ */
+export function validateMesh(tris) {
+  if (!tris.length) return { ok: false, reason: 'bos' };
+
+  let bad = 0;
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const t of tris) {
+    for (const [x, y, z] of t) {
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) { bad++; continue; }
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+  }
+
+  // Sağlam bir modelde geçersiz köşe olmaz; birkaç tanesi kabul edilebilir.
+  if (bad > tris.length * 3 * 0.02) return { ok: false, reason: 'gecersiz-koordinat' };
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return { ok: false, reason: 'gecersiz-koordinat' };
+
+  const size = [maxX - minX, maxY - minY, maxZ - minZ].sort((a, b) => b - a);
+  if (!(size[0] > 0) || !(size[1] > 0)) return { ok: false, reason: 'duz' };
+  // Rastgele float32'ler genelde uçsuz bucaksız veya mikroskobik bir kutu verir.
+  if (size[0] > 1e9 || size[0] / Math.max(size[1], 1e-12) > 1e6) {
+    return { ok: false, reason: 'olcek-bozuk' };
+  }
+  return { ok: true, reason: null };
+}
+
+/**
+ * Dosya adına ve içeriğine bakarak doğru okuyucuyu seçer.
+ * Uzantıya güvenilmez: telefondan gelen dosyaların adı değişmiş olabilir.
+ * @returns {{tris:Array, format:string|null, reason:string|null}}
+ */
+export function parseMesh(buffer, filename = '') {
+  const name = filename.toLowerCase();
+  const bytes = new Uint8Array(buffer);
+  const head = new TextDecoder().decode(bytes.subarray(0, Math.min(2048, bytes.length)));
+  const text = () => new TextDecoder().decode(bytes);
+
+  const looksObj = /^\s*(v|vn|vt|f|mtllib|usemtl|o|g)\s/m.test(head);
+  const adaylar = [];
+  if (name.endsWith('.obj') || looksObj) adaylar.push(['OBJ', () => parseObj(text())]);
+  adaylar.push(['STL', () => parseStl(buffer)]);
+  if (!adaylar.some(([f]) => f === 'OBJ')) adaylar.push(['OBJ', () => parseObj(text())]);
+
+  let lastReason = 'bos';
+  for (const [format, run] of adaylar) {
+    let tris = [];
+    try {
+      tris = run();
+    } catch {
+      continue; // bozuk dosya — sıradaki biçimi dene
+    }
+    const v = validateMesh(tris);
+    if (v.ok) return { tris, format, reason: null };
+    if (tris.length) lastReason = v.reason;
+  }
+  return { tris: [], format: null, reason: lastReason };
 }

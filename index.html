@@ -95,8 +95,10 @@
         <span>📷 Fotoğraf çek</span>
       </label>
       <label class="upload">
-        <input type="file" id="file-stl" accept=".stl,model/stl,application/sla">
-        <span>🧊 STL yükle</span>
+        <!-- accept filtresi YOK: iOS tanımadığı uzantıları soluklaştırıp
+             seçilemez yapıyor. Biçim dosya içeriğinden anlaşılıyor. -->
+        <input type="file" id="file-stl">
+        <span>🧊 3B model (STL/OBJ)</span>
       </label>
       <button id="btn-demo" class="upload ghost"><span>✨ Örnek desen</span></button>
     </div>
@@ -115,8 +117,10 @@
       </p>
     </div>
 
+    <p id="source-status" class="hint"></p>
     <p class="hint">
       En iyi sonuç için yüksek kontrastlı görseller kullanın.
+      3B model için STL veya OBJ yükleyebilirsiniz.
     </p>
 
     <details open>
