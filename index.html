@@ -4,12 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-09-20-b">
+<meta name="app-version" content="2026-09-20-c">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="app.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🪵</text></svg>">
+<script>
+// SÜRÜM KURTARMA — bilerek satır içi ve modülsüz.
+// Tarayıcı yeni index.html'i alıp eski js dosyalarını önbellekten verebiliyor.
+// Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
+// olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
+(function () {
+  var V = '2026-09-20-c';
+  var ANAHTAR = 'cnc-panel-surum';
+  try {
+    if (localStorage.getItem(ANAHTAR) === V) return;
+    localStorage.setItem(ANAHTAR, V);
+  } catch (e) { return; }   // depolama yoksa dokunma
+
+  var isler = [];
+  if (window.caches) {
+    isler.push(caches.keys().then(function (ks) {
+      return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+    }));
+  }
+  if (navigator.serviceWorker) {
+    isler.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+      return Promise.all(rs.map(function (r) { return r.unregister(); }));
+    }));
+  }
+  if (!isler.length) return;
+  Promise.all(isler).catch(function () {}).then(function () {
+    location.reload();
+  });
+})();
+</script>
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",

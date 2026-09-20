@@ -71,6 +71,22 @@ test('index.html, main.js ve sw.js aynı sürümü taşıyor', () => {
   assert.equal(sw, html, `sw.js (${sw}) ile index.html (${html}) uyuşmuyor`);
 });
 
+test('sürüm kurtarma betiği HTML içinde ve modülsüz', () => {
+  // Kurtarma kodu bir js dosyasında olsaydı, tam da çalışması gereken
+  // durumda (bayat js) kendisi de bayat olurdu. HTML'in parçası olmalı.
+  const html = oku('index.html');
+  const surum = html.match(/<meta name="app-version" content="([^"]+)"/)?.[1];
+  const betik = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] || '';
+  assert.ok(betik.includes(surum), 'satır içi kurtarma betiği sürümü taşımıyor');
+  assert.ok(/caches\.keys\(\)/.test(betik), 'önbellek temizliği yok');
+  assert.ok(/getRegistrations\(\)/.test(betik), 'servis çalışanı kaldırma yok');
+  assert.ok(/location\.reload\(\)/.test(betik), 'yeniden yükleme yok');
+  // Modül olmamalı: type="module" ertelenir ve import zinciri bayat kalabilir.
+  const konum = html.indexOf('<script>');
+  const modulKonum = html.indexOf('type="module"');
+  assert.ok(konum > 0 && konum < modulKonum, 'kurtarma betiği modüllerden önce gelmeli');
+});
+
 test('servis çalışanı tarayıcı önbelleğini atlıyor', () => {
   const sw = oku('sw.js');
   assert.ok(/cache:\s*'no-cache'/.test(sw),

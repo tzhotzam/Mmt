@@ -85,7 +85,10 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
    aynı paneli yeniden üretebilmek için.
 
    **Desen kodu** (`DALGA.50.10.50.F2N1KO`) tüm ayarları tek satırda taşır.
-   Kopyalayıp saklayın veya yapıştırıp aynı deseni geri getirin. İnternetten hazır model
+   Kopyalayıp saklayın veya yapıştırıp aynı deseni geri getirin.
+
+   Hazır desenler yalnızca Lamel ve Katman modlarında çalışır; Poligonal
+   Kabuk kapalı bir 3B model ister ve o modda desen alanları kapanır. İnternetten hazır model
    indirip gömmek yerine bu yol seçildi: indirilebilir olmak ticari kullanım
    hakkı vermez (çoğu ücretsiz model CC-BY-NC lisanslıdır) ve üretilen
    desende lisans sorunu olmaz, dosya boyutu da sıfırdır.

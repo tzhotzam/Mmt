@@ -24,7 +24,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-b';
+const APP_VERSION = '2026-09-20-c';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -303,8 +303,7 @@ function reportMesh(r) {
 })();
 
 function patternHint() {
-  const key = els['p-pattern'].value || PATTERN_KEYS[0];
-  els['pattern-hint'].textContent = PATTERNS[key]?.hint || '';
+  syncPatternAvailability();
 }
 
 /**
@@ -343,6 +342,19 @@ function applyPatternCode() {
   syncRangeOutputs();
   applyPattern();
   return true;
+}
+
+/** Desenler düzlem üretir; poligonal kabuk kapalı bir hacim ister. */
+function syncPatternAvailability() {
+  const kapali = state.mode === 'facets';
+  for (const id of ['p-pattern', 'p-patScale', 'p-patAngle', 'p-patDetail',
+                    'p-seedText', 'p-patternCode', 'btn-pattern-random', 'btn-copy-code']) {
+    if (els[id]) els[id].disabled = kapali;
+  }
+  els['pattern-hint'].textContent = kapali
+    ? 'Poligonal Kabuk kapalı bir 3B model ister; hazır desenler düz yüzey '
+      + 'ürettiği için bu modda kullanılamaz. Lamel veya Katman moduna geçin.'
+    : (PATTERNS[els['p-pattern'].value]?.hint || '');
 }
 
 function applyPattern() {
@@ -920,6 +932,7 @@ function setMode(mode, persist = true) {
     mode === 'facets' ? 'Sac kalınlığı (mm)' : 'Malzeme kalınlığı (mm)';
   if (mode === 'facets' && num('p-thickness', 18) > 8) els['p-thickness'].value = 3;
   if (mode !== 'facets' && num('p-thickness', 3) < 6) els['p-thickness'].value = 18;
+  syncPatternAvailability();
   if (persist) saveSettings();
   scheduleRegen();
 }
