@@ -2,7 +2,7 @@ name: GitHub Pages
 
 on:
   push:
-    branches: [claude/parametric-cnc-software-uaotp6, claude/3-axis-relief-design-program-qhakrz, main]
+    branches: [claude/parametric-cnc-software-uaotp6, main]
   workflow_dispatch:
 
 permissions:
