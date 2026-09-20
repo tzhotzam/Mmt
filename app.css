@@ -402,3 +402,39 @@ footer {
   .stage { aspect-ratio: 16 / 9; }
   .uploads { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* --- 3 eksen oyma sayfası --- */
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.presets button {
+  flex: 0 1 auto;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+a.mode {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: #c3ccd6;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.steps li { margin-bottom: 8px; }
+.steps b { color: #e8eef5; }
+.small-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #9aa5b1;
+}
+.small-inline input { width: 90px; }
+#report table { margin-top: 4px; }

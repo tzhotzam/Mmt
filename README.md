@@ -1,7 +1,13 @@
 # Parametrik CNC Duvar Paneli
 
-Bir görselden (veya STL modelden) duvarda **üç boyutlu görünen asimetrik panel**
-tasarlar ve CNC için hazır **DXF / SVG** çıkarır.
+İki ayrı araç, tek uygulama:
+
+- **`index.html` — levha kesim.** Bir görselden (veya STL modelden) duvarda
+  **üç boyutlu görünen asimetrik panel** tasarlar, parçalara böler ve CNC için
+  hazır **DXF / SVG** çıkarır.
+- **`oyma.html` — 3 eksen oyma.** Parametrik rölyef (burgu, spiral, dalga…)
+  tasarlar, takım telafisini hesaplar ve tezgâha giden **G-code** çıkarır.
+  Ayrıntı: [3 Eksen Oyma](#3-eksen-oyma--oymahtml).
 
 Tamamı tarayıcıda çalışır: sunucu yok, kurulum yok, yüklediğiniz görsel
 cihazınızdan hiç çıkmaz. iPhone/iPad dâhil her tarayıcıda açılır.
@@ -10,7 +16,8 @@ cihazınızdan hiç çıkmaz. iPhone/iPad dâhil her tarayıcıda açılır.
 
 ## Ne yapıyor?
 
-Üç farklı üretim yöntemi var:
+Levha kesim tarafında üç üretim yöntemi var (oyma tarafı için
+[aşağıya](#3-eksen-oyma--oymahtml) bakın):
 
 ### 1. Lamel / Dalga modu
 Panel, dik (veya yatay) duran ince lamellerden oluşur. Her lamelin ön kenarı
@@ -62,6 +69,84 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   küp, 4 mm sacdan 96×96 plakalarla yapılır.
 - Montaj kılavuzu her dikişin uzunluğunu, iç açısını ve dışbükey/içbükey
   olduğunu listeler.
+
+---
+
+## 3 Eksen Oyma — `oyma.html`
+
+Yukarıdaki üç mod paneli **parçalara bölüp levhadan keser** (DXF/SVG). Bu sayfa
+ise bambaşka bir iş yapar: paneli **tek parça malzemeden oyar**. Çıktısı DXF
+değil, doğrudan tezgâha giden **G-code**'dur.
+
+Üç eksenli bir router/CNC'niz varsa istediğiniz şey budur: fotoğraftaki gibi
+burgulu, dalgalı, spiral rölyefleri parametrik olarak tasarlayıp Z derinliklerini
+hesaplatırsınız.
+
+### Nasıl çalışıyor
+
+1. **Faz alanı** — Desen bir φ(x,y) fonksiyonundan doğar. φ'nin tam sayı kısmı
+   hangi bantta olduğunuzu, ondalık kısmı bandın neresinde olduğunuzu söyler.
+   Fotoğraftaki iş "burgu" ailesidir: paralel bantlar merkeze doğru giderek artan
+   bir açıyla döndürülür, kenarda düze yakın kalır — S kıvrımı buradan çıkar.
+   Diğer aileler: spiral (logaritmik, deniz kabuğu oranı), halka dalga, yelpaze,
+   kum tepeleri, balıksırtı, örgü, çiçek.
+2. **Kesit profili** — Bandın ağız şekli: yarım daire sırt (etli, fotoğraftaki),
+   yumuşak dalga, yuvarlak dipli oluk, V, testere, düz tepeli. Asimetri kaydırıcısı
+   sırtın bir yanını dikleştirir; "kademe sayısı" topografik basamaklar yapar.
+3. **Derinlik** — Bant derinliği mm cinsindendir. Üstüne genel bir kubbe/çanak,
+   merkez–kenar derinlik farkı, kenarda düz şerit ve merkezde düz ada eklenebilir.
+   **Bütün Z değerleri 0 veya eksidir**: 0 = malzemenin dokunulmamış üst yüzeyi.
+4. **Takım telafisi (drop-cutter)** — Bu adım programın can damarıdır. Yükseklik
+   haritası *yüzeyin kendisidir*, takım merkezinin gideceği yol değil. 6 mm'lik
+   bilya uç, 2 mm'lik bir oluğun dibine zaten giremez; oraya kadar indirirseniz
+   kenarları yer. Program her nokta için takımı yüzeye değene kadar indirir:
+
+   ```
+   zt(x,y) = max over (dx,dy)  [ z(x+dx, y+dy) − dz(√(dx²+dy²)) ]
+   ```
+
+   `dz(r)`, takım ucundan r kadar yanda alt yüzeyin ne kadar yukarıda olduğudur
+   (bilya: R−√(R²−r²), düz freze: 0, V uç: r/tan(θ/2)). Tersi de hesaplanır:
+   **önizlemede gördüğünüz yüzey, idealin değil, seçtiğiniz uçla gerçekten
+   çıkacak olanın kendisidir.** Kesit sekmesinde ikisi üst üste çizilir — kesikli
+   çizgi ideal, dolu çizgi takımın bıraktığı.
+5. **Pasolar** — Kaba (Z seviyeli, finiş payı bırakır, dalarken rampa yapar),
+   finiş (yüzeyi birebir takip eder) ve isteğe bağlı kontur kesme (köprülü).
+6. **G-code** — Kontrolcü seçimine göre GRBL/Candle, Mach3 ya da Fanuc/NCStudio
+   ağzından yazılır. Yorumlar ASCII'ye indirilir (eski kontrolcüler Türkçe
+   karakterde takılır), yollar 0,01 mm toleransla sadeleştirilir, ardışık
+   satırlarda değişmeyen eksen harfleri yazılmaz.
+
+### Finiş stratejileri
+
+| Strateji | Ne zaman |
+|---|---|
+| **Satır tarama** | Her işte çalışır, en öngörülebiliri. |
+| **Desen boyunca** | Yollar deseni takip eder — freze izi olukla aynı yöne düşer, zımparadan önce bile temiz görünür. Fazın gradyanına dik akış çizgileri izlenerek üretilir. |
+| **Spiral** | Yuvarlak panelde tek parça yol, yön değiştirmez. |
+| **Işınsal** | Merkezden kenara ışınlar; yelpaze/çiçek desenlerinde desenle örtüşür. |
+
+**Tırtık (scallop)**: iki paso arasında kalan sırt yüksekliği `R − √(R²−(a/2)²)`.
+"Tırtığa göre adım hesapla" düğmesi hedef tırtık için gereken yanal adımı verir.
+0,03 mm tipik bir finiş değeridir; 6 mm bilya uçta ~0,85 mm adım demektir.
+
+### Çıktılar
+
+- **`.nc` G-code** — asıl iş.
+- **PNG yükseklik haritası** — Aspire / ArtCAM / Carveco'ya "bitmap to relief"
+  diye girer (255 = üst yüzey, 0 = en derin nokta).
+- **STL** — başka bir CAM'de ya da simülatörde doğrulamak için.
+- **CSV derinlik tablosu** — 10 mm ızgarada Z değerleri, hepsi eksi; Excel'de
+  kontrol etmek veya elle ölçmek için.
+- **JSON ayar dosyası** — tasarımı saklayıp geri yüklemek için.
+
+### Güvenlik
+
+Program CAM'in işini yapar ama makinenizi tanımaz. Sıfır noktası varsayılan
+olarak **panelin merkezi**, Z sıfırı **malzemenin üst yüzeyi**dir. İlerleme ve
+devir değerlerini kendi tezgâhınıza göre siz ayarlarsınız. Üretilen dosyayı ilk
+kez çalıştırmadan önce bir simülatörde (Candle, NC Viewer, CAMotics) açın ve
+tezgâhta Z sıfırını 50 mm yukarı alıp havada prova edin.
 
 ---
 
@@ -170,11 +255,15 @@ python3 -m http.server 8000
 
 ```bash
 node tests/pipeline.test.mjs
+node tests/carve.test.mjs
 ```
 
-Geometri, marching squares, her iki üretim modu, levha yerleşimi (çakışma ve
-taşma kontrolü dâhil), DXF/SVG yapısı ve STL okuma test edilir. Tarayıcı
-gerekmez.
+`pipeline` — geometri, marching squares, her iki üretim modu, levha yerleşimi
+(çakışma ve taşma kontrolü dâhil), DXF/SVG yapısı ve STL okuma.
+
+`carve` — desen alanı ve profiller, takım geometrisi, takım telafisinin gouge
+yapmadığı, kaba/finiş/kontur pasolarının sınırları, G-code'un yapısı (eksi Z,
+ASCII, kontrolcü ağızları) ve dışa aktarma biçimleri. Tarayıcı gerekmez.
 
 ---
 
@@ -203,6 +292,16 @@ js/
   export/svg.js       mm ölçekli SVG yazıcı
   preview2d.js        plan / levha / kaynak önizlemeleri (canvas)
   preview3d.js        three.js ile 3B önizleme
+oyma.html             3 eksen oyma arayüzü (G-code)
+js/carve/
+  main.js             akış: desen → yüzey → telafi → yollar → G-code
+  pattern.js          faz alanı, kesit profilleri, mm cinsinden Z haritası
+  tool.js             uç geometrisi, drop-cutter telafisi, tırtık hesabı
+  toolpath.js         kaba/finiş/kontur pasoları, akış çizgileri, sadeleştirme
+  gcode.js            GRBL / Mach3 / Fanuc post-processor
+  export.js           STL, gri ton yükseklik haritası, derinlik tablosu
+  preview.js          rölyef gölgelemesi, takım yolu, kesit (canvas)
+  view3d.js           three.js ile 3B önizleme
 tests/                tarayıcısız doğrulama
 ```
 

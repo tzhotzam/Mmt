@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: '20'
       - run: node tests/pipeline.test.mjs
+      - run: node tests/carve.test.mjs
 
   deploy:
     needs: test

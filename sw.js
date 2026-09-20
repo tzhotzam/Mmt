@@ -1,10 +1,11 @@
 // Çevrimdışı çalışma için basit önbellek. three.js CDN'den geldiği için
 // 3B önizleme çevrimdışı devre dışı kalır; üretim ve dışa aktarma çalışır.
 
-const CACHE = 'cnc-panel-v9';
+const CACHE = 'cnc-panel-v10';
 const ASSETS = [
   './',
   './index.html',
+  './oyma.html',
   './app.css',
   './manifest.webmanifest',
   './assets/icon.svg',
@@ -28,6 +29,14 @@ const ASSETS = [
   './js/modes/facets.js',
   './js/export/dxf.js',
   './js/export/svg.js',
+  './js/carve/main.js',
+  './js/carve/pattern.js',
+  './js/carve/tool.js',
+  './js/carve/toolpath.js',
+  './js/carve/gcode.js',
+  './js/carve/export.js',
+  './js/carve/preview.js',
+  './js/carve/view3d.js',
 ];
 
 self.addEventListener('install', (e) => {
