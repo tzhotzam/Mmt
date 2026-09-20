@@ -20,6 +20,8 @@ panel" diye satılan iş.
 
 - Lameller arka taraftaki **kızaklara yarım geçme** ile oturur; tutkalsız bile
   kendi kendini taşır.
+- Kanal diplerine **köşe payı** açılır; freze ucunun bıraktığı et yüzünden
+  geçmenin açık kalmasını engeller (aşağıda).
 - Her parça gravürle numaralanır (L1, L2, … / KIZAK 1).
 
 ### 2. Katman / Rölyef modu
@@ -177,6 +179,26 @@ Safari'de sayfayı açın → Paylaş → **Ana Ekrana Ekle**. Tam ekran açıl�
 - **Geçme boşluğu**: Kontrplakta 0,15–0,25 mm iyi sonuç verir. MDF'de 0,1 mm
   yeterli. Nominal kalınlık ile gerçek kalınlık çoğu zaman tutmaz —
   kanalları açmadan önce levhanızı kumpasla ölçün.
+- **Köşe payı (kemik / T payı)**: Dönen bir uç keskin iç köşe kesemez; kanal
+  dibinde kendi yarıçapı kadar et bırakır. 6 mm'lik uçta bu 3 mm'dir ve
+  geçme o kadar açık kalır. Yazılım bu köşeleri "Takım çapı" alanına göre
+  otomatik açar:
+  - **Kemik (dogbone)**: pay köşegen doğrultuda alınır. En az malzeme götüren
+    biçim; lamellerde bu kullanılır.
+  - **T payı (T-bone)**: köşenin bir yanındaki et inceyse — kızak dişleri
+    gibi — kemik payı dişi iki yandan yiyip koparırdı. T payı bütün eti tek
+    yönde, kalın tarafta alır. Kızaklarda genellikle bu seçilir.
+
+  Hangisinin kullanıldığı köşe köşe, dişin genişliğine bakılarak seçilir;
+  montaj kılavuzu dosyası sayıları yazar. Uç kanala hiç sığmıyorsa o köşe
+  **olduğu gibi bırakılır ve uyarı verilir** — sessizce küçültmek, oturmayan
+  bir geçme üretmekten kötüdür.
+
+  Payı kapatabilirsiniz; o zaman köşeleri tezgâhta elle temizlemeniz gerekir.
+  **Girdiğiniz takım çapının tezgâhtaki uçla aynı olması şart** — pay ona göre
+  ölçülür.
+- **Dış köşe yuvarlatma**: İşlevsel değil. Keskin dış köşeler MDF'de kıymık
+  yapar ve taşımada zarar görür; 2–3 mm yuvarlatma bunu keser.
 - Parçalar levhada ayrı ayrı yerleştirilir, ortak kenar kullanılmaz; bu yüzden
   lameller arası boşluğun takım çapından küçük olması sorun değildir.
 
@@ -226,6 +248,7 @@ js/
   paint.js            elle derinlik boyama — fırça, yumuşatma, katman birleştirme
   marchingsquares.js  eş-yükselti halkaları (eyer çözümü dâhil)
   geom.js             alan, yön, sadeleştirme, ofset, delik sınıflandırma
+  corners.js          köşe payı: kemik / T payı, dış köşe yuvarlatma
   modes/ribs.js       lamel + kızak üretimi
   modes/contour.js    katman üretimi
   modes/facets.js     poligonal kabuk: faset parçaları + kaynak dikişleri

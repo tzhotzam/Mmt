@@ -10,6 +10,7 @@
 
 import { sampleBandColumn } from '../heightmap.js';
 import { simplify, offsetRing, ensureOrientation } from '../geom.js';
+import { applyCornerRelief, countTightCorners } from '../corners.js';
 
 export const RIB_DEFAULTS = {
   panelW: 900,
@@ -27,6 +28,9 @@ export const RIB_DEFAULTS = {
   railHeight: 60,
   railInset: 0.18,         // lamel boyunun yüzdesi olarak uç kızaklarının konumu
   fit: 0.2,                // geçme boşluğu (mm) — kontrplakta 0.1–0.3 arası iyi sonuç verir
+  toolDiameter: 6,         // freze ucu çapı — kemik payının ölçüsü buradan gelir
+  dogbone: true,           // kanal diplerine kemik payı aç
+  filletRadius: 0,         // dış köşe yuvarlatma (0 = keskin bırak)
   labelSize: 6,
 };
 
@@ -68,6 +72,36 @@ export function generateRibs(grid, userParams = {}) {
 
   const railPositions = computeRailPositions(p.railCount, p.railInset, ribLength);
 
+  // Kemik payı: freze ucu kanal dibinde kendi yarıçapı kadar et bırakır,
+  // geçme oturmaz. Köşelere ucun yarıçapı kadar boşluk açılır.
+  const toolRadius = Math.max(0, (p.toolDiameter || 0) / 2);
+  const filletRadius = Math.max(0, p.filletRadius || 0);
+  // Pay YALNIZCA geçme köşelerine açılır. Lamelin ön kenarındaki dalga da
+  // iç köşe içerir; oraya pay açmak görünen yüzü delik deşik ederdi. Kanal
+  // dipleri bilinen bir y değerinde durduğu için bant testi yeterli; ofset
+  // uygulanmışsa bant o kadar genişletilir.
+  const bant = 0.3 + Math.abs(p.offset || 0);
+  const kanalDibi = (y) => (V) => Math.abs(V[1] - y) <= bant;
+
+  let reliefApplied = 0;
+  let reliefSkipped = 0;
+  let reliefT = 0;
+  let tightUntreated = 0;
+
+  function finishRing(ring, only) {
+    if (!p.dogbone && !filletRadius) {
+      tightUntreated += countTightCorners(ring, toolRadius, { only });
+      return ring;
+    }
+    const r = applyCornerRelief(ring, {
+      toolRadius, filletRadius, dogboneOn: !!p.dogbone, only,
+    });
+    reliefApplied += r.applied;
+    reliefSkipped += r.skipped;
+    reliefT += r.tbones;
+    return r.ring;
+  }
+
   const parts = [];
   for (let i = 0; i < count; i++) {
     const a0 = i * pitch;
@@ -92,6 +126,9 @@ export function generateRibs(grid, userParams = {}) {
     ring = simplify(ring, p.simplifyTol, true);
     if (p.offset !== 0) ring = offsetRing(ensureOrientation(ring, true), p.offset);
     ring = ensureOrientation(ring, true);
+    // Kemik payı en sonda: ofset (köşe birleştirmeli) bir yayın üzerinden
+    // geçerse yayı bozar.
+    ring = finishRing(ring, kanalDibi(railSlotDepth));
 
     const maxD = profile.reduce((m, q) => Math.max(m, q[1]), 0);
     parts.push({
@@ -114,7 +151,10 @@ export function generateRibs(grid, userParams = {}) {
     // Kızak profili: alt kenar düz, üst kenarda lamel kanalları.
     // Üst kenar soldan sağa yürür, sonra sağ ve alt kenarlarla halka kapanır.
     const topEdge = edge.map(([x, y]) => [x, p.railHeight - y]);
-    const ring = ensureOrientation(topEdge.concat([[actualAcross, 0], [0, 0]]), true);
+    const ring = finishRing(
+      ensureOrientation(topEdge.concat([[actualAcross, 0], [0, 0]]), true),
+      kanalDibi(p.railHeight - railSlotDepth)
+    );
     parts.push({
       id: `K${r + 1}`,
       kind: 'kizak',
@@ -127,12 +167,31 @@ export function generateRibs(grid, userParams = {}) {
     });
   }
 
+  if (reliefSkipped > 0) {
+    warnings.push(
+      `${reliefSkipped} kanal köşesine kemik payı sığmadı: kanal, ${p.toolDiameter} mm'lik ` +
+      'uca göre dar. Daha ince uç seçin veya kızak yüksekliğini artırın — bu köşelerde ' +
+      'geçme tam oturmayabilir.'
+    );
+  }
+  if (tightUntreated > 0) {
+    warnings.push(
+      `Kemik payı kapalı: ${tightUntreated} iç köşe var ve ${p.toolDiameter} mm'lik uç ` +
+      `bunların dibine ${(toolRadius).toFixed(1)} mm et bırakır. Parçalar tam oturmaz; ` +
+      'kemik payını açın ya da köşeleri tezgâhta elle temizleyin.'
+    );
+  }
+
   return {
     parts,
     info: {
       mode: 'ribs',
       count,
       pitch,
+      dogboneApplied: reliefApplied,
+      tboneApplied: reliefT,
+      dogboneSkipped: reliefSkipped,
+      tightCorners: tightUntreated,
       actualAcross,
       ribLength,
       panelW: horizontal ? p.panelW : actualAcross,
@@ -159,18 +218,45 @@ function computeRailPositions(n, inset, length) {
 /**
  * y=0 düz kenarı üzerinde, verilen merkezlerde dikdörtgen kanallar açar.
  * Soldan sağa yürüyen bir nokta listesi döner.
+ *
+ * Kenara dayanan kanallar özel durum: kızağın ilk ve son kanalı her zaman
+ * uca taşar (merkez kalınlık/2'de, genişlik kalınlık+pay). Kanalı olduğu gibi
+ * çizersek halka uç çizgisini bir yukarı bir aşağı iki kez geçer; arada
+ * sıfır genişlikte bir çıkıntı kalır. Tezgâh oraya boşuna dalar, kemik payı
+ * da o köşeyi yanlış yorumlar. Böyle kanallarda kenar doğrudan kanal
+ * dibinden başlatılır (ya da orada bitirilir).
  */
 function buildNotchedEdge(length, centers, slotWidth, slotDepth) {
-  const pts = [[0, 0]];
+  const araliklar = [];
   if (slotDepth > 0 && slotWidth > 0) {
-    const sorted = centers.slice().sort((a, b) => a - b);
-    for (const c of sorted) {
+    for (const c of centers.slice().sort((a, b) => a - b)) {
       const a = Math.max(0, c - slotWidth / 2);
       const b = Math.min(length, c + slotWidth / 2);
       if (b - a < 1e-6) continue;
-      pts.push([a, 0], [a, slotDepth], [b, slotDepth], [b, 0]);
+      const son = araliklar[araliklar.length - 1];
+      // Kanallar çakışıyorsa (pay büyük, boşluk küçük) tek kanal say.
+      if (son && a <= son[1] + 1e-6) son[1] = Math.max(son[1], b);
+      else araliklar.push([a, b]);
     }
   }
-  pts.push([length, 0]);
+
+  const pts = [];
+  const ekle = (x, y) => {
+    const son = pts[pts.length - 1];
+    if (son && Math.abs(son[0] - x) < 1e-9 && Math.abs(son[1] - y) < 1e-9) return;
+    pts.push([x, y]);
+  };
+
+  const soldaAcik = araliklar.length > 0 && araliklar[0][0] <= 1e-6;
+  ekle(0, soldaAcik ? slotDepth : 0);
+
+  for (const [a, b] of araliklar) {
+    if (a > 1e-6) { ekle(a, 0); ekle(a, slotDepth); }
+    ekle(b, slotDepth);
+    if (b < length - 1e-6) ekle(b, 0);
+  }
+
+  const sagdaAcik = araliklar.length > 0 && araliklar[araliklar.length - 1][1] >= length - 1e-6;
+  ekle(length, sagdaAcik ? slotDepth : 0);
   return pts;
 }

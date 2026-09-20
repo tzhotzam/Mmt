@@ -27,6 +27,10 @@ import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/pain
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
 import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
+import {
+  classifyCorners, dogbone, cornerRelief, filletConvex,
+  countTightCorners, applyCornerRelief,
+} from '../js/corners.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -1228,6 +1232,253 @@ test('binary STL ayrıştırılır', () => {
   }
   const tris = parseStl(buf);
   assert.equal(tris.length, 2);
+});
+
+// --- Köşe payı (kemik) --------------------------------------------------
+console.log('köşe payı');
+
+// Alt kenarında 40..60 arası, 10 mm derinliğinde kanal olan dikdörtgen.
+function kanalliHalka(a = 40, b = 60, d = 10, L = 100, H = 50) {
+  return [[0, 0], [a, 0], [a, d], [b, d], [b, 0], [L, 0], [L, H], [0, H]];
+}
+
+function kendiniKesiyorMu(ring) {
+  const n = ring.length;
+  const cr = (o, x, y) => (x[0] - o[0]) * (y[1] - o[1]) - (x[1] - o[1]) * (y[0] - o[0]);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (j === i || (j + 1) % n === i || (i + 1) % n === j) continue;
+      const p1 = ring[i], p2 = ring[(i + 1) % n], p3 = ring[j], p4 = ring[(j + 1) % n];
+      const d1 = cr(p3, p4, p1), d2 = cr(p3, p4, p2);
+      const d3 = cr(p1, p2, p3), d4 = cr(p1, p2, p4);
+      const kesisir = ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9))
+        && ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9));
+      if (kesisir) return [i, j];
+    }
+  }
+  return null;
+}
+
+test('iç ve dış köşeler doğru ayrılır', () => {
+  const ring = kanalliHalka();
+  const k = classifyCorners(ring);
+  // Kanal dibindeki iki köşe (40,10) ve (60,10) içbükey, kalan altısı dışbükey.
+  assert.equal(k.filter((c) => !c.convex).length, 2, 'iç köşe sayısı 2 olmalı');
+  assert.equal(k[2].convex, false);
+  assert.equal(k[3].convex, false);
+  assert.ok(Math.abs(Math.abs(k[2].turn) - Math.PI / 2) < 1e-9, '90° dönüş beklenir');
+});
+
+test('kemik yayının merkezi tam köşede ve yarıçapı takım yarıçapı', () => {
+  // Kesimde takım merkezi, çizginin r kadar ötelenmişini izler. Merkezi
+  // köşede olan r yarıçaplı yay r kadar ötelenince yarıçapı sıfıra iner —
+  // yani takım merkezi TAM köşeden geçer, köşede et kalmaz. Merkez başka
+  // yerde olsaydı bu özellik bozulurdu.
+  const r = 3;
+  const res = dogbone(kanalliHalka(), r, {});
+  assert.equal(res.applied, 2);
+  assert.equal(res.skipped, 0);
+  for (const p of res.ring) {
+    const d = Math.hypot(p[0] - 40, p[1] - 10);
+    if (d > 1e-9 && d < r * 1.5) {
+      assert.ok(Math.abs(d - r) < 1e-9, `yay noktası ${d} mm, ${r} mm olmalıydı`);
+    }
+  }
+});
+
+test('kemik payı köşeyi gerçekten boşaltır', () => {
+  const r = 3;
+  const res = dogbone(kanalliHalka(), r, {});
+  // Köşenin malzeme tarafındaki (sol-üst) yakın nokta artık dışarıda kalmalı:
+  // orası freze ucunun temizlediği yer.
+  assert.equal(pointInRing([39.5, 10.5], res.ring), false, 'köşe dibi boşalmamış');
+  // Yaydan uzak malzeme yerinde durmalı.
+  assert.equal(pointInRing([36, 14], res.ring), true, 'gereğinden fazla et alınmış');
+  assert.equal(pointInRing([20, 20], res.ring), true);
+  // Kanalın içi hâlâ boş.
+  assert.equal(pointInRing([50, 5], res.ring), false);
+});
+
+test('kemik payı yalnızca malzeme eksiltir ve halkayı bozmaz', () => {
+  const ring = kanalliHalka();
+  const res = dogbone(ring, 3, {});
+  const eski = signedArea(ring);
+  const yeni = signedArea(res.ring);
+  assert.ok(yeni > 0, 'halkanın yönü bozulmuş');
+  assert.ok(yeni < eski, 'kemik alanı büyütmüş — yay yanlış tarafa dönüyor');
+  // İki köşe × 270°'lik daire dilimi kadar; yaklaşık üst sınır.
+  assert.ok(eski - yeni < 2 * Math.PI * 9, 'gereğinden çok alan gitmiş');
+  assert.equal(kendiniKesiyorMu(res.ring), null, 'halka kendini kesiyor');
+});
+
+test('sığmayan kemik sessizce küçültülmez, atlanır ve sayılır', () => {
+  // 2 mm genişliğinde kanal; 6 mm uç (r=3) buraya kemik sığdıramaz.
+  const dar = kanalliHalka(40, 42, 2);
+  const res = dogbone(dar, 3, {});
+  assert.equal(res.applied, 0);
+  assert.equal(res.skipped, 2);
+  assert.deepEqual(res.ring, dar, 'atlanan köşeler değiştirilmemeli');
+  assert.equal(countTightCorners(dar, 3), 2);
+});
+
+test('yumuşak iç köşelere dokunulmaz', () => {
+  // minTurn (≈20°) altındaki dönüşler kemik istemez.
+  const yumusak = [[0, 0], [100, 0], [100, 50], [50, 49], [0, 50]];
+  const res = dogbone(yumusak, 3, { minTurn: 0.35 });
+  assert.equal(res.applied, 0);
+  assert.equal(res.skipped, 0);
+});
+
+test('dış köşe yuvarlatma alanı küçültür ve teğet kalır', () => {
+  const kare = [[0, 0], [100, 0], [100, 50], [0, 50]];
+  const f = filletConvex(kare, 5, {});
+  assert.equal(f.applied, 4);
+  const yeni = signedArea(f.ring);
+  assert.ok(yeni > 0 && yeni < signedArea(kare), 'yuvarlatma alanı büyütmüş');
+  // Kaybedilen alan köşe başına en çok r² (kare köşe - çeyrek daire) kadardır.
+  assert.ok(signedArea(kare) - yeni < 4 * 25, 'fazla malzeme alınmış');
+  assert.equal(kendiniKesiyorMu(f.ring), null);
+});
+
+test('applyCornerRelief geri adım atarsa ham halkayı korur', () => {
+  const ring = kanalliHalka();
+  // Kapalıyken hiçbir şey değişmemeli.
+  const kapali = applyCornerRelief(ring, { toolRadius: 3, dogboneOn: false });
+  assert.deepEqual(kapali.ring, ring);
+  assert.equal(kapali.applied, 0);
+  // Takım çapı sıfırsa da dokunmamalı.
+  const sifir = applyCornerRelief(ring, { toolRadius: 0, dogboneOn: true });
+  assert.deepEqual(sifir.ring, ring);
+});
+
+// Tarak: iki kanal arasında ince bir diş bırakır. Kanal 20 mm, diş 6 mm.
+function tarakliHalka(disGenisligi = 6, kanal = 20, d = 15, H = 40) {
+  const L = kanal * 2 + disGenisligi;
+  return [
+    [0, 0], [L, 0], [L, d], [kanal + disGenisligi, d],
+    [kanal + disGenisligi, H], [kanal, H], [kanal, d], [0, d],
+  ];
+}
+
+test('ince dişte kemik yerine T payı seçilir', () => {
+  // Diş 6 mm; iki yandan 3'er mm kemik açılsa diş kopardı.
+  const ring = tarakliHalka(6);
+  const r = cornerRelief(ring, 3, { mode: 'oto' });
+  assert.equal(r.applied, 2, 'iki kanal dibi de işlenmeli');
+  assert.equal(r.dogbones, 0, 'ince dişte kemik kullanılmamalı');
+  assert.equal(r.tbones, 2);
+  assert.equal(kendiniKesiyorMu(r.ring), null, 'halka kendini kesiyor');
+  assert.ok(signedArea(r.ring) > 0 && signedArea(r.ring) < signedArea(ring));
+});
+
+test('T payı dişi ayakta bırakır, kemik keserdi', () => {
+  const ring = tarakliHalka(6);
+  const t = cornerRelief(ring, 3, { mode: 'oto' }).ring;
+  // Diş 20..26 arasında, y 15..40. Gövdesi yerinde durmalı.
+  assert.equal(pointInRing([23, 30], t), true, 'diş gövdesi gitmiş');
+  assert.equal(pointInRing([23, 16], t), true, 'diş dibi kesilmiş — diş kopar');
+  // Pay kanal dibinin altına, kalın gövdeye inmiş olmalı.
+  assert.equal(pointInRing([17, 14], t), false, 'T payı hiç malzeme almamış');
+  // Kanalın kendisi hâlâ boş.
+  assert.equal(pointInRing([10, 30], t), false);
+
+  // Aynı halkada kemik zorlanırsa köşeler atlanır — sessizce dişi kesmez.
+  const k = cornerRelief(ring, 3, { mode: 'kemik' });
+  assert.equal(k.applied, 0);
+  assert.equal(k.skipped, 2);
+});
+
+test('geniş dişte kemik tercih edilir', () => {
+  // Diş 30 mm; 3 mm yarıçap iki yandan girse bile 24 mm et kalır.
+  const r = cornerRelief(tarakliHalka(30), 3, { mode: 'oto' });
+  assert.equal(r.dogbones, 2, 'yer varken kemik kullanılmalı');
+  assert.equal(r.tbones, 0);
+  assert.equal(kendiniKesiyorMu(r.ring), null);
+});
+
+test('T payı da köşeyi boşaltır', () => {
+  // Payın amacı köşedeki eti almak. Kanal dibindeki köşenin hemen içi
+  // (kanal tarafı) temizlenmiş olmalı.
+  const ring = tarakliHalka(6);
+  const t = cornerRelief(ring, 3, { mode: 'oto' }).ring;
+  // Kanal dibi köşesi (20,15); kanalın içindeki yakın nokta zaten boştu,
+  // asıl kazanç köşenin altındaki ete inilmesi.
+  assert.equal(pointInRing([19.5, 14.5], t), false, 'köşe dibi temizlenmemiş');
+});
+
+test('sadece işaretlenen köşelere pay açılır', () => {
+  const ring = kanalliHalka();
+  const hepsi = cornerRelief(ring, 3, { mode: 'oto' });
+  const biri = cornerRelief(ring, 3, { mode: 'oto', only: (V) => V[0] < 50 });
+  assert.equal(hepsi.applied, 2);
+  assert.equal(biri.applied, 1, 'süzgeç dışındaki köşe işlenmiş');
+});
+
+test('lamel modu kanal diplerine kemik açar', () => {
+  const g = testGrid();
+  const ortak = { panelW: 900, panelH: 600, thickness: 18, gap: 6, railCount: 2, railHeight: 60 };
+  const acik = generateRibs(g, { ...ortak, toolDiameter: 6, dogbone: true });
+  const kapali = generateRibs(g, { ...ortak, toolDiameter: 6, dogbone: false });
+
+  // Her lamelde 2 kızak kanalı × 2 iç köşe, her kızakta lamel sayısı × 2.
+  assert.ok(acik.info.dogboneApplied > 0, 'hiç kemik açılmamış');
+  assert.equal(acik.info.dogboneSkipped, 0);
+  assert.equal(kapali.info.dogboneApplied, 0);
+  assert.ok(kapali.info.tightCorners > 0, 'kapalıyken sıkışık köşeler sayılmalı');
+  assert.ok(
+    kapali.warnings.some((w) => w.includes('Kemik payı kapalı')),
+    'kemik payı kapalıyken uyarı verilmiyor'
+  );
+
+  // Kemik sadece eksiltir; parçalar levhaya sığmaya devam eder.
+  for (let i = 0; i < acik.parts.length; i++) {
+    const a = signedArea(acik.parts[i].outline);
+    const b = signedArea(kapali.parts[i].outline);
+    assert.ok(a > 0, `${acik.parts[i].id}: halka yönü bozulmuş`);
+    assert.ok(a <= b + 1e-6, `${acik.parts[i].id}: kemik alanı büyütmüş`);
+    assert.equal(kendiniKesiyorMu(acik.parts[i].outline), null,
+      `${acik.parts[i].id}: halka kendini kesiyor`);
+  }
+});
+
+test('dar kızak kanalında kemik atlanır ve kullanıcıya söylenir', () => {
+  // 20 mm'lik uç, 18,2 mm'lik lamel kanalına sığmaz.
+  const res = generateRibs(testGrid(), { toolDiameter: 20, dogbone: true, railCount: 2 });
+  assert.ok(res.info.dogboneSkipped > 0, 'sığmayan kemik atlanmamış');
+  assert.ok(res.warnings.some((w) => w.includes('sığmadı')), 'uyarı verilmiyor');
+});
+
+test('kemik payı arayüzde açılıp kapanabiliyor', () => {
+  // Kontrol HTML'de yoksa readParams hep varsayılanı okur ve düğme kaybolur.
+  const html = oku('index.html');
+  assert.ok(html.includes('id="p-dogbone"'), 'kemik payı anahtarı HTML\'de yok');
+  assert.ok(html.includes('id="p-filletRadius"'), 'yuvarlatma alanı HTML\'de yok');
+  const js = oku('js/main.js');
+  assert.ok(/dogbone:\s*bool\('p-dogbone'\)/.test(js), 'main.js anahtarı okumuyor');
+  assert.ok(/filletRadius:\s*num\('p-filletRadius'/.test(js), 'main.js yarıçapı okumuyor');
+});
+
+test('corners.js servis çalışanı listesinde', () => {
+  // Listede olmayan dosya çevrimdışı açılışta 404 verir ve uygulama patlar.
+  assert.ok(oku('sw.js').includes("'./js/corners.js'"), 'corners.js önbellek listesinde yok');
+});
+
+// --- Görsel yükleme -----------------------------------------------------
+console.log('görsel yükleme');
+
+test('görsel ölçüleri close() öncesinde okunuyor', () => {
+  // ImageBitmap.close() çağrıldıktan sonra width/height 0 döner. Durum
+  // mesajı sonradan kurulursa her görsel "0×0 piksel" görünür.
+  const js = oku('js/main.js');
+  const govde = js.match(/async function loadImageFile[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(govde, 'loadImageFile bulunamadı');
+  const kapatma = govde.indexOf('bitmap.close');
+  const mesaj = govde.indexOf('setSourceStatus');
+  assert.ok(kapatma > 0 && mesaj > 0, 'kapatma veya durum mesajı yok');
+  assert.ok(
+    !/bitmap\.(width|height)/.test(govde.slice(kapatma)),
+    'close() sonrasında bitmap.width/height okunuyor — ölçüler 0 çıkar'
+  );
 });
 
 console.log(`\n${passed} test geçti${process.exitCode ? ' (hatalar var)' : ''}`);

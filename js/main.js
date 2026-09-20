@@ -24,7 +24,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-c';
+const APP_VERSION = '2026-09-20-d';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -149,6 +149,8 @@ function readParams() {
       railCount: Math.round(num('p-railCount', 2)),
       railHeight: num('p-railHeight', 60),
       fit: num('p-fit', 0.2),
+      dogbone: bool('p-dogbone'),
+      filletRadius: num('p-filletRadius', 0),
     };
   }
   return {
@@ -200,19 +202,26 @@ function gridDimsFor(aspect) {
 
 async function loadImageFile(file) {
   const bitmap = await createImageBitmap(file);
-  state.aspect = bitmap.width / bitmap.height;
+  // Ölçüler HEMEN alınır: close() çağrıldıktan sonra ImageBitmap'in width ve
+  // height alanları şartname gereği 0'a düşer. Durum mesajını sonradan
+  // kurduğumuz için her görsel "0×0 piksel" görünüyordu.
+  const pxW = bitmap.width;
+  const pxH = bitmap.height;
+  if (!(pxW > 0 && pxH > 0)) throw new Error('Görselin ölçüleri okunamadı.');
+
+  state.aspect = pxW / pxH;
   const [cols, rows] = gridDimsFor(state.aspect);
 
   const c = document.createElement('canvas');
-  c.width = bitmap.width;
-  c.height = bitmap.height;
+  c.width = pxW;
+  c.height = pxH;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(bitmap, 0, 0);
   const img = ctx.getImageData(0, 0, c.width, c.height);
   bitmap.close?.();
 
   state.sourceGrid = gridFromImageData(img, cols, rows);
-  setSourceStatus(`Görsel yüklendi: ${file.name} — ${bitmap.width}×${bitmap.height} piksel`);
+  setSourceStatus(`Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
   resetPaint();
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
   setInvert(suggestInvert(state.sourceGrid), true);
@@ -706,6 +715,13 @@ els['dl-guide'].onclick = () => {
     'CNC NOTLARI',
     `  Takım çapı        : ${num('p-toolDiameter', 6)} mm`,
     `  Uygulanan ofset   : ${num('p-offset', 0)} mm`,
+    ...(state.info?.mode === 'ribs' ? [
+      state.info.dogboneApplied > 0
+        ? `  Köşe payı         : ${state.info.dogboneApplied} köşe (Ø${num('p-toolDiameter', 6)} mm uca göre) — ` +
+          `${state.info.dogboneApplied - state.info.tboneApplied} kemik, ${state.info.tboneApplied} T payı` +
+          (state.info.dogboneSkipped > 0 ? `, ${state.info.dogboneSkipped} köşeye sığmadı` : '')
+        : `  Köşe payı         : yok — kanal dipleri ${(num('p-toolDiameter', 6) / 2).toFixed(1)} mm yarıçapla kalır`,
+    ] : []),
     '  KESIM katmanı     : malzemeyi tam kes (kalınlık + 1 mm dalma)',
     '  GRAVUR katmanı    : 1–2 mm yüzeysel dalma (numara ve hizalama çizgileri)',
   ].join('\n');
