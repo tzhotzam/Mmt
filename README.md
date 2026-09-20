@@ -126,21 +126,35 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 Girdiğiniz ayarlar tarayıcıda saklanır; her açılışta yeniden girmeniz
 gerekmez. "Ayarları sıfırla" varsayılanlara döndürür.
 
-### Hangi kaynak hangi moda gider?
-Lamel modunun yatayda çözünürlüğü **lamel sayısıdır**. 882 mm'lik panelde
-24 mm adımla 37 lamel var — yani yatayda 37 "piksel". Adımdan ince olan her
-şey kaybolur, bu bir ayar meselesi değil geometridir.
+### Logo ve yazı lamel panelde çıkar mı?
+Çıkar — **yeter ki panel yeterince büyük olsun.** Belirleyici olan kaynağın
+türü değil, harf gövdesinin kaç lamel genişliğine düştüğüdür.
 
-- **Sürekli tonlu fotoğraf, manzara, soyut biçim** → Lamel / Dalga.
-- **Logo, yazı, çizgi iş, düz renkli grafik** → Katman / Rölyef ya da düz
-  siluet kesimi. Örnek: 1248×442 px bir logoda harf gövdeleri 882 mm'lik
-  panelde 6,4 mm düşüyor; lamel adımı 24 mm. Harf, tek lamelin dörtte biri
-  kadar — okunması mümkün değil.
-- **Kapalı hacimli 3B model** → Poligonal Kabuk.
+Lamel modunun yatayda çözünürlüğü lamel sayısıdır: 24 mm adımda 882 mm'lik
+panel yatayda 37 "piksel" demektir. Aynı logo, aynı adım, farklı panel
+genişliklerinde (üretilen planlara bakılarak):
 
-Yazılım kaynağı ölçer ve uymuyorsa **söyler**: düz renkli grafik algılanırsa
-uyarır, kaynaktaki değişimin ne kadarının lamel adımından ince olduğunu
-yüzdeyle yazar. Sessizce kötü bir panel üretmez.
+| panel | adımdan ince değişim | sonuç |
+|---|---|---|
+| 882 mm | %40 | yazı parazite dönüyor |
+| 1100 mm | %34 | "SAPCI" okunuyor, alt satır bulanık |
+| 1300 mm | %31 | temiz |
+| 1600 mm | %29 | alt satırdaki küçük punto da okunuyor |
+
+Yani 882 mm'de olmayan iş, 1600 mm'de **18 mm lamelle bile** oluyor. Lamel
+adımını küçültmek (12 mm lamel + 4 mm boşluk = 16 mm adım) aynı etkiyi daha
+küçük panelde verir.
+
+Yazılım bunu kendisi ölçer: sığmıyorsa uyarır ve **gereken panel genişliğini
+söyler**. Sessizce kötü bir panel üretmez.
+
+Yine de küçük ölçüde bir tabela gerekiyorsa **Katman / Rölyef** modu ya da
+düz siluet kesimi daha temiz durur. Küçük punto hiçbir panel ölçüsünde
+lamele sığmayabilir — kaynağı sadeleştirmek (alt satırı atmak) çoğu zaman
+en iyi çözümdür.
+
+Kaynak türü yalnızca **yumuşatmayı** etkiler: fotoğrafta gren vardır,
+silinmesi gerekir; logo ve desende keskin kenar kasıtlıdır, dokunulmaz.
 
 ### Fotoğraflarda yumuşatma neden otomatik?
 Panelin **lameller arası** çözünürlüğü lamel adımıdır (kalınlık + boşluk).

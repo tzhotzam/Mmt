@@ -27,7 +27,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-f';
+const APP_VERSION = '2026-09-20-g';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -621,7 +621,27 @@ function render() {
  * Ölçüldü (adımdan ince değişim oranı): logo %40 | fotoğraf %8 |
  * dalga deseni %0 | voronoi %13 | akustik difüzör %35.
  */
-const INCE_DETAY_ESIGI = 0.25;
+// Eşik, üretilen panellere BAKILARAK kalibre edildi (aynı logo, 24 mm adım):
+//   panel  882 mm -> %40  yazı parazite dönüyor
+//   panel 1100 mm -> %34  "SAPCI" okunuyor, alt satır bulanık ama düzgün
+//   panel 1300 mm -> %31  temiz
+//   panel 1600 mm -> %29  alt satır da okunuyor
+// Dönüm noktası %40 ile %34 arasında; eşik 0,36 seçildi.
+const INCE_DETAY_ESIGI = 0.36;
+
+/**
+ * Bu kaynak hangi panel genişliğinden sonra düzgün çıkar?
+ * Adım sabitken panel büyüdükçe bir lamele düşen ayrıntı azalır; oranın
+ * eşiğin altına indiği ilk genişlik aranır.
+ * @returns {number|null} mm — bulunamazsa null
+ */
+function gerekenPanelGenisligi(kaynak, adim, simdiki) {
+  for (let w = Math.ceil(simdiki / 100) * 100; w <= simdiki * 5 && w <= 6000; w += 100) {
+    const oran = fineDetailRatio(kaynak, (adim * kaynak.w) / w / 2);
+    if (oran < INCE_DETAY_ESIGI) return w;
+  }
+  return null;
+}
 
 function cozunurlukUyarilari() {
   const out = [];
@@ -638,24 +658,27 @@ function cozunurlukUyarilari() {
   const ince = fineDetailRatio(kaynak, (adim * mmBasinaOrnek) / 2);
 
   if (ince > INCE_DETAY_ESIGI) {
+    const gereken = gerekenPanelGenisligi(kaynak, adim, panelW);
+    const cozum = gereken
+      ? `Paneli ~${gereken} mm genişliğe çıkarın` +
+        (adim > 16 ? `, ya da 12 mm lamel + 4 mm boşluk kullanın (adım ${adim} → 16 mm).` : '.')
+      : 'Paneli büyütün ya da lamel kalınlığını/boşluğunu küçültün.';
     out.push(
-      `Kaynaktaki değişimin %${Math.round(ince * 100)}'i lamel adımından ` +
-      `(${adim} mm) ince. Panel yatayda yalnızca ${lamel || '—'} lamel ` +
-      'genişliğinde; bu ayrıntı panelde görünmez. Çözüm: paneli büyütün, ' +
-      'lamel kalınlığını/boşluğunu küçültün ya da ' +
-      (cizgiIsiMi()
-        ? 'düz renkli grafikler için Katman / Rölyef moduna geçin.'
-        : 'daha sade, büyük biçimli bir kaynak kullanın.')
+      `Kaynak bu ölçüye sığmıyor: panel yatayda ${lamel || '—'} lamel ` +
+      `genişliğinde (adım ${adim} mm) ve kaynaktaki değişimin ` +
+      `%${Math.round(ince * 100)}'i bundan ince. İnce ayrıntı kaybolur. ` +
+      cozum
     );
   }
 
   if (cizgiIsiMi()) {
     out.push(
-      'Kaynak düz renkli bir grafik (logo, çizgi iş) gibi görünüyor. ' +
-      'Lamel modu sürekli tonlu biçimler içindir; yazı ve ince çizgiler ' +
-      'lamellere bölününce okunmaz. Böyle işler için Katman / Rölyef modu ' +
-      'ya da düz siluet kesimi doğru yoldur. (Fotoğraf yumuşatması bu ' +
-      'kaynağa uygulanmadı.)'
+      'Kaynak düz renkli bir grafik (logo, yazı, çizgi iş) gibi görünüyor. ' +
+      'Lamel panelde yazı, harf gövdesi 2-3 lamel genişliğine ulaştığında ' +
+      'okunur; küçük punto her ölçüde kaybolur. Paneli büyütmek işe yarar. ' +
+      'Küçük ölçüde yapılacaksa Katman / Rölyef modu ya da düz siluet kesimi ' +
+      'daha iyi sonuç verir. (Fotoğraf yumuşatması bu kaynağa uygulanmadı — ' +
+      'grafiklerde keskin kenar kasıtlıdır.)'
     );
   }
   return out;

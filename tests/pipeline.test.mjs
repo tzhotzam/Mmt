@@ -1612,7 +1612,21 @@ test('çözünürlük uyarısı HAM kaynağı ölçer', () => {
   assert.ok(govde, 'cozunurlukUyarilari yok');
   assert.ok(/state\.sourceGrid/.test(govde), 'ham kaynak yerine filtreli ızgara ölçülüyor');
   assert.ok(!/fineDetailRatio\(state\.grid/.test(govde), 'filtreli ızgara ölçülüyor');
-  assert.ok(/Katman \/ Rölyef/.test(govde), 'doğru mod önerilmiyor');
+  assert.ok(/gerekenPanelGenisligi/.test(govde),
+    'uyarı gereken panel genişliğini söylemiyor — "mod değiştir" tek başına yanlış tavsiye');
+  // Eşik üretilen planlara bakılarak kalibre edildi: 882 mm (%40) kötü,
+  // 1100 mm (%34) kabul edilebilir.
+  assert.ok(/INCE_DETAY_ESIGI = 0\.36/.test(js), 'eşik kalibre edilen değerde değil');
+});
+
+test('gereken panel genişliği araması artan genişlikte biter', () => {
+  const js = oku('js/main.js');
+  const govde = js.match(/function gerekenPanelGenisligi[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(govde, 'gerekenPanelGenisligi yok');
+  // Sonsuz döngü olmasın: üst sınır ve adım olmalı.
+  assert.ok(/w \+= 100/.test(govde), 'arama adımı yok');
+  assert.ok(/<= 6000/.test(govde), 'üst sınır yok');
+  assert.ok(/return null/.test(govde), 'bulunamadığında null dönmüyor');
 });
 
 test('çizgi işine fotoğraf yumuşatması uygulanmaz', () => {
