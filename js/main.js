@@ -1,10 +1,11 @@
 // Uygulama kabuğu: girdi → yükseklik haritası → parça üretimi → önizleme → dışa aktarma.
 
-import { gridFromImageData, applyFilters, makeGrid, suggestInvert } from './heightmap.js';
+import { gridFromImageData, applyFilters, suggestInvert } from './heightmap.js';
 import { parseMesh, heightmapFromStl, pickBestAxis, projectedSize } from './stl.js';
 import { facetize } from './facet.js';
 import { inflateSilhouette, blendRelief } from './relief.js';
 import { demoMeshTris } from './demomesh.js';
+import { PATTERNS, PATTERN_KEYS, renderPattern } from './patterns.js';
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
 import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
@@ -52,6 +53,8 @@ const state = {
   reliefInfo: null,
   viewAxis: 'z',
   meshInfo: null,
+  patternSeed: 0.42,
+  patternAspect: 1.5,
   paintLayer: null,       // elle çizilen derinlik düzeltmesi (-1..1)
   brushMode: 'raise',
   undoStack: [],          // Int8'e nicemlenmiş anlık görüntüler
@@ -249,36 +252,51 @@ function reportMesh(r) {
   );
 }
 
-function loadDemo() {
+/** Desen listesini doldurur ve açıklamayı bağlar. */
+(function initPatterns() {
+  const sel = els['p-pattern'];
+  for (const key of PATTERN_KEYS) {
+    const o = document.createElement('option');
+    o.value = key;
+    o.textContent = PATTERNS[key].label;
+    sel.appendChild(o);
+  }
+})();
+
+function patternHint() {
+  const key = els['p-pattern'].value || PATTERN_KEYS[0];
+  els['pattern-hint'].textContent = PATTERNS[key]?.hint || '';
+}
+
+function applyPattern() {
   if (state.mode === 'facets') {
+    // Poligonal kabuk kapalı bir hacim ister; düz desen işe yaramaz.
     state.tris = demoMeshTris();
+    state.meshInfo = { format: 'Örnek', name: 'gömülü model', count: state.tris.length };
+    reportMesh(rebuildFromMesh());
     setInvert(false);
     scheduleRegen();
     return;
   }
-  const [cols, rows] = gridDimsFor(1.5);
-  const g = makeGrid(cols, rows);
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const u = x / (cols - 1);
-      const v = y / (rows - 1);
-      // Asimetrik girdap: birbirine göre kaymış üç dalga kaynağı
-      const d1 = Math.hypot(u - 0.28, (v - 0.42) * 1.3);
-      const d2 = Math.hypot(u - 0.76, (v - 0.62) * 0.9);
-      const val =
-        0.55 * Math.sin(d1 * 26 - 1.2) * Math.exp(-d1 * 2.1) +
-        0.40 * Math.sin(d2 * 19 + 0.6) * Math.exp(-d2 * 2.6) +
-        0.18 * Math.sin((u * 2.1 + v * 1.4) * 4.0);
-      g.data[y * cols + x] = val;
-    }
-  }
-  state.aspect = 1.5;
-  state.sourceGrid = g;
+  const key = els['p-pattern'].value || PATTERN_KEYS[0];
+  const [cols, rows] = gridDimsFor(state.patternAspect);
+  state.sourceGrid = renderPattern(cols, rows, key, {
+    scale: num('p-patScale', 0.5),
+    angle: num('p-patAngle', 0.1),
+    detail: num('p-patDetail', 0.5),
+    seed: state.patternSeed,
+  });
+  state.tris = null;
+  state.aspect = state.patternAspect;
+  state.meshInfo = null;
+  setSourceStatus(`Desen: ${PATTERNS[key].label}`);
+  patternHint();
   resetPaint();
   setInvert(false);
   syncAspect();
   scheduleRegen();
 }
+
 
 /**
  * Kabartma yönünü ayarlar.
@@ -875,6 +893,7 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
   input.addEventListener(evt, () => {
     syncRangeOutputs();
     if (input.id.startsWith('p-brush')) { saveSettings(); return; }
+    if (input.id.startsWith('p-pat')) { saveSettings(); applyPattern(); return; }
     if (input.id === 'p-panelW' || input.id === 'p-lockAspect') syncAspect();
     if (input.id === 'p-sheetW' || input.id === 'p-sheetH') syncSheetPreset();
     saveSettings();
@@ -914,11 +933,20 @@ els['file-stl'].onchange = async (e) => {
   e.target.value = '';
 };
 
-els['btn-demo'].onclick = () => loadDemo();
+els['btn-demo'].onclick = () => {
+  els['pattern-block'].open = true;
+  applyPattern();
+};
+els['btn-pattern-random'].onclick = () => {
+  state.patternSeed = Math.random();
+  applyPattern();
+};
+els['p-pattern'].onchange = () => { saveSettings(); applyPattern(); };
 
 // ------------------------------------------------------------ başlangıç
 
 restoreSettings();
+patternHint();
 syncSheetPreset();
 syncRangeOutputs();
 createPreview3d(els['view-3d']).then((p) => {

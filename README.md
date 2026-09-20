@@ -67,8 +67,16 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 
 ## Nasıl kullanılır
 
-1. **Kaynak seç** — Görsel yükleyin, telefonla fotoğraf çekin, STL atın veya
-   "Örnek desen"e dokunun.
+1. **Kaynak seç** — Görsel yükleyin, telefonla fotoğraf çekin, 3B model
+   (STL/OBJ) atın veya hazır desenlerden birini kullanın.
+
+   **Hazır desenler** kodla üretilir, dosya olarak saklanmaz: Dalga, Su
+   halkaları, Topografya, Kumul, Voronoi, Dağ silüeti, Moiré ve Akustik
+   difüzör. Her birinin ölçek, açı ve yoğunluk ayarı var; "Rastgele" düğmesi
+   aynı desenin başka bir varyasyonunu üretir. İnternetten hazır model
+   indirip gömmek yerine bu yol seçildi: indirilebilir olmak ticari kullanım
+   hakkı vermez (çoğu ücretsiz model CC-BY-NC lisanslıdır) ve üretilen
+   desende lisans sorunu olmaz, dosya boyutu da sıfırdır.
 2. **Kabartma yönünü kontrol edin** — Görsel yüklendiğinde otomatik seçilir:
    zemin konudan açıksa (beyaz fonda logo, silüet, ürün fotoğrafı) "koyu
    alanlar", aksi hâlde "açık alanlar" öne çıkar. Konu panele gömülüyorsa
@@ -198,6 +206,7 @@ js/
   heightmap.js        görsel → 0..1 yükseklik haritası, filtreler
   stl.js              STL okuma + tepeden z-buffer taraması
   facet.js            poligonal (low-poly) yüzey — kaydırılmış üçgen ağ
+  patterns.js         kodla üretilen hazır desenler (8 adet, tohumlu)
   relief.js           silüet şişirme: Otsu eşik, Öklid uzaklık dönüşümü
   paint.js            elle derinlik boyama — fırça, yumuşatma, katman birleştirme
   marchingsquares.js  eş-yükselti halkaları (eyer çözümü dâhil)

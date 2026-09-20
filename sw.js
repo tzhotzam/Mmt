@@ -21,6 +21,7 @@ const ASSETS = [
   './js/mesh.js',
   './js/unfold.js',
   './js/demomesh.js',
+  './js/patterns.js',
   './js/preview2d.js',
   './js/preview3d.js',
   './js/modes/ribs.js',

@@ -15,6 +15,7 @@ import {
   pickBestAxis, projectedSize, heightmapWithCoverage,
 } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
+import { PATTERNS, PATTERN_KEYS, renderPattern } from '../js/patterns.js';
 import { otsuThreshold, distanceTransform, inflateSilhouette, blendRelief } from '../js/relief.js';
 import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/paint.js';
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
@@ -200,6 +201,85 @@ test('facetize panel kenarlarını düz bırakır', () => {
   for (let x = 0; x < 120; x++) {
     assert.ok(Number.isFinite(f.data[x]), `üst kenar @${x}`);
     assert.ok(Number.isFinite(f.data[119 * 120 + x]), `alt kenar @${x}`);
+  }
+});
+
+console.log('hazır desenler');
+
+test('her desen 0..1 aralığını tam kullanır ve geçersiz değer üretmez', () => {
+  for (const key of PATTERN_KEYS) {
+    const g = renderPattern(160, 110, key, { scale: 0.5, angle: 0.15, detail: 0.5, seed: 0.42 });
+    let min = Infinity, max = -Infinity;
+    for (const v of g.data) {
+      assert.ok(Number.isFinite(v), `${key}: geçersiz değer ${v}`);
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    assert.ok(Math.abs(min) < 1e-6 && Math.abs(max - 1) < 1e-6,
+      `${key}: aralık ${min}..${max} — normalize edilmiş olmalı`);
+  }
+});
+
+test('desenler düz değil — gerçek bir kabartma üretiyor', () => {
+  for (const key of PATTERN_KEYS) {
+    const g = renderPattern(160, 110, key, { scale: 0.5, angle: 0.15, detail: 0.5, seed: 0.42 });
+    let sum = 0, sum2 = 0;
+    for (const v of g.data) { sum += v; sum2 += v * v; }
+    const n = g.data.length;
+    const std = Math.sqrt(Math.max(0, sum2 / n - (sum / n) ** 2));
+    assert.ok(std > 0.05, `${key}: neredeyse düz (std ${std.toFixed(3)})`);
+  }
+});
+
+test('desenler deterministik: aynı ayar aynı sonucu verir', () => {
+  for (const key of PATTERN_KEYS) {
+    const o = { scale: 0.3, angle: 0.6, detail: 0.7, seed: 0.9 };
+    const a = renderPattern(80, 60, key, o);
+    const b = renderPattern(80, 60, key, o);
+    for (let i = 0; i < a.data.length; i++) {
+      assert.equal(a.data[i], b.data[i], `${key}: ${i}. hücre farklı`);
+    }
+  }
+});
+
+test('her desende tohum değişince desen de değişir', () => {
+  // "Rastgele" düğmesinin her desende işe yaraması gerekiyor.
+  for (const key of PATTERN_KEYS) {
+    const a = renderPattern(120, 90, key, { scale: 0.5, angle: 0.2, detail: 0.5, seed: 0.1 });
+    const b = renderPattern(120, 90, key, { scale: 0.5, angle: 0.2, detail: 0.5, seed: 0.83 });
+    const ayni = a.data.every((v, i) => Math.abs(v - b.data[i]) < 1e-9);
+    assert.ok(!ayni, `${key}: tohum deseni değiştirmiyor`);
+  }
+});
+
+test('ayarlar deseni gerçekten etkiliyor', () => {
+  for (const key of PATTERN_KEYS) {
+    const taban = renderPattern(100, 80, key, { scale: 0.2, angle: 0.1, detail: 0.3, seed: 0.5 });
+    const olcek = renderPattern(100, 80, key, { scale: 0.9, angle: 0.1, detail: 0.3, seed: 0.5 });
+    const farkli = !taban.data.every((v, i) => Math.abs(v - olcek.data[i]) < 1e-9);
+    assert.ok(farkli, `${key}: ölçek ayarı bir şey değiştirmiyor`);
+  }
+});
+
+test('her desenin etiketi ve açıklaması var', () => {
+  assert.ok(PATTERN_KEYS.length >= 6, `az desen: ${PATTERN_KEYS.length}`);
+  for (const key of PATTERN_KEYS) {
+    assert.ok(PATTERNS[key].label?.length > 2, `${key}: etiket yok`);
+    assert.ok(PATTERNS[key].hint?.length > 15, `${key}: açıklama yok`);
+    assert.equal(typeof PATTERNS[key].fn, 'function');
+  }
+});
+
+test('desenler üretim zincirinden geçiyor', () => {
+  for (const key of PATTERN_KEYS) {
+    const g = renderPattern(200, 140, key, { scale: 0.5, angle: 0.2, detail: 0.5, seed: 0.3 });
+    const r = generateRibs(applyFilters(g, { blur: 1 }), {
+      panelW: 900, panelH: 630, thickness: 18, gap: 6,
+    });
+    assert.ok(r.parts.length > 10, `${key}: parça üretilmedi`);
+    for (const part of r.parts) {
+      assert.ok(signedArea(part.outline) > 0, `${key}/${part.id}: geçersiz halka`);
+    }
   }
 });
 

@@ -100,7 +100,7 @@
         <input type="file" id="file-stl">
         <span>🧊 3B model (STL/OBJ)</span>
       </label>
-      <button id="btn-demo" class="upload ghost"><span>✨ Örnek desen</span></button>
+      <button id="btn-demo" class="upload ghost"><span>✨ Hazır desen</span></button>
     </div>
     <div class="segmented" role="radiogroup" aria-label="Kabartma yönü">
       <span class="segmented-title">Kabartma yönü — ne öne çıksın?</span>
@@ -116,6 +116,31 @@
         Görsel yüklediğinizde otomatik seçilir. Konu panele gömülüyorsa diğerine geçin.
       </p>
     </div>
+
+    <details id="pattern-block">
+      <summary>Hazır desenler</summary>
+      <div class="grid">
+        <label>Desen
+          <select id="p-pattern"></select>
+        </label>
+        <label>Ölçek
+          <input type="range" id="p-patScale" min="0" max="1" step="0.02" value="0.5">
+          <output for="p-patScale"></output>
+        </label>
+        <label>Açı
+          <input type="range" id="p-patAngle" min="0" max="1" step="0.02" value="0.1">
+          <output for="p-patAngle"></output>
+        </label>
+        <label>Yoğunluk
+          <input type="range" id="p-patDetail" min="0" max="1" step="0.02" value="0.5">
+          <output for="p-patDetail"></output>
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="btn-pattern-random">🎲 Rastgele</button>
+      </div>
+      <p id="pattern-hint" class="seg-hint"></p>
+    </details>
 
     <label class="view-axis">Modele bakış yönü
       <select id="p-viewAxis">
