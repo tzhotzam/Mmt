@@ -1,5 +1,8 @@
 // Tarayıcıya gerek duymadan üretim zincirini doğrular:  node tests/pipeline.test.mjs
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 import { makeGrid, applyFilters, gridFromImageData, sampleBilinear, suggestInvert } from '../js/heightmap.js';
 import { contourRings } from '../js/marchingsquares.js';
@@ -47,6 +50,55 @@ function testGrid(w = 160, h = 120) {
   }
   return g;
 }
+
+const KOK = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const oku = (f) => fs.readFileSync(path.join(KOK, f), 'utf8');
+
+console.log('sürüm tutarlılığı');
+test('index.html, main.js ve sw.js aynı sürümü taşıyor', () => {
+  // Üçü ayrışırsa tarayıcı yeni HTML'i eski JavaScript'le birleştirebiliyor:
+  // arayüzde yeni alanlar görünür ama onları dolduran kod yoktur.
+  const html = oku('index.html').match(/<meta name="app-version" content="([^"]+)"/)?.[1];
+  const js = oku('js/main.js').match(/const APP_VERSION = '([^']+)'/)?.[1];
+  const sw = oku('sw.js').match(/const VERSION = '([^']+)'/)?.[1];
+  assert.ok(html, 'index.html içinde app-version meta etiketi yok');
+  assert.ok(js, 'main.js içinde APP_VERSION yok');
+  assert.ok(sw, 'sw.js içinde VERSION yok');
+  assert.equal(js, html, `main.js (${js}) ile index.html (${html}) uyuşmuyor`);
+  assert.equal(sw, html, `sw.js (${sw}) ile index.html (${html}) uyuşmuyor`);
+});
+
+test('servis çalışanı tarayıcı önbelleğini atlıyor', () => {
+  const sw = oku('sw.js');
+  assert.ok(/cache:\s*'no-cache'/.test(sw),
+    "fetch çağrısında cache:'no-cache' yok — tarayıcı bayat dosya sunabilir");
+  assert.ok(/cache:\s*'reload'/.test(sw),
+    "kurulumda cache:'reload' yok — ilk yükleme bayat olabilir");
+});
+
+test('tüm js dosyaları servis çalışanı listesinde', () => {
+  const sw = oku('sw.js');
+  const dosyalar = [];
+  const tara = (dir) => {
+    for (const e of fs.readdirSync(path.join(KOK, dir), { withFileTypes: true })) {
+      if (e.isDirectory()) tara(`${dir}/${e.name}`);
+      else if (e.name.endsWith('.js')) dosyalar.push(`${dir}/${e.name}`);
+    }
+  };
+  tara('js');
+  for (const f of dosyalar) {
+    assert.ok(sw.includes(`./${f}`), `${f} sw.js listesinde yok — çevrimdışı çalışmaz`);
+  }
+});
+
+test('desen seçeneklerinin HTML yedeği gerçek desenlerle aynı', () => {
+  // JS eski sürümden gelirse liste boş kalmasın diye HTML'de de duruyor.
+  const html = oku('index.html');
+  const blok = html.match(/<select id="p-pattern">([\s\S]*?)<\/select>/)?.[1] || '';
+  const degerler = [...blok.matchAll(/value="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(degerler, PATTERN_KEYS,
+    `HTML yedek listesi patterns.js ile uyuşmuyor:\n  HTML: ${degerler}\n  JS:   ${PATTERN_KEYS}`);
+});
 
 console.log('geom');
 test('signedArea CCW pozitif', () => {

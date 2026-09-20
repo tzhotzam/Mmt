@@ -1,7 +1,13 @@
 // Çevrimdışı çalışma için basit önbellek. three.js CDN'den geldiği için
 // 3B önizleme çevrimdışı devre dışı kalır; üretim ve dışa aktarma çalışır.
+//
+// SÜRÜM: index.html içindeki <meta name="app-version"> ve main.js içindeki
+// APP_VERSION ile AYNI olmalı. Üçü ayrışırsa tarayıcı yeni HTML'i eski
+// JavaScript'le birleştirebilir; testler bu üçünü karşılaştırır.
 
-const CACHE = 'cnc-panel-v10';
+const VERSION = '2026-09-20-a';
+const CACHE = `cnc-panel-${VERSION}`;
+
 const ASSETS = [
   './',
   './index.html',
@@ -34,7 +40,8 @@ const ASSETS = [
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => c.addAll(ASSETS))
+      // 'reload' → kurulum dosyaları HTTP önbelleğinden değil, sunucudan gelsin.
+      .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
       .catch(() => {})
   );
@@ -51,12 +58,20 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  // Ağ öncelikli, çevrimdışında önbellek: geliştirirken bayat dosya sorunu olmaz.
+
+  // Ağ öncelikli. `cache: 'no-cache'` kritik: aksi hâlde istek tarayıcının
+  // KENDİ HTTP önbelleğinden karşılanabiliyor. GitHub Pages dosyalara birkaç
+  // dakikalık ömür verdiği için, yeni index.html ile eski main.js aynı anda
+  // sunulabiliyordu — arayüzde yeni alanlar çıkıp onları dolduran kod
+  // bulunmuyordu. 'no-cache' sunucuya doğrulatır; değişmemişse 304 döner,
+  // yani maliyeti düşüktür.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html')))

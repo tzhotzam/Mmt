@@ -21,6 +21,39 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
+const APP_VERSION = '2026-09-20-a';
+
+/**
+ * HTML ile JavaScript aynı sürümden mi?
+ *
+ * Tarayıcı bazen yeni index.html'i alıp eski main.js'i önbellekten veriyor.
+ * O durumda arayüzde yeni alanlar görünür ama onları dolduran kod yoktur —
+ * desen listesi "Seçenek Yok" kalır gibi. Uyuşmazlıkta önbellek temizlenip
+ * sayfa bir kez yenilenir; ikinci kez de uyuşmazsa kullanıcıya söylenir.
+ */
+(function checkVersion() {
+  const html = document.querySelector('meta[name="app-version"]')?.content;
+  if (!html || html === APP_VERSION) return;
+
+  const ANAHTAR = 'surum-yenileme';
+  if (sessionStorage.getItem(ANAHTAR) === html) {
+    const el = document.getElementById('source-status');
+    if (el) {
+      el.textContent =
+        'Tarayıcı eski bir sürümü gösteriyor. Sayfayı kapatıp yeniden açın ' +
+        '(ana ekrandan açtıysanız uygulamayı tamamen kapatın).';
+      el.style.color = 'var(--danger)';
+    }
+    return;
+  }
+  try { sessionStorage.setItem(ANAHTAR, html); } catch { /* yoksay */ }
+
+  const temizle = window.caches
+    ? caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k))))
+    : Promise.resolve();
+  temizle.catch(() => {}).then(() => location.reload());
+})();
+
 const GRID_MAX = 768;
 
 /** Filtre yarıçapları mm cinsinden girilir; ızgara örneğine burada çevrilir. */
@@ -255,12 +288,15 @@ function reportMesh(r) {
 /** Desen listesini doldurur ve açıklamayı bağlar. */
 (function initPatterns() {
   const sel = els['p-pattern'];
+  const secili = sel.value;
+  sel.innerHTML = '';   // HTML'deki yedek listenin yerine gerçek listeyi kur
   for (const key of PATTERN_KEYS) {
     const o = document.createElement('option');
     o.value = key;
     o.textContent = PATTERNS[key].label;
     sel.appendChild(o);
   }
+  if (PATTERN_KEYS.includes(secili)) sel.value = secili;
 })();
 
 function patternHint() {
@@ -955,5 +991,9 @@ createPreview3d(els['view-3d']).then((p) => {
 });
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js')
+    // Her açılışta yeni sürüm var mı diye bak — beklemede kalan bir servis
+    // çalışanı eski dosyaları sunmaya devam edebiliyor.
+    .then((reg) => reg.update())
+    .catch(() => {});
 }
