@@ -5,7 +5,10 @@ import { parseMesh, heightmapFromStl, pickBestAxis, projectedSize } from './stl.
 import { facetize } from './facet.js';
 import { inflateSilhouette, blendRelief } from './relief.js';
 import { demoMeshTris } from './demomesh.js';
-import { PATTERNS, PATTERN_KEYS, renderPattern } from './patterns.js';
+import {
+  PATTERNS, PATTERN_KEYS, renderPattern, textSeed,
+  encodePatternCode, decodePatternCode,
+} from './patterns.js';
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
 import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
@@ -21,7 +24,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-a';
+const APP_VERSION = '2026-09-20-b';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -304,6 +307,44 @@ function patternHint() {
   els['pattern-hint'].textContent = PATTERNS[key]?.hint || '';
 }
 
+/**
+ * Etkin tohum: metin yazıldıysa ondan türetilir, yoksa rastgele sayıdan.
+ * Metin tohumu paneli kişiye bağlar — aynı isim hep aynı deseni verir.
+ */
+function etkinTohum() {
+  const metin = els['p-seedText'].value.trim();
+  return metin ? textSeed(metin) : state.patternSeed;
+}
+
+function patternOpts() {
+  return {
+    scale: num('p-patScale', 0.5),
+    angle: num('p-patAngle', 0.1),
+    detail: num('p-patDetail', 0.5),
+    seed: etkinTohum(),
+  };
+}
+
+function refreshPatternCode() {
+  const key = els['p-pattern'].value || PATTERN_KEYS[0];
+  els['p-patternCode'].value = encodePatternCode(key, patternOpts());
+}
+
+/** Koddan ayarları geri yükler. Bozuk kod sessizce yok sayılır. */
+function applyPatternCode() {
+  const c = decodePatternCode(els['p-patternCode'].value);
+  if (!c) return false;
+  els['p-pattern'].value = c.key;
+  els['p-patScale'].value = c.scale;
+  els['p-patAngle'].value = c.angle;
+  els['p-patDetail'].value = c.detail;
+  els['p-seedText'].value = '';      // kod sayısal tohum taşır
+  state.patternSeed = c.seed;
+  syncRangeOutputs();
+  applyPattern();
+  return true;
+}
+
 function applyPattern() {
   if (state.mode === 'facets') {
     // Poligonal kabuk kapalı bir hacim ister; düz desen işe yaramaz.
@@ -316,16 +357,15 @@ function applyPattern() {
   }
   const key = els['p-pattern'].value || PATTERN_KEYS[0];
   const [cols, rows] = gridDimsFor(state.patternAspect);
-  state.sourceGrid = renderPattern(cols, rows, key, {
-    scale: num('p-patScale', 0.5),
-    angle: num('p-patAngle', 0.1),
-    detail: num('p-patDetail', 0.5),
-    seed: state.patternSeed,
-  });
+  state.sourceGrid = renderPattern(cols, rows, key, patternOpts());
+  refreshPatternCode();
   state.tris = null;
   state.aspect = state.patternAspect;
   state.meshInfo = null;
-  setSourceStatus(`Desen: ${PATTERNS[key].label}`);
+  const metin = els['p-seedText'].value.trim();
+  setSourceStatus(
+    `Desen: ${PATTERNS[key].label}${metin ? ` — "${metin}" tohumundan` : ''}`
+  );
   patternHint();
   resetPaint();
   setInvert(false);
@@ -929,6 +969,7 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
   input.addEventListener(evt, () => {
     syncRangeOutputs();
     if (input.id.startsWith('p-brush')) { saveSettings(); return; }
+    if (input.id === 'p-patternCode' || input.id === 'p-seedText') return;
     if (input.id.startsWith('p-pat')) { saveSettings(); applyPattern(); return; }
     if (input.id === 'p-panelW' || input.id === 'p-lockAspect') syncAspect();
     if (input.id === 'p-sheetW' || input.id === 'p-sheetH') syncSheetPreset();
@@ -974,8 +1015,25 @@ els['btn-demo'].onclick = () => {
   applyPattern();
 };
 els['btn-pattern-random'].onclick = () => {
+  els['p-seedText'].value = '';   // rastgele, kişiye özel tohumun yerini alır
   state.patternSeed = Math.random();
   applyPattern();
+};
+
+els['p-seedText'].oninput = () => { saveSettings(); applyPattern(); };
+
+els['p-patternCode'].onchange = () => {
+  if (!applyPatternCode()) refreshPatternCode();   // bozuksa eskisine dön
+};
+
+els['btn-copy-code'].onclick = async () => {
+  const kod = els['p-patternCode'].value;
+  try {
+    await navigator.clipboard.writeText(kod);
+    setSourceStatus(`Kod kopyalandı: ${kod}`);
+  } catch {
+    els['p-patternCode'].select();   // pano yoksa seçili bırak, elle kopyalasın
+  }
 };
 els['p-pattern'].onchange = () => { saveSettings(); applyPattern(); };
 

@@ -18,7 +18,10 @@ import {
   pickBestAxis, projectedSize, heightmapWithCoverage,
 } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
-import { PATTERNS, PATTERN_KEYS, renderPattern } from '../js/patterns.js';
+import {
+  PATTERNS, PATTERN_KEYS, renderPattern, textSeed,
+  encodePatternCode, decodePatternCode,
+} from '../js/patterns.js';
 import { otsuThreshold, distanceTransform, inflateSilhouette, blendRelief } from '../js/relief.js';
 import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/paint.js';
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
@@ -292,6 +295,70 @@ test('desenler deterministik: aynı ayar aynı sonucu verir', () => {
       assert.equal(a.data[i], b.data[i], `${key}: ${i}. hücre farklı`);
     }
   }
+});
+
+test('dalga tohumla YAPISAL olarak değişiyor, sadece kaymıyor', () => {
+  // Tohum yalnızca fazı kaydırsaydı desenler birbirinin ötelenmiş hâli
+  // olurdu ve ortalama fark çok küçük kalırdı.
+  const uret = (seed) => renderPattern(120, 90, 'dalga',
+    { scale: 0.5, angle: 0.1, detail: 0.5, seed });
+  const a = uret(0.06);
+  let enKucukFark = Infinity;
+  for (const seed of [0.18, 0.31, 0.43, 0.56, 0.69, 0.81]) {
+    const b = uret(seed);
+    let toplam = 0;
+    for (let i = 0; i < a.data.length; i++) toplam += Math.abs(a.data[i] - b.data[i]);
+    enKucukFark = Math.min(enKucukFark, toplam / a.data.length);
+  }
+  assert.ok(enKucukFark > 0.1,
+    `dalgalar birbirine çok benziyor (en küçük fark ${enKucukFark.toFixed(3)})`);
+});
+
+test('textSeed: aynı metin aynı tohum, bir harf fark bile ayırır', () => {
+  assert.equal(textSeed('Ahmet'), textSeed('Ahmet'));
+  assert.notEqual(textSeed('Ahmet'), textSeed('Ahmed'));
+  assert.notEqual(textSeed('Ahmet'), textSeed('ahmet'));
+  assert.notEqual(textSeed('Ayşe'), textSeed('Ayse'));
+  for (const t of ['', 'a', 'Mehmet 2026', 'çok uzun bir müşteri adı ve tarih 12.03.2026']) {
+    const v = textSeed(t);
+    assert.ok(v >= 0 && v < 1 && Number.isFinite(v), `${t} → ${v}`);
+  }
+});
+
+test('metin tohumu farklı kişilere farklı desen verir', () => {
+  const desenler = ['Ahmet', 'Ayşe', 'Mehmet 2026', 'Zeynep'].map((ad) =>
+    renderPattern(100, 75, 'dalga', { scale: 0.5, angle: 0.1, detail: 0.5, seed: textSeed(ad) }));
+  for (let i = 0; i < desenler.length; i++) {
+    for (let j = i + 1; j < desenler.length; j++) {
+      const ayni = desenler[i].data.every((v, k) => Math.abs(v - desenler[j].data[k]) < 1e-9);
+      assert.ok(!ayni, `${i}. ve ${j}. desen aynı çıktı`);
+    }
+  }
+});
+
+test('desen kodu aynı deseni birebir geri üretir', () => {
+  for (const key of PATTERN_KEYS) {
+    const o = { scale: 0.37, angle: 0.62, detail: 0.81, seed: 0.911427 };
+    const kod = encodePatternCode(key, o);
+    const geri = decodePatternCode(kod);
+    assert.ok(geri, `${key}: kod çözülemedi (${kod})`);
+    assert.equal(geri.key, key);
+    const a = renderPattern(90, 70, key, o);
+    const b = renderPattern(90, 70, geri.key, geri);
+    for (let i = 0; i < a.data.length; i++) {
+      assert.ok(Math.abs(a.data[i] - b.data[i]) < 1e-6,
+        `${key}: ${i}. hücre yeniden üretilemedi`);
+    }
+  }
+});
+
+test('bozuk desen kodu reddedilir', () => {
+  for (const kod of ['', 'DALGA', 'DALGA.50.10.50', 'YOK.50.10.50.ABC',
+                     'DALGA.999.10.50.ABC', 'DALGA.50.10.50.!!!', 'DALGA.-5.10.50.ABC']) {
+    assert.equal(decodePatternCode(kod), null, `kabul edilmemeliydi: ${JSON.stringify(kod)}`);
+  }
+  // Küçük harf ve boşluk hoş görülür — telefonda yazarken kolaylık.
+  assert.ok(decodePatternCode('  dalga.50.10.50.f2n1ko  '));
 });
 
 test('her desende tohum değişince desen de değişir', () => {

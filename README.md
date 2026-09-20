@@ -72,8 +72,20 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 
    **Hazır desenler** kodla üretilir, dosya olarak saklanmaz: Dalga, Su
    halkaları, Topografya, Kumul, Voronoi, Dağ silüeti, Moiré ve Akustik
-   difüzör. Her birinin ölçek, açı ve yoğunluk ayarı var; "Rastgele" düğmesi
-   aynı desenin başka bir varyasyonunu üretir. İnternetten hazır model
+   difüzör. Her birinin ölçek, açı ve yoğunluk ayarı var.
+
+   **Dalga deseni tohumdan kurulur, sadece kaydırılmaz.** Katman sayısı, her
+   katmanın biçimi (sinüs / üçgen / sırt / testere), açısı, frekansı, nasıl
+   birleştikleri ve alan bükülmesi tohumdan türetilir — aynı ayarlarla bile
+   her tohum başka bir desen verir.
+
+   **Tohum** alanına isim, tarih, ne yazılırsa yazılsın ondan türetilir:
+   aynı metin hep aynı deseni verir, bir harf değişse bile desen tamamen
+   değişir. "Bu panel sizin isminizden üretildi" diyebilmek ve altı ay sonra
+   aynı paneli yeniden üretebilmek için.
+
+   **Desen kodu** (`DALGA.50.10.50.F2N1KO`) tüm ayarları tek satırda taşır.
+   Kopyalayıp saklayın veya yapıştırıp aynı deseni geri getirin. İnternetten hazır model
    indirip gömmek yerine bu yol seçildi: indirilebilir olmak ticari kullanım
    hakkı vermez (çoğu ücretsiz model CC-BY-NC lisanslıdır) ve üretilen
    desende lisans sorunu olmaz, dosya boyutu da sıfırdır.

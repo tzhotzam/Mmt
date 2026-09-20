@@ -44,6 +44,47 @@ function fbm(x, y, seed, octaves = 4, lacunarity = 2, gain = 0.5) {
   return sum / norm;
 }
 
+/** Sıralı sözde-rastgele üreteç (mulberry32) — hazırlık aşamasında kullanılır. */
+function rng32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Metni sayısal tohuma çevirir (FNV-1a).
+ *
+ * Müşterinin adı, tarih, ne yazılırsa — aynı metin hep aynı deseni verir.
+ * "Bu desen sizin isminizden üretildi" diyebilmek için gerekli; ayrıca altı
+ * ay sonra aynı paneli yeniden üretmeyi garanti eder.
+ */
+export function textSeed(text) {
+  let h = 0x811c9dc5;
+  const s2 = String(text || '');
+  for (let i = 0; i < s2.length; i++) {
+    h ^= s2.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) / 4294967296;
+}
+
+/** Dalga biçimleri — hepsi t (radyan) alır, 0..1 döner. */
+const DALGA_BICIMLERI = {
+  sinus: (t) => 0.5 + 0.5 * Math.sin(t),
+  ucgen: (t) => {
+    const x = ((t / (Math.PI * 2)) % 1 + 1) % 1;
+    return x < 0.5 ? x * 2 : 2 - x * 2;
+  },
+  sirt: (t) => Math.abs(Math.sin(t)),          // keskin vadiler
+  testere: (t) => ((t / (Math.PI * 2)) % 1 + 1) % 1,  // keskin tepeler
+};
+const BICIM_ADLARI = Object.keys(DALGA_BICIMLERI);
+
 function rotate(u, v, angleRad) {
   const c = Math.cos(angleRad), s = Math.sin(angleRad);
   return [u * c - v * s, u * s + v * c];
@@ -54,12 +95,77 @@ function rotate(u, v, angleRad) {
 export const PATTERNS = {
   dalga: {
     label: 'Dalga',
-    hint: 'Klasik parametrik dalga paneli. Açı lamellere göre eğimi belirler.',
-    fn: (u, v, p) => {
-      const [x, y] = rotate(u - 0.5, v - 0.5, p.angle);
-      const f = 4 + p.scale * 22;
-      const bend = Math.sin(y * f * 0.45 + p.seed) * (0.3 + p.detail * 1.4);
-      return 0.5 + 0.5 * Math.sin(x * f + bend);
+    hint: 'Klasik parametrik dalga paneli. Rastgele düğmesi dalganın yapısını '
+      + 'baştan kurar: kaç katman, hangi biçim, nasıl birleşiyor.',
+    /**
+     * Dalga sadece bir sinüs değil, TOHUMDAN KURULAN bir formül.
+     *
+     * Tohum yalnızca fazı kaydırsaydı her rastgelede aynı dalganın ötelenmiş
+     * hâli çıkardı. Bunun yerine katman sayısı, her katmanın biçimi (sinüs /
+     * üçgen / sırt / testere), açısı, frekansı, birleşme biçimi ve alan
+     * bükülmesi tohumdan türetiliyor — aynı ayarlarla bile baştan başka bir
+     * desen çıkıyor.
+     */
+    prepare: (p) => {
+      const r = rng32(p.seedInt || 1);
+      const katmanSayisi = 1 + Math.floor(r() * 3);
+      const katmanlar = [];
+      for (let i = 0; i < katmanSayisi; i++) {
+        katmanlar.push({
+          frekans: (3 + p.scale * 20) * (i === 0 ? 1 : 0.35 + r() * 1.6),
+          aci: p.angle + (r() - 0.5) * (0.25 + p.detail * 2.4),
+          faz: r() * Math.PI * 2,
+          genlik: (i === 0 ? 1 : 0.35 + r() * 0.5),
+          bicim: BICIM_ADLARI[Math.floor(r() * BICIM_ADLARI.length)],
+        });
+      }
+      return {
+        katmanlar,
+        // Alan bükülmesi: koordinatlar gürültüyle kaydırılır, dalga akar.
+        bukme: r() < 0.65 ? (0.15 + r() * 0.85) * p.detail : 0,
+        bukmeFrekansi: 1 + r() * 3,
+        birlesim: ['topla', 'carp', 'enbuyuk', 'modulasyon'][Math.floor(r() * 4)],
+        zarf: ['yok', 'yok', 'merkez', 'kosegen'][Math.floor(r() * 4)],
+        zarfAci: r() * Math.PI,
+      };
+    },
+    fn: (u, v, p, st) => {
+      let uu = u - 0.5;
+      let vv = v - 0.5;
+      if (st.bukme > 0) {
+        const f = st.bukmeFrekansi;
+        uu += (fbm(u * f, v * f, p.seedInt + 11, 3) - 0.5) * st.bukme;
+        vv += (fbm(u * f + 5.7, v * f - 3.1, p.seedInt + 29, 3) - 0.5) * st.bukme;
+      }
+
+      let deger = st.birlesim === 'carp' ? 1 : st.birlesim === 'enbuyuk' ? 0 : 0;
+      let agirlik = 0;
+      let modFaz = 0;
+
+      for (const k of st.katmanlar) {
+        const [x] = rotate(uu, vv, k.aci);
+        const t = x * k.frekans + k.faz + modFaz;
+        const h = DALGA_BICIMLERI[k.bicim](t);
+        if (st.birlesim === 'carp') deger *= 0.35 + 0.65 * h;
+        else if (st.birlesim === 'enbuyuk') deger = Math.max(deger, h * k.genlik);
+        else if (st.birlesim === 'modulasyon') {
+          // Her katman bir sonrakinin fazını sürüyor — girift dalgalar.
+          deger = h;
+          modFaz += (h - 0.5) * 6 * k.genlik;
+        } else {
+          deger += h * k.genlik;
+          agirlik += k.genlik;
+        }
+      }
+      if (st.birlesim === 'topla') deger = agirlik > 0 ? deger / agirlik : deger;
+
+      if (st.zarf === 'merkez') {
+        deger *= 1 - Math.min(1, Math.hypot(uu, vv) * 1.6) * 0.75;
+      } else if (st.zarf === 'kosegen') {
+        const [e] = rotate(uu, vv, st.zarfAci);
+        deger *= 0.3 + 0.7 * (e + 0.5);
+      }
+      return deger;
     },
   },
 
@@ -200,14 +306,62 @@ export function renderPattern(cols, rows, key, opts = {}) {
     seedInt: Math.round(seed * 100000) | 0,
   };
 
+  // Hazırlık bir kez çalışır: desenin yapısı (katmanlar, birleşim biçimi)
+  // tohumdan burada kurulur, piksel döngüsünde değil.
+  const st = desen.prepare ? desen.prepare(p) : null;
+
   const g = makeGrid(cols, rows);
   for (let y = 0; y < rows; y++) {
     const v = rows > 1 ? y / (rows - 1) : 0.5;
     for (let x = 0; x < cols; x++) {
       const u = cols > 1 ? x / (cols - 1) : 0.5;
-      const h = desen.fn(u, v, p);
+      const h = desen.fn(u, v, p, st);
       g.data[y * cols + x] = Number.isFinite(h) ? Math.min(1, Math.max(0, h)) : 0;
     }
   }
   return normalize(g);
+}
+
+// ------------------------------------------------------------- DESEN KODU
+
+/**
+ * Tüm desen ayarlarını kısa bir koda çevirir.
+ *
+ * Müşteri bir deseni onayladığında altı ay sonra aynısını yeniden üretmek
+ * gerekir. JSON dosyası da bunu yapar ama telefonda kod okumak/yazmak daha
+ * pratiktir: "DALGA.50.10.50.F7K2P" tek satırda paylaşılır.
+ */
+export function encodePatternCode(key, opts = {}) {
+  const yuzde = (v) => String(Math.round(Math.min(1, Math.max(0, v ?? 0)) * 100)).padStart(2, '0');
+  const tohum = Math.round(Math.min(1, Math.max(0, opts.seed ?? 0)) * 1e9)
+    .toString(36).toUpperCase();
+  return [
+    (PATTERNS[key] ? key : PATTERN_KEYS[0]).toUpperCase(),
+    yuzde(opts.scale), yuzde(opts.angle), yuzde(opts.detail), tohum,
+  ].join('.');
+}
+
+/**
+ * Kodu ayarlara çevirir. Bozuk kodda null döner — kullanıcı yazarken
+ * her tuşta desen bozulmasın diye çağıran taraf bunu sessizce yok sayabilir.
+ */
+export function decodePatternCode(code) {
+  const parcalar = String(code || '').trim().toUpperCase().split('.');
+  if (parcalar.length !== 5) return null;
+  const [ad, s, a, d, t] = parcalar;
+  const key = ad.toLowerCase();
+  if (!PATTERNS[key]) return null;
+
+  const sayi = (x) => {
+    if (!/^\d{1,3}$/.test(x)) return null;
+    const n = Number(x);
+    return n >= 0 && n <= 100 ? n / 100 : null;
+  };
+  const scale = sayi(s), angle = sayi(a), detail = sayi(d);
+  if (scale === null || angle === null || detail === null) return null;
+  if (!/^[0-9A-Z]{1,7}$/.test(t)) return null;
+
+  const seed = parseInt(t, 36) / 1e9;
+  if (!Number.isFinite(seed) || seed < 0 || seed > 1) return null;
+  return { key, scale, angle, detail, seed };
 }

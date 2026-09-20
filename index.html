@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-09-20-a">
+<meta name="app-version" content="2026-09-20-b">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -149,8 +149,18 @@
           <output for="p-patDetail"></output>
         </label>
       </div>
+      <div class="grid">
+        <label>Tohum <small>isim, tarih, ne yazarsanız</small>
+          <input type="text" id="p-seedText" placeholder="örn. Ahmet 2026" autocomplete="off">
+        </label>
+        <label>Desen kodu <small>kaydet / geri yükle</small>
+          <input type="text" id="p-patternCode" placeholder="DALGA.50.10.50.F2N1KO"
+                 autocomplete="off" autocapitalize="characters" spellcheck="false">
+        </label>
+      </div>
       <div class="actions">
         <button type="button" id="btn-pattern-random">🎲 Rastgele</button>
+        <button type="button" id="btn-copy-code" class="ghost">Kodu kopyala</button>
       </div>
       <p id="pattern-hint" class="seg-hint"></p>
     </details>
