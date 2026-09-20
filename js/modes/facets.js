@@ -53,6 +53,24 @@ export function generateFacets(rawTris, userParams = {}) {
   }
 
   const a = analyze(mesh, p);
+
+  // Her şey elendiyse uygulama sessizce boş çıktı veriyordu: ne parça ne
+  // uyarı. Kullanıcı bomboş bir ekrana bakıp yazılımın bozuk olduğunu
+  // düşünür. Sebebini say ve söyle.
+  if (!a.facets.some(Boolean)) {
+    const toplam = a.elenen.halka + a.elenen.kenar + a.elenen.duzlem + a.elenen.alan;
+    const neden = a.elenen.alan === toplam && toplam > 0
+      ? `Fasetlerin tamamı (${toplam} adet) "En küçük faset" değerinin ` +
+        `(${p.minArea} mm²) altında kaldı. Heykel boyunu büyütün ya da bu değeri düşürün.`
+      : `${toplam} fasetin tamamı elendi (alan ${a.elenen.alan}, az komşu ${a.elenen.kenar}, ` +
+        `sınır çıkmadı ${a.elenen.halka}, bozuk üçgen ${a.elenen.duzlem}). ` +
+        'Model kapalı ve temiz bir hacim olmayabilir.';
+    return {
+      parts: [], seams: [], folds: [], info: emptyInfo(p, scaled),
+      warnings: [`Hiç parça üretilemedi. ${neden}`],
+    };
+  }
+
   if (a.openEdges > 0) {
     warnings.push(
       `${a.openEdges} kenarın karşı tarafı yok — model kapalı bir hacim değil. ` +
@@ -135,22 +153,27 @@ function analyze(mesh, p) {
   const neighborOf = new Map();
   let openEdges = 0;
 
+  // Faset neden elendi? Hepsini "en küçük faset filtresi" diye raporlamak
+  // kullanıcıyı yanlış ayara gönderiyordu: alan filtresi hiçbir şey elemese
+  // bile mesaj onu suçluyordu.
+  const elenen = { halka: 0, kenar: 0, duzlem: 0, alan: 0 };
+
   groups.forEach((group, gi) => {
     const loop = boundaries[gi].loops[0];
-    if (!loop || loop.length < 3) return;
+    if (!loop || loop.length < 3) { elenen.halka++; return; }
 
     const runs = splitIntoRuns(loop, gi, edgeOwners);
-    if (runs.length < 3) return;
+    if (runs.length < 3) { elenen.kenar++; return; }
 
     const basis = planeBasis(group.normal);
     const verts = runs.map((r) => r.start);
     const { pts, deviation } = projectToPlane(
       verts.map((vi) => mesh.vertices[vi]), basis, centroids[gi]
     );
-    if (pts.length < 3) return;
+    if (pts.length < 3) { elenen.duzlem++; return; }
 
     const area = Math.abs(signedArea(pts));
-    if (area < p.minArea) return;
+    if (area < p.minArea) { elenen.alan++; return; }
 
     // Halkayı CCW'ye çevir; kenar verilerini aynı sıraya taşı.
     let ring = pts;
@@ -214,7 +237,7 @@ function analyze(mesh, p) {
     neighborOf.set(gi, list.filter((n) => facets[n.facet]));
   }
 
-  return { mesh, groups, centroids, facets, seams, seamIdByKey, neighborOf, openEdges };
+  return { mesh, groups, centroids, facets, seams, seamIdByKey, neighborOf, openEdges, elenen };
 }
 
 // ------------------------------------------------------------ GEVŞEK FASET
@@ -258,7 +281,7 @@ function buildLooseParts(a, p, warnings) {
     });
   });
 
-  linkSeams(a.seams, groupToId, warnings);
+  linkSeams(a.seams, groupToId, warnings, a.elenen);
   return { parts };
 }
 
@@ -382,7 +405,8 @@ function buildPatchParts(a, p, warnings) {
 
   // Büküme dönüşen dikişler artık kaynaklanmıyor — listeden düşür.
   const welded = a.seams.filter((s) => weldedKeys.has(s.key));
-  linkSeams(welded, groupToId, warnings);
+  linkSeams(welded, groupToId, warnings, a.elenen,
+    'bazı fasetler hiçbir yaprağa yerleştirilemedi (yaprak başına faset sınırını veya levha ölçüsünü artırın)');
   a.seams.length = 0;
   a.seams.push(...welded);
 
@@ -397,16 +421,49 @@ function buildPatchParts(a, p, warnings) {
   return { parts, folds };
 }
 
-function linkSeams(seams, groupToId, warnings) {
+/**
+ * Dikişleri parça kimlikleriyle eşler. Karşılığı bulunmayan dikiş "öksüz"dür.
+ *
+ * Öksüzlüğün sebebi TEK DEĞİL, ve hepsini "en küçük faset filtresi" diye
+ * raporlamak kullanıcıyı yanlış ayara gönderiyordu: alan filtresini sıfıra
+ * çekmek hiçbir şeyi değiştirmediği hâlde mesaj onu suçluyordu. Sebep,
+ * çözümlemede tutulan sayaçlardan okunup yazılır.
+ */
+function linkSeams(seams, groupToId, warnings, elenen = null, baglam = '') {
   let orphan = 0;
   for (const seam of seams) {
     seam.aId = groupToId.get(seam.a) || null;
     seam.bId = groupToId.get(seam.b) || null;
     if (!seam.aId || !seam.bId) orphan++;
   }
-  if (orphan) {
-    warnings.push(`${orphan} dikişin karşı parçası elendi (en küçük faset filtresi).`);
+  if (!orphan) return;
+
+  const sebepler = [];
+  if (elenen) {
+    if (elenen.alan) {
+      sebepler.push(`${elenen.alan} faset en küçük faset alanının altında kaldı ` +
+        '("En küçük faset" değerini düşürün ya da heykel boyunu büyütün)');
+    }
+    if (elenen.kenar) {
+      sebepler.push(`${elenen.kenar} faset üçten az komşuya dayanıyor ` +
+        '(modelde şerit/ince yüzey var)');
+    }
+    if (elenen.halka) {
+      sebepler.push(`${elenen.halka} fasetin kapalı sınırı çıkarılamadı ` +
+        '(delik, çakışan yüzey ya da ters normal)');
+    }
+    if (elenen.duzlem) {
+      sebepler.push(`${elenen.duzlem} faset düzleme yassıldı (bozuk üçgenler)`);
+    }
   }
+  if (!sebepler.length && baglam) sebepler.push(baglam);
+
+  warnings.push(
+    `${orphan} dikişin karşı parçası yok — bu dikişler kaynaklanamaz. ` +
+    (sebepler.length ? `Sebep: ${sebepler.join('; ')}.` : 'Sebep çözümlenemedi.') +
+    ' Model kapalı ve temiz bir hacim değilse Blender\'da "Merge by Distance" + ' +
+    '"Recalculate Normals" uygulayıp tekrar deneyin.'
+  );
 }
 
 // ------------------------------------------------------------- YARDIMCILAR

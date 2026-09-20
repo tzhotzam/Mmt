@@ -805,6 +805,46 @@ function icoTris() {
   return f.map(([a, b, c]) => [v[a], v[b], v[c]]);
 }
 
+test('hiç faset kalmayınca sessiz kalmaz, sebebini söyler', () => {
+  // En küçük faset değeri modelin tamamını eliyor. Eskiden uygulama boş
+  // çıktı veriyordu: ne parça ne uyarı. Kullanıcı bomboş ekrana bakıyordu.
+  const r = generateFacets(icoTris(), { targetSize: 100, minArea: 100000 });
+  assert.equal(r.parts.length, 0);
+  assert.equal(r.warnings.length, 1, 'tek ve net bir uyarı bekleniyor');
+  assert.match(r.warnings[0], /Hiç parça üretilemedi/);
+  assert.match(r.warnings[0], /En küçük faset/, 'suçlu ayar adıyla anılmalı');
+  assert.match(r.warnings[0], /100000 mm²/, 'kullanılan değer yazılmalı');
+});
+
+test('öksüz dikiş uyarısı gerçek sebebi gösterir', () => {
+  // Eski mesaj her durumu "en küçük faset filtresi" diye raporluyordu;
+  // filtre hiçbir şey elemese bile. Sebep artık sayılardan geliyor.
+  const buyuk = icoTris().map((t) => t.map(([x, y, z]) => [x, y, z]));
+  const r = generateFacets(buyuk, { targetSize: 300, minArea: 2000 });
+  const u = r.warnings.find((w) => w.includes('karşı parçası'));
+  if (u) {
+    assert.match(u, /Sebep:/, 'sebep yazılmıyor');
+    assert.match(u, /kaynaklanamaz/, 'sonucun ne olduğu söylenmiyor');
+  }
+  // Filtre hiçbir şeyi elemediğinde uyarı da çıkmamalı.
+  const temiz = generateFacets(icoTris(), { targetSize: 600, minArea: 1 });
+  assert.equal(temiz.warnings.filter((w) => w.includes('karşı parçası')).length, 0,
+    'eleme yokken öksüz dikiş uyarısı çıkmamalı');
+});
+
+test('eleme sebepleri ayrı ayrı sayılır', () => {
+  const js = oku('js/modes/facets.js');
+  assert.ok(/elenen = \{ halka: 0, kenar: 0, duzlem: 0, alan: 0 \}/.test(js),
+    'eleme sayaçları yok');
+  // Dört eleme noktasının hepsi sayılmalı; biri sayılmazsa sebep yanlış çıkar.
+  for (const k of ['elenen.halka++', 'elenen.kenar++', 'elenen.duzlem++', 'elenen.alan++']) {
+    assert.ok(js.includes(k), `${k} sayılmıyor`);
+  }
+  // Eski mesaj, sebebi ne olursa olsun alan filtresini suçluyordu.
+  assert.ok(!/karşı parçası elendi \(en küçük faset filtresi\)/.test(js),
+    'eski, her sebebi alan filtresine yıkan mesaj hâlâ duruyor');
+});
+
 test('buildMesh köşeleri kaynaklar', () => {
   const mesh = buildMesh(cubeTris(10));
   assert.equal(mesh.vertices.length, 8, `küpte 8 köşe olmalı, ${mesh.vertices.length} çıktı`);
