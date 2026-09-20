@@ -126,6 +126,22 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 Girdiğiniz ayarlar tarayıcıda saklanır; her açılışta yeniden girmeniz
 gerekmez. "Ayarları sıfırla" varsayılanlara döndürür.
 
+### Hangi kaynak hangi moda gider?
+Lamel modunun yatayda çözünürlüğü **lamel sayısıdır**. 882 mm'lik panelde
+24 mm adımla 37 lamel var — yani yatayda 37 "piksel". Adımdan ince olan her
+şey kaybolur, bu bir ayar meselesi değil geometridir.
+
+- **Sürekli tonlu fotoğraf, manzara, soyut biçim** → Lamel / Dalga.
+- **Logo, yazı, çizgi iş, düz renkli grafik** → Katman / Rölyef ya da düz
+  siluet kesimi. Örnek: 1248×442 px bir logoda harf gövdeleri 882 mm'lik
+  panelde 6,4 mm düşüyor; lamel adımı 24 mm. Harf, tek lamelin dörtte biri
+  kadar — okunması mümkün değil.
+- **Kapalı hacimli 3B model** → Poligonal Kabuk.
+
+Yazılım kaynağı ölçer ve uymuyorsa **söyler**: düz renkli grafik algılanırsa
+uyarır, kaynaktaki değişimin ne kadarının lamel adımından ince olduğunu
+yüzdeyle yazar. Sessizce kötü bir panel üretmez.
+
 ### Fotoğraflarda yumuşatma neden otomatik?
 Panelin **lameller arası** çözünürlüğü lamel adımıdır (kalınlık + boşluk).
 24 mm adımda 900 mm'lik panel yatayda yalnızca 37 "piksel" demektir. Lamel

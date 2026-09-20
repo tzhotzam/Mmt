@@ -1,6 +1,9 @@
 // Uygulama kabuğu: girdi → yükseklik haritası → parça üretimi → önizleme → dışa aktarma.
 
-import { gridFromImageData, applyFilters, suggestInvert } from './heightmap.js';
+import {
+  gridFromImageData, applyFilters, suggestInvert,
+  toneConcentration, fineDetailRatio,
+} from './heightmap.js';
 import { parseMesh, heightmapFromStl, pickBestAxis, projectedSize } from './stl.js';
 import { facetize } from './facet.js';
 import { inflateSilhouette, blendRelief } from './relief.js';
@@ -24,7 +27,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-e';
+const APP_VERSION = '2026-09-20-f';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -89,6 +92,7 @@ const state = {
   reliefInfo: null,
   viewAxis: 'z',
   sourceKind: null,      // 'foto' | 'desen' | 'model' — otomatik yumuşatma buna bakar
+  sourceStats: null,     // kaynak teşhisi (ton yoğunluğu)
   meshInfo: null,
   patternSeed: 0.42,
   patternAspect: 1.5,
@@ -193,9 +197,28 @@ const SHARPEN_RADIUS_MM = 5;
 function autoFilterRadii() {
   const yumusak = { blur: 3, sharpenRadius: SHARPEN_RADIUS_MM };
   if (state.mode !== 'ribs') return yumusak;
-  if (state.sourceKind !== 'foto') return yumusak;
+  // Dosyadan gelen her görsel fotoğraf değildir. Logo ve çizgi iş, desenler
+  // gibi grensizdir ve keskin kenarları kasıtlıdır; onlara fotoğraf
+  // yumuşatması uygulamak yanlış.
+  if (state.sourceKind !== 'foto' || cizgiIsiMi()) return yumusak;
   const adim = num('p-thickness', 18) + num('p-gap', 6);
   return { blur: adim / 3, sharpenRadius: adim / 2 };
+}
+
+/**
+ * Kaynak düz renkli bir grafik mi (logo, çizgi iş, silüet)?
+ * Ölçüldü: logo 0,94 | fotoğraf 0,58 | üretilmiş desenler 0,17-0,25.
+ */
+const CIZGI_ISI_ESIGI = 0.75;
+function cizgiIsiMi() {
+  return (state.sourceStats?.tone ?? 0) >= CIZGI_ISI_ESIGI;
+}
+
+/** Kaynak her değiştiğinde bir kez ölçülür; filtreler ve uyarılar kullanır. */
+function updateSourceStats() {
+  state.sourceStats = state.sourceGrid
+    ? { tone: toneConcentration(state.sourceGrid) }
+    : null;
 }
 
 /** Yumuşatma alanında gerçekte kullanılan mm değeri. */
@@ -263,6 +286,7 @@ async function loadImageFile(file) {
 
   state.sourceGrid = gridFromImageData(img, cols, rows);
   state.sourceKind = 'foto';
+  updateSourceStats();
   setSourceStatus(`Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
   resetPaint();
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
@@ -327,6 +351,7 @@ function rebuildFromMesh() {
   const [cols, rows] = gridDimsFor(state.aspect);
   state.sourceGrid = heightmapFromStl(tris, cols, rows, { axis });
   state.sourceKind = 'model';
+  updateSourceStats();
   resetPaint();
   return { axis, otomatik };
 }
@@ -423,6 +448,7 @@ function applyPattern() {
   const [cols, rows] = gridDimsFor(state.patternAspect);
   state.sourceGrid = renderPattern(cols, rows, key, patternOpts());
   state.sourceKind = 'desen';
+  updateSourceStats();
   refreshPatternCode();
   state.tris = null;
   state.aspect = state.patternAspect;
@@ -583,6 +609,58 @@ function render() {
   renderCutList();
 }
 
+/**
+ * "Neden böyle çıktı?" uyarıları.
+ *
+ * Lamel panelin yatayda çözünürlüğü lamel adımıdır: 24 mm adımda 882 mm'lik
+ * panel yatayda 37 "piksel" demektir. Adımdan ince olan her şey kaybolur.
+ * Bunu söylemezsek kullanıcı, yazısı okunmayan bir logoya bakıp yazılımın
+ * bozuk olduğunu düşünür — panel aslında yapabileceğinin en iyisini
+ * yapmıştır.
+ *
+ * Ölçüldü (adımdan ince değişim oranı): logo %40 | fotoğraf %8 |
+ * dalga deseni %0 | voronoi %13 | akustik difüzör %35.
+ */
+const INCE_DETAY_ESIGI = 0.25;
+
+function cozunurlukUyarilari() {
+  const out = [];
+  // HAM kaynak ölçülür, filtrelenmiş hâli değil. Yumuşatma ince ayrıntıyı
+  // zaten siliyor; filtre sonrasını ölçmek "ayrıntıyı sildim, demek ki
+  // ayrıntı yokmuş" demek olurdu. Bu logoda ham %40, filtre sonrası %24.
+  const kaynak = state.sourceGrid;
+  if (state.mode !== 'ribs' || !kaynak) return out;
+
+  const adim = num('p-thickness', 18) + num('p-gap', 6);
+  const panelW = state.info?.panelW || num('p-panelW', 900);
+  const lamel = state.info?.count;
+  const mmBasinaOrnek = kaynak.w / Math.max(1, panelW);
+  const ince = fineDetailRatio(kaynak, (adim * mmBasinaOrnek) / 2);
+
+  if (ince > INCE_DETAY_ESIGI) {
+    out.push(
+      `Kaynaktaki değişimin %${Math.round(ince * 100)}'i lamel adımından ` +
+      `(${adim} mm) ince. Panel yatayda yalnızca ${lamel || '—'} lamel ` +
+      'genişliğinde; bu ayrıntı panelde görünmez. Çözüm: paneli büyütün, ' +
+      'lamel kalınlığını/boşluğunu küçültün ya da ' +
+      (cizgiIsiMi()
+        ? 'düz renkli grafikler için Katman / Rölyef moduna geçin.'
+        : 'daha sade, büyük biçimli bir kaynak kullanın.')
+    );
+  }
+
+  if (cizgiIsiMi()) {
+    out.push(
+      'Kaynak düz renkli bir grafik (logo, çizgi iş) gibi görünüyor. ' +
+      'Lamel modu sürekli tonlu biçimler içindir; yazı ve ince çizgiler ' +
+      'lamellere bölününce okunmaz. Böyle işler için Katman / Rölyef modu ' +
+      'ya da düz siluet kesimi doğru yoldur. (Fotoğraf yumuşatması bu ' +
+      'kaynağa uygulanmadı.)'
+    );
+  }
+  return out;
+}
+
 function collectWarnings() {
   const out = state.warnings.slice();
   if (state.nestResult?.oversized.length) {
@@ -599,6 +677,7 @@ function collectWarnings() {
         'Yüksek kontrastlı bir görsel veya net bir zemin gerekir.');
     }
   }
+  out.push(...cozunurlukUyarilari());
   const tool = num('p-toolDiameter', 6);
   if (state.mode === 'ribs' && num('p-gap', 6) > 0 && num('p-gap', 6) < tool) {
     out.push(`Lamel boşluğu (${num('p-gap', 6)} mm) takım çapından (${tool} mm) küçük — ` +

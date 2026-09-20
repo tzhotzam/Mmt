@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
   makeGrid, applyFilters, gridFromImageData, sampleBilinear, suggestInvert,
   sampleBandColumn, sampleBandRow, bandSamples,
+  toneConcentration, fineDetailRatio,
 } from '../js/heightmap.js';
 import { contourRings } from '../js/marchingsquares.js';
 import { signedArea, classifyRings, simplify, pointInRing, offsetRing } from '../js/geom.js';
@@ -1567,6 +1568,58 @@ test('otomatik yumuşatma lamel adımına bağlı', () => {
   assert.ok(/sourceKind !== 'foto'/.test(govde), 'desenler otomatik yumuşatmadan muaf değil');
   assert.ok(/sourceKind = 'foto'/.test(js) && /sourceKind = 'desen'/.test(js),
     'kaynak türü işaretlenmiyor');
+});
+
+// --- Kaynak teşhisi -----------------------------------------------------
+console.log('kaynak teşhisi');
+
+test('düz renkli grafik ile sürekli ton ayrılır', () => {
+  // Logo: birkaç düz ton. Fotoğraf: sürekli ton + gren.
+  const logo = makeGrid(200, 200);
+  for (let i = 0; i < logo.data.length; i++) logo.data[i] = i % 97 === 0 ? 0.1 : (i % 13 === 0 ? 0.5 : 0.95);
+  const foto = makeGrid(200, 200);
+  let s = 7;
+  for (let i = 0; i < foto.data.length; i++) {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    foto.data[i] = 0.5 + 0.3 * Math.sin(i / 311) + (s / 4294967296 - 0.5) * 0.25;
+  }
+  const tLogo = toneConcentration(logo);
+  const tFoto = toneConcentration(foto);
+  assert.ok(tLogo > 0.75, `logo ton yoğunluğu ${tLogo.toFixed(2)}, eşik 0,75`);
+  assert.ok(tFoto < 0.75, `fotoğraf ton yoğunluğu ${tFoto.toFixed(2)}, eşiğin altında olmalı`);
+});
+
+test('adımdan ince ayrıntı oranı ölçülür', () => {
+  // Dama tahtası: tamamı ince ayrıntı. Rampa: tamamı kaba.
+  const dama = makeGrid(200, 200);
+  for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) {
+    dama.data[y * 200 + x] = ((x >> 1) + (y >> 1)) % 2;
+  }
+  const rampa = makeGrid(200, 200);
+  for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) rampa.data[y * 200 + x] = x / 199;
+  assert.ok(fineDetailRatio(dama, 10) > 0.8, 'dama ince sayılmadı');
+  assert.ok(fineDetailRatio(rampa, 10) < 0.1, 'rampa ince sayıldı');
+  // Sabit ızgarada sıfıra bölme olmamalı.
+  assert.equal(fineDetailRatio(makeGrid(50, 50, 0.4), 5), 0);
+});
+
+test('çözünürlük uyarısı HAM kaynağı ölçer', () => {
+  // Filtrelenmiş ızgarayı ölçmek döngüseldir: yumuşatma ayrıntıyı siler,
+  // sonra "ayrıntı yok" denir. Gerçek logoda ham %40, filtre sonrası %24 —
+  // yani eşiğin yanlış tarafına düşüyordu.
+  const js = oku('js/main.js');
+  const govde = js.match(/function cozunurlukUyarilari[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(govde, 'cozunurlukUyarilari yok');
+  assert.ok(/state\.sourceGrid/.test(govde), 'ham kaynak yerine filtreli ızgara ölçülüyor');
+  assert.ok(!/fineDetailRatio\(state\.grid/.test(govde), 'filtreli ızgara ölçülüyor');
+  assert.ok(/Katman \/ Rölyef/.test(govde), 'doğru mod önerilmiyor');
+});
+
+test('çizgi işine fotoğraf yumuşatması uygulanmaz', () => {
+  const js = oku('js/main.js');
+  const govde = js.match(/function autoFilterRadii[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(/cizgiIsiMi\(\)/.test(govde), 'çizgi iş kontrolü yok');
+  assert.ok(/CIZGI_ISI_ESIGI = 0\.75/.test(js), 'eşik ölçülen değerle uyuşmuyor');
 });
 
 // --- Görsel yükleme -----------------------------------------------------
