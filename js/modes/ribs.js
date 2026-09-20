@@ -8,7 +8,7 @@
 // Lamel yerel koordinatları:  X = lamel boyu (0..L),  Y = derinlik (0..D)
 // Y=0 arka (duvar) kenarı, Y=derinlik(x) ön kenar.
 
-import { sampleBandColumn } from '../heightmap.js';
+import { sampleBandColumn, sampleBandRow, bandSamples } from '../heightmap.js';
 import { simplify, offsetRing, ensureOrientation } from '../geom.js';
 import { applyCornerRelief, countTightCorners } from '../corners.js';
 
@@ -108,16 +108,21 @@ export function generateRibs(grid, userParams = {}) {
     const u0 = a0 / actualAcross;
     const u1 = (a0 + p.thickness) / actualAcross;
 
+    // Lamel, kendi şeridinin ORTALAMASINI okur. Örnek sayısı şeridin
+    // ızgarada kaç hücre tuttuğuna göre belirlenir; sabit bırakılsaydı
+    // çözünürlük yükseldiğinde şerit temsil edilmez, komşu lameller
+    // gürültüden bağımsız zıplardı.
+    const bandN = bandSamples(grid, u0, u1, horizontal);
     const profile = [];
     for (let s = 0; s < samples; s++) {
       const t = s / (samples - 1);
       const pos = t * ribLength;
       // Görsel koordinatı: v=0 üst satır. Dikey lamelde lamel boyu panel
       // yüksekliğidir ve x=0 panelin altıdır, bu yüzden v ters çevrilir.
-      const [u, v] = horizontal ? [t, 1 - u0 - (u1 - u0) / 2] : [u0 + (u1 - u0) / 2, 1 - t];
       const hVal = horizontal
-        ? sampleBandColumn(grid, u, u, v, 1)
-        : sampleBandColumn(grid, u0, u1, v, 3);
+        // Yatay lamelde şerit v ekseninde uzanır (v ters çevrilir).
+        ? sampleBandRow(grid, t, 1 - u0, 1 - u1, bandN)
+        : sampleBandColumn(grid, u0, u1, 1 - t, bandN);
       profile.push([pos, p.baseDepth + hVal * p.maxDepth]);
     }
 

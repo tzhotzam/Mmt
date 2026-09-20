@@ -4,7 +4,10 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { makeGrid, applyFilters, gridFromImageData, sampleBilinear, suggestInvert } from '../js/heightmap.js';
+import {
+  makeGrid, applyFilters, gridFromImageData, sampleBilinear, suggestInvert,
+  sampleBandColumn, sampleBandRow, bandSamples,
+} from '../js/heightmap.js';
 import { contourRings } from '../js/marchingsquares.js';
 import { signedArea, classifyRings, simplify, pointInRing, offsetRing } from '../js/geom.js';
 import { generateRibs } from '../js/modes/ribs.js';
@@ -1461,6 +1464,109 @@ test('kemik payı arayüzde açılıp kapanabiliyor', () => {
 test('corners.js servis çalışanı listesinde', () => {
   // Listede olmayan dosya çevrimdışı açılışta 404 verir ve uygulama patlar.
   assert.ok(oku('sw.js').includes("'./js/corners.js'"), 'corners.js önbellek listesinde yok');
+});
+
+// --- Şerit örneklemesi --------------------------------------------------
+console.log('şerit örneklemesi');
+
+/** Sütunları 0,1,0,1… giden ızgara: gerçek ortalaması her şeritte ~0,5. */
+function zebraGrid(w = 768, h = 512) {
+  const g = makeGrid(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) g.data[y * w + x] = x % 2;
+  return g;
+}
+
+test('şerit örneği sayısı ızgara çözünürlüğüyle büyür', () => {
+  // Sabit 3 örnek, çözünürlük yükseldiğinde şeridi temsil etmiyordu.
+  const dar = makeGrid(320, 240);
+  const genis = makeGrid(768, 512);
+  const u0 = 0.2, u1 = 0.2 + 18 / 900;   // 900 mm panelde 18 mm'lik lamel
+  assert.ok(bandSamples(genis, u0, u1) > bandSamples(dar, u0, u1),
+    'örnek sayısı çözünürlükle artmıyor');
+  assert.ok(bandSamples(genis, u0, u1) >= 15, '768 ızgarada şerit ~15 hücre');
+  assert.ok(bandSamples(dar, u0, u1) >= 3, 'en az 3 örnek olmalı');
+});
+
+test('şerit gerçekten ortalanıyor, üç noktadan okunmuyor', () => {
+  const g = zebraGrid();
+  const u0 = 0.2, u1 = 0.2 + 18 / 900;
+  const dogru = sampleBandColumn(g, u0, u1, 0.5, bandSamples(g, u0, u1));
+  const eski = sampleBandColumn(g, u0, u1, 0.5, 3);
+  assert.ok(Math.abs(dogru - 0.5) < 0.08, `şerit ortalaması ${dogru}, 0,5 olmalıydı`);
+  assert.ok(Math.abs(dogru - 0.5) < Math.abs(eski - 0.5),
+    'yoğun örnekleme üç noktadan daha iyi olmalı');
+});
+
+test('komşu şeritler sınır örneğini paylaşmaz', () => {
+  // Uçlara konan örnekler iki lamelde ortak olur ve ortalamayı yanlı yapar.
+  const g = makeGrid(100, 10);
+  for (let y = 0; y < 10; y++) for (let x = 0; x < 100; x++) g.data[y * 100 + x] = x / 99;
+  const a = sampleBandColumn(g, 0.0, 0.5, 0.5, 8);
+  const b = sampleBandColumn(g, 0.5, 1.0, 0.5, 8);
+  // Rampanın iki yarısının ortalamaları 0,25 ve 0,75 civarı olmalı.
+  assert.ok(Math.abs(a - 0.25) < 0.05, `sol yarı ${a}`);
+  assert.ok(Math.abs(b - 0.75) < 0.05, `sağ yarı ${b}`);
+});
+
+test('yatay şerit de ortalanır', () => {
+  const g = makeGrid(10, 100);
+  for (let y = 0; y < 100; y++) for (let x = 0; x < 10; x++) g.data[y * 10 + x] = y / 99;
+  assert.ok(Math.abs(sampleBandRow(g, 0.5, 0.0, 0.5, 8) - 0.25) < 0.05);
+  assert.ok(Math.abs(sampleBandRow(g, 0.5, 0.5, 1.0, 8) - 0.75) < 0.05);
+});
+
+test('lamel profili şeridin ortalamasını okur', () => {
+  // Zebra ızgarada her lamel ~0,5 okumalı. Az örnekle lameller 0 ile 1
+  // arasında zıplardı — fotoğrafın "kadife" görünmesinin sebebi buydu.
+  const res = generateRibs(zebraGrid(), {
+    panelW: 900, panelH: 600, thickness: 18, gap: 6,
+    maxDepth: 60, baseDepth: 40, railCount: 0,
+  });
+  const lameller = res.parts.filter((p) => p.kind === 'lamel');
+  const ortalamalar = lameller.map((p) => {
+    const pr = p.meta.profile;
+    return pr.reduce((s, q) => s + q[1], 0) / pr.length;
+  });
+  // Derinlik = 40 + h*60; h≈0,5 ise ~70 mm.
+  for (const d of ortalamalar) {
+    assert.ok(Math.abs(d - 70) < 9, `lamel derinliği ${d.toFixed(1)} mm, ~70 beklenir`);
+  }
+  // Komşu lameller birbirine yakın olmalı — zıplamamalı.
+  for (let i = 1; i < ortalamalar.length; i++) {
+    assert.ok(Math.abs(ortalamalar[i] - ortalamalar[i - 1]) < 9,
+      `komşu lameller ${ortalamalar[i - 1].toFixed(1)} / ${ortalamalar[i].toFixed(1)} — zıplıyor`);
+  }
+});
+
+test('yatay lamelde de şerit ortalanır', () => {
+  // Eskiden yatay lamel şeridi TEK noktadan okuyordu.
+  const g = makeGrid(768, 512);
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 768; x++) g.data[y * 768 + x] = y % 2;
+  const res = generateRibs(g, {
+    panelW: 900, panelH: 600, thickness: 18, gap: 6, orientation: 'horizontal',
+    maxDepth: 60, baseDepth: 40, railCount: 0,
+  });
+  for (const p of res.parts.filter((q) => q.kind === 'lamel')) {
+    const pr = p.meta.profile;
+    const ort = pr.reduce((s, q) => s + q[1], 0) / pr.length;
+    assert.ok(Math.abs(ort - 70) < 9, `yatay lamel derinliği ${ort.toFixed(1)} mm`);
+  }
+});
+
+test('otomatik yumuşatma lamel adımına bağlı', () => {
+  const html = oku('index.html');
+  const js = oku('js/main.js');
+  assert.ok(html.includes('id="p-autoBlur"'), 'otomatik yumuşatma anahtarı yok');
+  assert.ok(/function autoFilterRadii/.test(js), 'autoFilterRadii yok');
+  // Adım = kalınlık + boşluk; yumuşatma adım/3, netlik yarıçapı adım/2.
+  const govde = js.match(/function autoFilterRadii[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(/p-thickness[\s\S]*p-gap/.test(govde), 'adım kalınlık+boşluktan gelmiyor');
+  assert.ok(/adim \/ 3/.test(govde) && /adim \/ 2/.test(govde),
+    'yumuşatma adım/3 ve netlik yarıçapı adım/2 olmalı');
+  // Desenler kodla üretilir, gren içermez; güçlü yumuşatma onlara zarar verir.
+  assert.ok(/sourceKind !== 'foto'/.test(govde), 'desenler otomatik yumuşatmadan muaf değil');
+  assert.ok(/sourceKind = 'foto'/.test(js) && /sourceKind = 'desen'/.test(js),
+    'kaynak türü işaretlenmiyor');
 });
 
 // --- Görsel yükleme -----------------------------------------------------

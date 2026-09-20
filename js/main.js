@@ -24,7 +24,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-d';
+const APP_VERSION = '2026-09-20-e';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -88,6 +88,7 @@ const state = {
   sheetIndex: 0,
   reliefInfo: null,
   viewAxis: 'z',
+  sourceKind: null,      // 'foto' | 'desen' | 'model' — otomatik yumuşatma buna bakar
   meshInfo: null,
   patternSeed: 0.42,
   patternAspect: 1.5,
@@ -164,11 +165,51 @@ function readParams() {
 
 const SHARPEN_RADIUS_MM = 5;
 
+/**
+ * Lamel modunda yumuşatma ve netlik yarıçapı LAMEL ADIMINA bağlanır.
+ *
+ * Panelin lameller ARASI çözünürlüğü adımdır (kalınlık + boşluk): 24 mm
+ * adımda 900 mm'lik panel yatayda 37 "piksel" demektir. Lamel BOYUNCA ise
+ * çözünürlük 1,5 mm. Haritada adımdan ince detay bırakılırsa bu detay
+ * yatayda temsil edilemez, dikeyde ise aynen kesilir — komşu lameller
+ * birbirinden bağımsız zıplar, yüzey kadife/parazit gibi çıkar.
+ *
+ * Ölçüm — hakem olarak temiz görselin, her lamelin GERÇEK ayak izi
+ * üzerindeki ortalaması alındı; hiçbir filtre varsayımı içermez. İki sentetik
+ * gürültülü fotoğrafın ortalaması, hata (mm) / profilde yön değişimi:
+ *   v1 (320 ızgara, ≈5,6 mm)     0,31 /  832
+ *   3 mm  (önceki varsayılan)    0,41 / 2191   <- bozulma buradaydı
+ *   adım/4 = 6 mm                0,40 / 1310
+ *   adım/3 = 8 mm                0,28 /  929   <- seçilen
+ * Hata ile zıplama ayrı şeylerdir. Önceki varsayılan hem daha hatalıydı hem
+ * de paraziti 2,6 katına çıkarıyordu; fiziksel panelde yüksek frekanslı hata,
+ * yumuşak sapmadan çok daha göze batar. v1'in daha iyi görünmesinin sebebi
+ * en SADIK ayar olması değil, en DÜZGÜN olmasıydı.
+ *
+ * DESENLERE uygulanmaz: desenler kodla üretilir, gren içermez ve ince
+ * ayrıntıları kasıtlıdır. İnce desenli kaynakta adım/3 hatayı 0,33'ten
+ * 0,77'ye çıkarıyordu; orada 3 mm doğru değerdir.
+ */
+function autoFilterRadii() {
+  const yumusak = { blur: 3, sharpenRadius: SHARPEN_RADIUS_MM };
+  if (state.mode !== 'ribs') return yumusak;
+  if (state.sourceKind !== 'foto') return yumusak;
+  const adim = num('p-thickness', 18) + num('p-gap', 6);
+  return { blur: adim / 3, sharpenRadius: adim / 2 };
+}
+
+/** Yumuşatma alanında gerçekte kullanılan mm değeri. */
+function effectiveBlurMm() {
+  return bool('p-autoBlur') ? autoFilterRadii().blur : num('p-blur', 0);
+}
+
 function readFilters() {
+  const oto = bool('p-autoBlur');
+  const r = autoFilterRadii();
   return {
-    blur: mmToSamples(num('p-blur', 0)),
+    blur: mmToSamples(oto ? r.blur : num('p-blur', 0)),
     sharpen: num('p-sharpen', 0),
-    sharpenRadius: Math.max(1, Math.round(mmToSamples(SHARPEN_RADIUS_MM))),
+    sharpenRadius: Math.max(1, Math.round(mmToSamples(oto ? r.sharpenRadius : SHARPEN_RADIUS_MM))),
     contrast: num('p-contrast', 0),
     brightness: num('p-brightness', 0),
     gamma: num('p-gamma', 1),
@@ -221,6 +262,7 @@ async function loadImageFile(file) {
   bitmap.close?.();
 
   state.sourceGrid = gridFromImageData(img, cols, rows);
+  state.sourceKind = 'foto';
   setSourceStatus(`Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
   resetPaint();
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
@@ -284,6 +326,7 @@ function rebuildFromMesh() {
   state.aspect = proj.h > 0 ? proj.w / proj.h : 1;
   const [cols, rows] = gridDimsFor(state.aspect);
   state.sourceGrid = heightmapFromStl(tris, cols, rows, { axis });
+  state.sourceKind = 'model';
   resetPaint();
   return { axis, otomatik };
 }
@@ -379,6 +422,7 @@ function applyPattern() {
   const key = els['p-pattern'].value || PATTERN_KEYS[0];
   const [cols, rows] = gridDimsFor(state.patternAspect);
   state.sourceGrid = renderPattern(cols, rows, key, patternOpts());
+  state.sourceKind = 'desen';
   refreshPatternCode();
   state.tris = null;
   state.aspect = state.patternAspect;
@@ -447,6 +491,9 @@ function regenerate() {
     return;
   }
   if (!state.sourceGrid) return;
+  // Otomatik yumuşatma kaynak türüne de bakar; kaynak değiştiğinde ekrandaki
+  // değer bayat kalmasın (hesap doğruydu ama gösterge yanıltıyordu).
+  syncRangeOutputs();
   const filters = readFilters();
   state.grid = applyFilters(state.sourceGrid, filters);
   if (filters.facetCells >= 6) {
@@ -713,6 +760,8 @@ els['dl-guide'].onclick = () => {
     `  Tahmini süre      : ${s.estimatedMinutes} dakika (${num('p-feedRate', 3000)} mm/dk)`,
     '',
     'CNC NOTLARI',
+    `  Yumuşatma         : ${effectiveBlurMm().toFixed(1)} mm` +
+      (bool('p-autoBlur') ? ` (otomatik — kaynak: ${state.sourceKind || 'yok'})` : ' (elle)'),
     `  Takım çapı        : ${num('p-toolDiameter', 6)} mm`,
     `  Uygulanan ofset   : ${num('p-offset', 0)} mm`,
     ...(state.info?.mode === 'ribs' ? [
@@ -949,6 +998,7 @@ function setMode(mode, persist = true) {
   if (mode === 'facets' && num('p-thickness', 18) > 8) els['p-thickness'].value = 3;
   if (mode !== 'facets' && num('p-thickness', 3) < 6) els['p-thickness'].value = 18;
   syncPatternAvailability();
+  syncRangeOutputs();   // otomatik yumuşatma moda göre değişir
   if (persist) saveSettings();
   scheduleRegen();
 }
@@ -973,6 +1023,12 @@ function syncRangeOutputs() {
     const out = document.querySelector(`output[for="${input.id}"]`);
     if (out) out.textContent = input.value;
   }
+  // Otomatik yumuşatmada kaydırıcı kilitlenir ve hesaplanan değeri gösterir;
+  // aksi hâlde ekranda duran sayı ile kullanılan sayı ayrışır.
+  const oto = bool('p-autoBlur');
+  if (els['p-blur']) els['p-blur'].disabled = oto;
+  const cikti = document.querySelector('output[for="p-blur"]');
+  if (cikti && oto) cikti.textContent = `${effectiveBlurMm().toFixed(1)} (oto)`;
 }
 
 els['dir-light'].onclick = () => { setInvert(false); saveSettings(); scheduleRegen(); };

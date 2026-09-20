@@ -126,6 +126,30 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 Girdiğiniz ayarlar tarayıcıda saklanır; her açılışta yeniden girmeniz
 gerekmez. "Ayarları sıfırla" varsayılanlara döndürür.
 
+### Fotoğraflarda yumuşatma neden otomatik?
+Panelin **lameller arası** çözünürlüğü lamel adımıdır (kalınlık + boşluk).
+24 mm adımda 900 mm'lik panel yatayda yalnızca 37 "piksel" demektir. Lamel
+**boyunca** ise çözünürlük 1,5 mm'dir. Haritada adımdan ince ayrıntı
+bırakılırsa bu ayrıntı yatayda temsil edilemez ama dikeyde aynen kesilir:
+komşu lameller birbirinden bağımsız zıplar, yüzey kadife/parazit gibi çıkar.
+Fotoğraf greni ve JPEG dokusu tam olarak bu ölçektedir.
+
+Bu yüzden lamel modunda fotoğraf yüklendiğinde yumuşatma **adım/3**, netlik
+yarıçapı **adım/2** olarak kendiliğinden ayarlanır. Değer kaydırıcıda
+görünür; "Otomatik yumuşatma"yı kapatıp elle de verebilirsiniz.
+
+Kodla üretilen **desenlere uygulanmaz** — onlarda gren yoktur ve ince
+ayrıntı kasıtlıdır.
+
+Ölçüm (iki sentetik gürültülü fotoğraf; hakem = temiz görselin her lamelin
+gerçek ayak izi üzerindeki ortalaması):
+
+| ayar | biçim hatası | profil zıplaması |
+|---|---|---|
+| eski sürüm (320 ızgara) | 0,31 mm | 832 |
+| 3 mm sabit | 0,41 mm | 2191 |
+| **adım/3 (seçilen)** | **0,28 mm** | **929** |
+
 ### Fotoğrafta olmayan derinliği vermek
 Düz bir fotoğrafta derinlik bilgisi yoktur — parlaklık, ışığın nereye
 vurduğunu anlatır, neyin önde olduğunu değil. Bu yüzden fotoğraflar çoğu

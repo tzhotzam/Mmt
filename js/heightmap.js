@@ -202,12 +202,42 @@ export function sampleBilinear(grid, u, v) {
   return (a * (1 - fx) + b * fx) * (1 - fy) + (cc * (1 - fx) + d * fx) * fy;
 }
 
-/** Bir dikey şerit boyunca ortalama alarak örnekleme (lamel profili için). */
+/**
+ * Bir şeridin ORTALAMASINI alır (lamel profili için).
+ *
+ * Örnekler şeridin içine, hücre ortalarına düşer: t = (i + 0,5) / n. Uçlara
+ * koyulsaydı iki komşu lamel aynı sınır örneğini paylaşır ve ortalama
+ * kenarlara doğru yanlı çıkardı.
+ *
+ * Örnek sayısı şeridin ızgarada kaç hücre tuttuğuna göre verilmelidir. Sabit
+ * 3 örnek, ızgara çözünürlüğü yükseldiğinde şeridi temsil etmez: lamel
+ * kendi bandının ortalamasını değil, gürültülü bir alandan üç rastgele
+ * noktayı okur. Komşu lameller birbirinden bağımsız zıplar, fotoğraf
+ * kadife/parazit gibi çıkar.
+ */
 export function sampleBandColumn(grid, u0, u1, v, samples = 3) {
+  const n = Math.max(1, Math.round(samples));
   let sum = 0;
-  for (let i = 0; i < samples; i++) {
-    const t = samples === 1 ? 0.5 : i / (samples - 1);
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
     sum += sampleBilinear(grid, u0 + (u1 - u0) * t, v);
   }
-  return sum / samples;
+  return sum / n;
+}
+
+/** sampleBandColumn'un yatay lamel karşılığı: şerit v ekseninde uzanır. */
+export function sampleBandRow(grid, u, v0, v1, samples = 3) {
+  const n = Math.max(1, Math.round(samples));
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    sum += sampleBilinear(grid, u, v0 + (v1 - v0) * t);
+  }
+  return sum / n;
+}
+
+/** Bir şeridin kaç örnekle okunacağı: ızgarada tuttuğu hücre kadar. */
+export function bandSamples(grid, u0, u1, horizontal = false) {
+  const genislik = Math.abs(u1 - u0) * (horizontal ? grid.h : grid.w);
+  return Math.max(3, Math.min(64, Math.ceil(genislik)));
 }
