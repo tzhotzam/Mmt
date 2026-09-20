@@ -1,7 +1,7 @@
 // Uygulama kabuğu: girdi → yükseklik haritası → parça üretimi → önizleme → dışa aktarma.
 
 import {
-  gridFromImageData, applyFilters, suggestInvert,
+  gridFromImageData, applyFilters, suggestInvert, makeGrid,
   toneConcentration, fineDetailRatio,
 } from './heightmap.js';
 import { parseMesh, heightmapFromStl, pickBestAxis, projectedSize } from './stl.js';
@@ -27,7 +27,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-g';
+const APP_VERSION = '2026-09-20-h';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -93,6 +93,8 @@ const state = {
   viewAxis: 'z',
   sourceKind: null,      // 'foto' | 'desen' | 'model' — otomatik yumuşatma buna bakar
   sourceStats: null,     // kaynak teşhisi (ton yoğunluğu)
+  uploadGrid: null,      // YÜKLENEN içerik (görsel/model) — desen değil
+  uploadKind: null,      // 'foto' | 'model'
   meshInfo: null,
   patternSeed: 0.42,
   patternAspect: 1.5,
@@ -257,7 +259,48 @@ function readNestOpts() {
   };
 }
 
-// ------------------------------------------------------------ kaynak yükleme
+// ------------------------------------------------------------ kaynak kurulumu
+
+/**
+ * Kaynağı kurar: yüklenen görsel, hazır desen, ya da İKİSİNİN KARIŞIMI.
+ *
+ * Karışım neden gerekli: logo ya da ürün fotoğrafı düz bir zemin üzerinde
+ * gelir. Düz zemin sabit yükseklik demektir, sabit yükseklik de hiç
+ * kesilmemiş düz çıta. SAPCI logosunda 66 lamelin 17'si böyleydi — panel
+ * "lamel paneli" gibi durmuyor, ortasında kabartma olan düz bir levha gibi
+ * duruyordu.
+ *
+ * Çözüm: deseni TAŞIYICI dalga yapmak, görseli onun üstüne bindirmek.
+ *     çıktı = görsel·(1-k) + desen·k
+ * Zeminde (görsel sabit) geriye desen kalır, yani panelin her yeri dalgalanır.
+ * Konunun olduğu yerde görsel deseni yukarı iter, yani logo dalganın üstünde
+ * kabartma olarak durur. k = "desen payı".
+ *
+ * Ters çevirme (koyu alanlar öne) sonradan, filtre zincirinde uygulanır;
+ * karışımı bozmaz, yalnızca dalganın yönünü çevirir.
+ */
+function composeSource() {
+  const yukleme = state.uploadGrid;
+  if (!yukleme) return false;
+
+  const k = Math.min(1, Math.max(0, num('p-patMix', 0)));
+  if (k <= 0) {
+    state.sourceGrid = yukleme;
+  } else {
+    const key = els['p-pattern']?.value || PATTERN_KEYS[0];
+    const desen = renderPattern(yukleme.w, yukleme.h, key, patternOpts());
+    const out = makeGrid(yukleme.w, yukleme.h);
+    for (let i = 0; i < out.data.length; i++) {
+      out.data[i] = yukleme.data[i] * (1 - k) + desen.data[i] * k;
+    }
+    state.sourceGrid = out;
+  }
+  // Yumuşatma kararı KARIŞIMA değil, yüklenen içeriğe göre verilir: fotoğrafta
+  // gren vardır, desen eklenmesi bunu değiştirmez.
+  state.sourceKind = state.uploadKind;
+  updateSourceStats();
+  return true;
+}
 
 function gridDimsFor(aspect) {
   if (aspect >= 1) return [GRID_MAX, Math.max(24, Math.round(GRID_MAX / aspect))];
@@ -284,9 +327,9 @@ async function loadImageFile(file) {
   const img = ctx.getImageData(0, 0, c.width, c.height);
   bitmap.close?.();
 
-  state.sourceGrid = gridFromImageData(img, cols, rows);
-  state.sourceKind = 'foto';
-  updateSourceStats();
+  state.uploadGrid = gridFromImageData(img, cols, rows);
+  state.uploadKind = 'foto';
+  composeSource();
   setSourceStatus(`Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
   resetPaint();
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
@@ -349,9 +392,9 @@ function rebuildFromMesh() {
   const proj = projectedSize(tris, axis);
   state.aspect = proj.h > 0 ? proj.w / proj.h : 1;
   const [cols, rows] = gridDimsFor(state.aspect);
-  state.sourceGrid = heightmapFromStl(tris, cols, rows, { axis });
-  state.sourceKind = 'model';
-  updateSourceStats();
+  state.uploadGrid = heightmapFromStl(tris, cols, rows, { axis });
+  state.uploadKind = 'model';
+  composeSource();
   resetPaint();
   return { axis, otomatik };
 }
@@ -424,7 +467,7 @@ function applyPatternCode() {
 /** Desenler düzlem üretir; poligonal kabuk kapalı bir hacim ister. */
 function syncPatternAvailability() {
   const kapali = state.mode === 'facets';
-  for (const id of ['p-pattern', 'p-patScale', 'p-patAngle', 'p-patDetail',
+  for (const id of ['p-pattern', 'p-patMix', 'p-patScale', 'p-patAngle', 'p-patDetail',
                     'p-seedText', 'p-patternCode', 'btn-pattern-random', 'btn-copy-code']) {
     if (els[id]) els[id].disabled = kapali;
   }
@@ -445,9 +488,26 @@ function applyPattern() {
     return;
   }
   const key = els['p-pattern'].value || PATTERN_KEYS[0];
+
+  // Yüklü bir görsel varsa ve desen payı açıksa desen onun YERİNE geçmez,
+  // altına taşıyıcı dalga olarak girer.
+  if (state.uploadGrid && num('p-patMix', 0) > 0) {
+    composeSource();
+    refreshPatternCode();
+    patternHint();
+    setSourceStatus(
+      `${state.uploadKind === 'model' ? 'Model' : 'Görsel'} + ${PATTERNS[key].label} deseni ` +
+      `(desen payı %${Math.round(num('p-patMix', 0) * 100)})`
+    );
+    scheduleRegen();
+    return;
+  }
+
   const [cols, rows] = gridDimsFor(state.patternAspect);
   state.sourceGrid = renderPattern(cols, rows, key, patternOpts());
   state.sourceKind = 'desen';
+  state.uploadGrid = null;      // artık saf desen kaynağındayız
+  state.uploadKind = null;
   updateSourceStats();
   refreshPatternCode();
   state.tris = null;
@@ -1157,6 +1217,11 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
     syncRangeOutputs();
     if (input.id.startsWith('p-brush')) { saveSettings(); return; }
     if (input.id === 'p-patternCode' || input.id === 'p-seedText') return;
+    // Desen payı özel: yüklü görsel varken applyPattern() onu deseni ile
+    // DEĞİŞTİRİRDİ. Pay sıfıra çekildiğinde de görsel kaybolurdu.
+    if (input.id === 'p-patMix' && state.uploadGrid) {
+      saveSettings(); composeSource(); scheduleRegen(); return;
+    }
     if (input.id.startsWith('p-pat')) { saveSettings(); applyPattern(); return; }
     if (input.id === 'p-panelW' || input.id === 'p-lockAspect') syncAspect();
     if (input.id === 'p-sheetW' || input.id === 'p-sheetH') syncSheetPreset();

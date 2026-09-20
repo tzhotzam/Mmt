@@ -1566,8 +1566,28 @@ test('otomatik yumuşatma lamel adımına bağlı', () => {
     'yumuşatma adım/3 ve netlik yarıçapı adım/2 olmalı');
   // Desenler kodla üretilir, gren içermez; güçlü yumuşatma onlara zarar verir.
   assert.ok(/sourceKind !== 'foto'/.test(govde), 'desenler otomatik yumuşatmadan muaf değil');
-  assert.ok(/sourceKind = 'foto'/.test(js) && /sourceKind = 'desen'/.test(js),
+  assert.ok(/uploadKind = 'foto'/.test(js) && /sourceKind = 'desen'/.test(js),
     'kaynak türü işaretlenmiyor');
+});
+
+test('desen karışımı yüklenen görseli silmez', () => {
+  const js = oku('js/main.js');
+  const govde = js.match(/function composeSource[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(govde, 'composeSource yok');
+  // Karışım: görsel*(1-k) + desen*k. Zeminde desen kalır, konu üstüne biner.
+  assert.ok(/\* \(1 - k\)/.test(govde) && /\* k/.test(govde), 'karışım formülü yok');
+  // Yumuşatma kararı karışıma değil yüklenen içeriğe göre verilmeli.
+  assert.ok(/sourceKind = state\.uploadKind/.test(govde),
+    'karışımda kaynak türü yüklenen içerikten gelmiyor');
+  // Pay sıfıra çekilince görsel geri gelmeli, desen onu yutmamalı.
+  assert.ok(/state\.sourceGrid = yukleme/.test(govde), 'pay 0 iken görsele dönülmüyor');
+  // applyPattern yüklü görsel varken onu değiştirmemeli.
+  assert.ok(/state\.uploadGrid && num\('p-patMix', 0\) > 0/.test(js),
+    'applyPattern karışım durumunu gözetmiyor');
+  // Kaydırıcı özel ele alınmalı; yoksa applyPattern görseli deseni ile değiştirir.
+  assert.ok(/input\.id === 'p-patMix' && state\.uploadGrid/.test(js),
+    'desen payı kaydırıcısı özel ele alınmıyor');
+  assert.ok(oku('index.html').includes('id="p-patMix"'), 'kaydırıcı HTML\'de yok');
 });
 
 // --- Kaynak teşhisi -----------------------------------------------------

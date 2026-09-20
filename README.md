@@ -126,6 +126,36 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 Girdiğiniz ayarlar tarayıcıda saklanır; her açılışta yeniden girmeniz
 gerekmez. "Ayarları sıfırla" varsayılanlara döndürür.
 
+### Logolu panelde arka plan neden düz çıkar? (Desen payı)
+Logo ya da ürün fotoğrafı düz bir zemin üzerinde gelir. Düz zemin = sabit
+yükseklik = hiç kesilmemiş düz çıta. SAPCI logosunda **66 lamelin 17'si**
+böyleydi: panel "lamel paneli" gibi değil, ortasında kabartma olan düz bir
+levha gibi duruyordu.
+
+**Desen payı** kaydırıcısı bunu çözer: hazır desen, görselin yerine geçmez,
+*altına taşıyıcı dalga* olarak girer.
+
+```
+çıktı = görsel·(1−k) + desen·k
+```
+
+Zeminde görsel sabit olduğu için geriye desen kalır — panelin her yeri
+dalgalanır. Konunun olduğu yerde görsel deseni yukarı iter, yani logo
+dalganın üstünde kabartma olarak durur.
+
+| desen payı | düz lamel | ortalama dalgalanma |
+|---|---|---|
+| 0 | 17 / 66 | 29,9 mm |
+| 0,20 | 2 / 66 | 27,7 mm |
+| **0,35** | **0 / 66** | 24,5 mm |
+| 0,60 | 0 / 66 | 21,3 mm |
+
+0,2–0,35 arası iyi sonuç verir: düz çıta kalmaz, logo hâlâ baskın. Payı
+fazla açarsanız desen logonun önüne geçer.
+
+Yumuşatma kararı karışıma değil **yüklenen içeriğe** göre verilir: fotoğrafta
+gren vardır, altına desen eklenmesi bunu değiştirmez.
+
 ### Logo ve yazı lamel panelde çıkar mı?
 Çıkar — **yeter ki panel yeterince büyük olsun.** Belirleyici olan kaynağın
 türü değil, harf gövdesinin kaç lamel genişliğine düştüğüdür.
