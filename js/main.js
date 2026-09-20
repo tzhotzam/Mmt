@@ -1,7 +1,7 @@
 // Uygulama kabuğu: girdi → yükseklik haritası → parça üretimi → önizleme → dışa aktarma.
 
 import { gridFromImageData, applyFilters, makeGrid, suggestInvert } from './heightmap.js';
-import { parseMesh, heightmapFromStl } from './stl.js';
+import { parseMesh, heightmapFromStl, pickBestAxis, projectedSize } from './stl.js';
 import { facetize } from './facet.js';
 import { inflateSilhouette, blendRelief } from './relief.js';
 import { demoMeshTris } from './demomesh.js';
@@ -50,6 +50,8 @@ const state = {
   cutList: null,
   sheetIndex: 0,
   reliefInfo: null,
+  viewAxis: 'z',
+  meshInfo: null,
   paintLayer: null,       // elle çizilen derinlik düzeltmesi (-1..1)
   brushMode: 'raise',
   undoStack: [],          // Int8'e nicemlenmiş anlık görüntüler
@@ -202,21 +204,49 @@ async function loadStlFile(file) {
       'Dosya ZIP veya USDZ ise önce açıp içinden STL/OBJ çıkarın.'
     );
   }
-  setSourceStatus(`${format} yüklendi: ${file.name} — ${tris.length.toLocaleString('tr-TR')} üçgen`);
-  // Modelin en-boy oranını koru.
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const t of tris) for (const [x, y] of t) {
-    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-  }
   state.tris = tris;
-  state.aspect = (maxX - minX) / (maxY - minY || 1) || 1;
-  const [cols, rows] = gridDimsFor(state.aspect);
-  state.sourceGrid = heightmapFromStl(tris, cols, rows);
-  resetPaint();
+  state.meshInfo = { format, name: file.name, count: tris.length };
+  const r = rebuildFromMesh();
+  reportMesh(r);
   setInvert(false);
   syncAspect();
   scheduleRegen();
+}
+
+const AXIS_NAMES = { z: 'tepeden', y: 'önden', x: 'yandan' };
+
+/**
+ * Modeli seçilen bakış yönünden tarayıp yükseklik haritasını kurar.
+ *
+ * Bakış yönü kritik: ayakta duran bir figüre tepeden bakılırsa yalnızca
+ * omuz üstü görünür, yükseklik haritası neredeyse düz çıkar ve panelde
+ * hiçbir şey oluşmaz. Otomatikte modelin en ince olduğu eksen seçilir —
+ * nesneler hemen her zaman önden arkaya incedir.
+ */
+function rebuildFromMesh() {
+  const tris = state.tris;
+  if (!tris) return null;
+
+  const secim = els['p-viewAxis'].value;
+  const otomatik = secim === 'auto';
+  const axis = otomatik ? pickBestAxis(tris).axis : secim;
+  state.viewAxis = axis;
+
+  const proj = projectedSize(tris, axis);
+  state.aspect = proj.h > 0 ? proj.w / proj.h : 1;
+  const [cols, rows] = gridDimsFor(state.aspect);
+  state.sourceGrid = heightmapFromStl(tris, cols, rows, { axis });
+  resetPaint();
+  return { axis, otomatik };
+}
+
+function reportMesh(r) {
+  const b = state.meshInfo;
+  if (!r || !b) return;
+  setSourceStatus(
+    `${b.format}: ${b.name} — ${b.count.toLocaleString('tr-TR')} üçgen, ` +
+    `${AXIS_NAMES[r.axis]} bakılıyor${r.otomatik ? ' (otomatik)' : ''}`
+  );
 }
 
 function loadDemo() {
@@ -760,6 +790,14 @@ function restoreSettings() {
   syncRangeOutputs();
   return true;
 }
+
+els['p-viewAxis'].onchange = () => {
+  saveSettings();
+  if (!state.tris) return;
+  reportMesh(rebuildFromMesh());
+  syncAspect();
+  scheduleRegen();
+};
 
 els['p-sheetPreset'].onchange = () => {
   applySheetPreset();

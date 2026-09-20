@@ -10,7 +10,10 @@ import { nest, applyPlacement } from '../js/nest.js';
 import { sheetToDxf } from '../js/export/dxf.js';
 import { sheetToSvg } from '../js/export/svg.js';
 import { buildCutList, assemblyGuide, cutListToCsv } from '../js/cutlist.js';
-import { heightmapFromStl, parseStl, parseObj, parseMesh, validateMesh } from '../js/stl.js';
+import {
+  heightmapFromStl, parseStl, parseObj, parseMesh, validateMesh,
+  pickBestAxis, projectedSize, heightmapWithCoverage,
+} from '../js/stl.js';
 import { facetize } from '../js/facet.js';
 import { otsuThreshold, distanceTransform, inflateSilhouette, blendRelief } from '../js/relief.js';
 import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/paint.js';
@@ -404,6 +407,98 @@ test('her katmanın Z yüksekliği artıyor', () => {
   const zs = cont.parts.map((p) => p.meta.z);
   assert.equal(Math.min(...zs), 0);
   assert.equal(Math.max(...zs), 6 * 12);
+});
+
+console.log('bakış yönü');
+
+function kutu(cx, cy, cz, sx, sy, sz) {
+  const v = [];
+  for (const dz of [-1, 1]) for (const dy of [-1, 1]) for (const dx of [-1, 1]) {
+    v.push([cx + dx * sx / 2, cy + dy * sy / 2, cz + dz * sz / 2]);
+  }
+  const q = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [1, 3, 7, 5], [3, 2, 6, 7], [2, 0, 4, 6]];
+  const t = [];
+  for (const [a, b, c, d] of q) { t.push([v[a], v[b], v[c]]); t.push([v[a], v[c], v[d]]); }
+  return t;
+}
+
+/** Ayakta duran figür: Z yukarı, önden arkaya ince. */
+function ayaktaFigur() {
+  return [].concat(
+    kutu(0, 0, 120, 100, 45, 120),   // gövde
+    kutu(0, 12, 205, 50, 40, 50),    // baş
+    kutu(-70, -4, 130, 35, 30, 90),  // kollar
+    kutu(70, -4, 130, 35, 30, 90),
+    kutu(-30, 0, 30, 25, 25, 60),    // bacaklar
+    kutu(30, 0, 30, 25, 25, 60)
+  );
+}
+
+test('pickBestAxis ayakta figürde ÖNDEN bakar, tepeden değil', () => {
+  // Bu tam olarak "STL yükledim ama hiçbir şey çıkmadı" hatasıydı:
+  // ayakta duran figüre tepeden bakınca sadece omuz üstü görünüyordu.
+  assert.equal(pickBestAxis(ayaktaFigur()).axis, 'y');
+});
+
+test('pickBestAxis model yatık kaydedilmişse de doğru yüzü bulur', () => {
+  // Y yukarı (OBJ standardı): aynı figür, eksenler takas edilmiş
+  const yatik = ayaktaFigur().map((t) => t.map(([x, y, z]) => [x, z, y]));
+  assert.equal(pickBestAxis(yatik).axis, 'z');
+});
+
+test('pickBestAxis zaten düz olan rölyefte TEPEDEN bakar', () => {
+  const rolyef = [].concat(
+    kutu(0, 0, 5, 200, 150, 10),
+    kutu(20, -10, 20, 80, 60, 30),
+    kutu(-50, 30, 16, 40, 40, 22)
+  );
+  assert.equal(pickBestAxis(rolyef).axis, 'z');
+});
+
+test('tepeden bakış figürün boyunu ve siluetini yok eder', () => {
+  // "STL yükledim ama hiçbir şey çıkmadı" hatasının ölçülebilir hâli.
+  const tris = ayaktaFigur();
+
+  // 1) Tepeden bakış modelin en uzun boyutunu tamamen kaybeder.
+  const tepeden = projectedSize(tris, 'z');
+  const onden = projectedSize(tris, 'y');
+  assert.ok(onden.h > tepeden.h * 4,
+    `önden bakış boyu korumalı: önden ${onden.h.toFixed(0)}mm, tepeden ${tepeden.h.toFixed(0)}mm`);
+
+  // 2) Tepeden bakışta siluet dolu bir dikdörtgene yakındır; kol/bacak
+  //    arasındaki boşluklar kaybolur, yani biçim bilgisi kalmaz.
+  const kapsama = (axis) => {
+    const { data, covered } = heightmapWithCoverage(tris, 140, 140, { axis });
+    let n = 0;
+    for (const c of covered) if (c) n++;
+    return n / data.length;
+  };
+  assert.ok(kapsama('z') > kapsama('y') + 0.15,
+    `tepeden siluet daha dolu olmalı: tepeden %${(kapsama('z') * 100).toFixed(0)}, ` +
+    `önden %${(kapsama('y') * 100).toFixed(0)}`);
+});
+
+test('projectedSize bakış yönüne göre en-boy verir', () => {
+  const tris = kutu(0, 0, 0, 100, 40, 200);
+  const z = projectedSize(tris, 'z');   // XY düzlemi
+  const y = projectedSize(tris, 'y');   // XZ düzlemi
+  const x = projectedSize(tris, 'x');   // YZ düzlemi
+  assert.ok(Math.abs(z.w - 100) < 1e-6 && Math.abs(z.h - 40) < 1e-6, `z: ${z.w}x${z.h}`);
+  assert.ok(Math.abs(y.w - 100) < 1e-6 && Math.abs(y.h - 200) < 1e-6, `y: ${y.w}x${y.h}`);
+  assert.ok(Math.abs(x.w - 40) < 1e-6 && Math.abs(x.h - 200) < 1e-6, `x: ${x.w}x${x.h}`);
+  assert.ok(Math.abs(y.depth - 40) < 1e-6, 'önden bakışta derinlik Y ekseni olmalı');
+});
+
+test('heightmapWithCoverage kapsama maskesini doğru verir', () => {
+  // Modelin kapladığı alan, izdüşüm çerçevesinin tamamı değil
+  const tris = [].concat(kutu(-40, 0, 0, 20, 20, 100), kutu(40, 0, 0, 20, 20, 100));
+  const { data, covered } = heightmapWithCoverage(tris, 100, 100, { axis: 'y' });
+  let n = 0;
+  for (const c of covered) if (c) n++;
+  assert.ok(n > 0 && n < data.length, `kapsama %${(n / data.length * 100).toFixed(0)} — tam dolu olmamalı`);
+  // Ortada boşluk var: iki çubuk arasında
+  const orta = covered[50 * 100 + 50];
+  assert.equal(orta, 0, 'iki çubuk arası boş kalmalı');
 });
 
 test('OBJ okunur: çokgen yüzler üçgenlenir, negatif indis çalışır', () => {

@@ -286,6 +286,8 @@ canvas.view { touch-action: none; }
 
 #view-paint { cursor: crosshair; touch-action: none; }
 
+.view-axis { margin-top: 12px; }
+
 code {
   background: var(--panel-2);
   padding: 1px 5px;

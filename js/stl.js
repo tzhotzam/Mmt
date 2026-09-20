@@ -79,21 +79,106 @@ export function stlBounds(tris) {
 }
 
 /**
- * Üçgenleri tepeden tarayıp 0..1 yükseklik haritası üretir.
- * @param {Array} tris parseStl çıktısı
- * @param {number} cols
- * @param {number} rows
- * @param {{axis?:'z'|'y'|'x'}} opts bakış ekseni (varsayılan Z = tepeden)
+ * Bakış eksenine göre üçgenleri döndürür.
+ * 'z' tepeden, 'y' önden, 'x' yandan bakıştır.
  */
-export function heightmapFromStl(tris, cols, rows, opts = {}) {
+function orient(tris, axis) {
+  if (axis === 'z') return tris;
+  if (axis === 'y') return tris.map((t) => t.map(([x, y, z]) => [x, z, y]));
+  return tris.map((t) => t.map(([x, y, z]) => [y, z, x]));
+}
+
+/** Bakış eksenine göre izdüşümün en/boy ölçüsü. */
+export function projectedSize(tris, axis) {
+  const b = stlBounds(orient(tris, axis));
+  return { w: b.w, h: b.h, depth: b.d };
+}
+
+/**
+ * Bir bakış yönünün ne kadar "bilgi" verdiğini ölçer.
+ *
+ * İki şeye bakılır:
+ *  - SİLUET: izdüşüm dolu bir dikdörtgene ne kadar benziyor? Ayakta duran
+ *    bir figüre tepeden bakınca sadece gövdenin dış hattı görünür ve çerçeve
+ *    tamamen dolar — siluet hiçbir şey anlatmaz. Önden bakınca kol, bacak,
+ *    baş arasındaki boşluklar çıkar.
+ *  - DERİNLİK: kapsanan hücrelerdeki yükseklik değişkenliği, modelin genel
+ *    boyutuna oranla. Model birimlerinde ölçülür; her ekseni kendi derinlik
+ *    aralığına göre normalleştirmek sığ görünümleri haksız yere şişiriyordu.
+ */
+export function axisScore(tris, axis, res = 96) {
+  const { w, h } = projectedSize(tris, axis);
+  if (!(w > 0) || !(h > 0)) return 0;
+  const cols = w >= h ? res : Math.max(8, Math.round(res * (w / h)));
+  const rows = w >= h ? Math.max(8, Math.round(res * (h / w))) : res;
+  const { data, covered } = heightmapWithCoverage(tris, cols, rows, { axis });
+
+  const b = stlBounds(orient(tris, axis));
+  const diag = Math.hypot(b.w, b.h, b.d) || 1;
+
+  let n = 0, sum = 0, sum2 = 0;
+  for (let i = 0; i < data.length; i++) {
+    if (!covered[i]) continue;
+    const z = data[i] * b.d;   // model birimine geri çevir
+    n++;
+    sum += z;
+    sum2 += z * z;
+  }
+  if (n < 4) return 0;
+  const mean = sum / n;
+  const derinlik = Math.sqrt(Math.max(0, sum2 / n - mean * mean)) / diag;
+  const coverage = n / data.length;
+  const siluet = 1 - coverage;
+
+  return siluet + derinlik;
+}
+
+/**
+ * En uygun bakış eksenini seçer.
+ *
+ * Ana kural: modelin EN İNCE olduğu eksen boyunca bak. Nesneler hemen her
+ * zaman önden arkaya incedir (insan, hayvan, figür, tabela), rölyef de
+ * zaten yüze bakan bir şeydir. Bu kural hem ayakta duran figürlerde hem
+ * zaten düz olan rölyeflerde doğru yönü verir.
+ *
+ * İki eksenin kalınlığı birbirine yakınsa (küpe benzer modeller) siluet ve
+ * derinlik puanıyla eşitlik bozulur.
+ */
+export function pickBestAxis(tris) {
+  const b = stlBounds(tris);
+  const kalinlik = { z: b.d, y: b.h, x: b.w };
+  const scores = {};
+  for (const axis of ['z', 'y', 'x']) scores[axis] = axisScore(tris, axis);
+
+  const sirali = ['z', 'y', 'x'].sort((p, q) => kalinlik[p] - kalinlik[q]);
+  const enInce = sirali[0];
+  const ikinci = sirali[1];
+
+  // %20'den fazla farklıysa incelik kararı verir; değilse puana bakılır.
+  const belirgin = kalinlik[enInce] < kalinlik[ikinci] * 0.8;
+  const axis = belirgin
+    ? enInce
+    : (scores[enInce] >= scores[ikinci] ? enInce : ikinci);
+
+  return { axis, scores, thickness: kalinlik };
+}
+
+/**
+ * Üçgenleri tarayıp 0..1 yükseklik haritası üretir; hangi hücrelerin model
+ * tarafından kapsandığını da bildirir.
+ */
+export function heightmapWithCoverage(tris, cols, rows, opts = {}) {
   const axis = opts.axis || 'z';
-  const t3 = axis === 'z' ? tris
-    : tris.map((t) => t.map(([x, y, z]) => (axis === 'y' ? [x, z, y] : [y, z, x])));
+  const t3 = orient(tris, axis);
 
   const b = stlBounds(t3);
   const data = new Float32Array(cols * rows).fill(-Infinity);
   if (!Number.isFinite(b.w) || b.w <= 0 || b.h <= 0) {
-    return { w: cols, h: rows, data: new Float32Array(cols * rows) };
+    return {
+      w: cols, h: rows,
+      data: new Float32Array(cols * rows),
+      covered: new Uint8Array(cols * rows),
+    };
   }
 
   const sx = (cols - 1) / b.w;
@@ -126,10 +211,22 @@ export function heightmapFromStl(tris, cols, rows, opts = {}) {
 
   const zMin = b.minZ;
   const range = b.maxZ - b.minZ || 1;
+  const covered = new Uint8Array(cols * rows);
   for (let i = 0; i < data.length; i++) {
-    data[i] = data[i] === -Infinity ? 0 : (data[i] - zMin) / range;
+    if (data[i] === -Infinity) {
+      data[i] = 0;
+    } else {
+      covered[i] = 1;
+      data[i] = (data[i] - zMin) / range;
+    }
   }
-  return { w: cols, h: rows, data };
+  return { w: cols, h: rows, data, covered };
+}
+
+/** Kapsama maskesi gerekmeyen çağrılar için ince sarmalayıcı. */
+export function heightmapFromStl(tris, cols, rows, opts = {}) {
+  const { w, h, data } = heightmapWithCoverage(tris, cols, rows, opts);
+  return { w, h, data };
 }
 
 /**

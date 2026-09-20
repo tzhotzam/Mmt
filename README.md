@@ -118,7 +118,14 @@ zaman "çamurlu" kabartma verir. İki çözüm var:
 Gerçek derinlik gerekiyorsa telefonla tarama uygulaması (Polycam,
 Scaniverse) ile model çıkarıp yükleyin — o zaman yükseklik tahmin değil
 ölçümdür. **STL ve OBJ** desteklenir; biçim dosya içeriğinden anlaşılır,
-uzantı yanlış olsa da okunur. 3B model seçicisinde `accept` filtresi
+uzantı yanlış olsa da okunur.
+
+**Bakış yönü önemlidir.** Model tek yönden taranıp kabartmaya çevrilir.
+Ayakta duran bir figüre tepeden bakılırsa yalnızca omuz üstü görünür ve
+panel neredeyse düz çıkar. "Modele bakış yönü" varsayılan olarak
+otomatiktir ve modelin **en ince olduğu ekseni** seçer — nesneler hemen
+her zaman önden arkaya incedir. Sonuç beklediğiniz gibi değilse önden /
+yandan / tepeden arasında elle geçiş yapın. 3B model seçicisinde `accept` filtresi
 bilinçli olarak yoktur: iOS tanımadığı uzantıları soluklaştırıp
 seçilemez yapıyor.
 
