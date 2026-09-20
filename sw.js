@@ -14,6 +14,8 @@ const ASSETS = [
   './app.css',
   './manifest.webmanifest',
   './assets/icon.svg',
+  './assets/icon-192.png',
+  './assets/icon-512.png',
   './js/main.js',
   './js/geom.js',
   './js/heightmap.js',

@@ -212,6 +212,22 @@ seçilemez yapıyor.
 **Plan** (önden görünüm), **Levha** (kesim yerleşimi — dokunarak levhalar
 arasında geçilir), **Kaynak** (işlenmiş yükseklik haritası), **Çizim** (derinlik boyama).
 
+### Bilgisayara uygulama gibi kurmak
+Ayrı bir program indirmeye gerek yok — site zaten kurulabilir bir uygulama
+(PWA). Windows'ta Chrome veya Edge ile açın, adres çubuğunun sağındaki
+**kurulum simgesine** (ekran + aşağı ok) tıklayın, ya da menüden
+*Uygulamalar → Bu siteyi uygulama olarak yükle*. Sonrasında:
+
+- Başlat menüsünde kendi simgesiyle durur, tarayıcı sekmesi olmadan açılır.
+- Çevrimdışı çalışır (yalnızca 3B önizleme internet ister — three.js
+  CDN'den geliyor). Ölçü girme, üretim, DXF/SVG çıkarma internetsiz çalışır.
+- İndirilen DXF dosyaları doğrudan bilgisayarın indirme klasörüne düşer;
+  telefondan aktarma derdi kalmaz.
+
+Tezgâhın yanındaki bilgisayarda kullanmak için doğru yol budur. Gerçek bir
+`.exe` gerekiyorsa (kurulum dosyası, dosya ilişkilendirme) Tauri ile
+paketlenebilir — ama çoğu durumda gereksizdir.
+
 ### Telefona uygulama gibi kurmak
 Safari'de sayfayı açın → Paylaş → **Ana Ekrana Ekle**. Tam ekran açılır ve
 çevrimdışı çalışır (3B önizleme hariç — o three.js için internet ister).
