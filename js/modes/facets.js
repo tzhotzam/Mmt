@@ -17,6 +17,7 @@ import {
 } from '../mesh.js';
 import { signedArea, bbox } from '../geom.js';
 import { unfoldPatches, patchOutline, bridgeLine, bendDeduction } from '../unfold.js';
+import { applyRivetJoints, reliefHoles, reliefDiameter, cleanupJointFields } from '../joints.js';
 
 export const FACET_DEFAULTS = {
   targetSize: 600,
@@ -40,6 +41,13 @@ export const FACET_DEFAULTS = {
   // Bundan keskin kenar bükülmez, kaynak dikişi kalır (derece, düzden
   // sapma). 150° → iç açı 30°: abkant presin sivri takımla inebildiği sınır.
   maxBend: 150,
+  // Birleşim: 'kaynak' | 'percin' (her dikişe perçinli kulakçık)
+  joinMethod: 'kaynak',
+  tabWidth: 20,       // kulakçık derinliği (mm)
+  rivetDiameter: 4,   // kör perçin çapı; delik +0.1 mm
+  rivetPitch: 80,     // perçinler arası en çok (mm)
+  reliefHoles: true,  // büküm hatlarının birleştiği iç köşelere delik
+  reliefHoleDia: 0,   // 0 → iki sac kalınlığı (3-8 mm)
   kFactor: 0.4,
   maxPatchW: Infinity,
   maxPatchH: Infinity,
@@ -85,6 +93,28 @@ export function generateFacets(rawTris, userParams = {}) {
     ? buildPatchParts(a, p, warnings)
     : buildLooseParts(a, p, warnings);
 
+  const birlesim = { percin: 0, kaynak: a.seams.length, keskin: 0, rivets: 0, tabs: 0 };
+  if (p.joinMethod === 'percin') {
+    Object.assign(birlesim, applyRivetJoints(built.parts, a.seams, p));
+    const parcalar = [];
+    if (birlesim.kaynak) {
+      parcalar.push(`${birlesim.kaynak} dikişe kulakçık ya da perçin deliği sığmadı ` +
+        '(kenar kısa, faset dar ya da kulakçık parçanın kendisine çarpıyor — ' +
+        'heykeli büyütmek bu sayıyı düşürür)');
+    }
+    if (birlesim.keskin) {
+      parcalar.push(`${birlesim.keskin} dikiş bükülemeyecek kadar keskin (iç açı 30°'nin altında)`);
+    }
+    if (parcalar.length) {
+      warnings.push(
+        `${parcalar.join('; ')}. Bunlar kaynakla birleşir; montaj listesinde "kaynak" diye işaretli.`
+      );
+    }
+    birlesim.kaynak += birlesim.keskin;
+  }
+  const reliefHoleCount = built.parts.reduce((t, q) => t + (q.meta.reliefHoles || 0), 0);
+  cleanupJointFields(built.parts);
+
   const maxDev = a.facets.reduce((m, f) => Math.max(m, f ? f.deviation : 0), 0);
   if (p.angleTol > 1 && maxDev > p.thickness) {
     warnings.push(
@@ -114,6 +144,11 @@ export function generateFacets(rawTris, userParams = {}) {
       seamCount: a.seams.length,
       foldCount: (built.folds || []).length,
       openEdges: a.openEdges,
+      joinMethod: p.joinMethod,
+      rivetCount: birlesim.rivets,
+      tabCount: birlesim.tabs,
+      weldSeamCount: p.joinMethod === 'percin' ? birlesim.kaynak : a.seams.length,
+      reliefHoleCount,
       triangleCount: mesh.faces.length,
       maxDeviation: maxDev,
       modelSize: scaled.size,
@@ -269,11 +304,13 @@ function buildLooseParts(a, p, warnings) {
     groupToId.set(f.index, id);
 
     const engrave = [centerLabel(id, b, p.labelSize)];
+    const seamEdges = [];
     for (let i = 0; i < ring.length; i++) {
       const sid = f.seamOfEdge[i];
       if (!sid) continue;
       const lbl = edgeLabel(ring, i, String(sid), p.seamLabelSize);
       if (lbl) engrave.push(lbl);
+      seamEdges.push({ i, sid, label: lbl });
     }
 
     parts.push({
@@ -283,6 +320,7 @@ function buildLooseParts(a, p, warnings) {
         group: f.index, area: f.area, deviation: f.deviation,
         seams: f.seamOfEdge.filter(Boolean),
       },
+      _ring0: f.poly2d, _seamEdges: seamEdges, _circles: [],
     });
   });
 
@@ -343,6 +381,7 @@ function buildPatchParts(a, p, warnings) {
       ring = ring.slice().reverse();
       edges = edges.map((_, i) => traced.edges[(n - 2 - i + n) % n]);
     }
+    const ring0 = ring;
 
     // Kaynak kenarlarına kalınlık telafisi; büküm kenarlarına gerekmez.
     if (p.thicknessComp && p.thickness > 0) {
@@ -364,6 +403,7 @@ function buildPatchParts(a, p, warnings) {
     for (const [fi] of patch.placed) groupToId.set(denseToGroup[fi], id);
 
     const engrave = [centerLabel(id, b, p.labelSize)];
+    const seamEdges = [];
 
     for (let i = 0; i < ring.length; i++) {
       const ek = edges[i]?.edgeKey;
@@ -373,7 +413,10 @@ function buildPatchParts(a, p, warnings) {
       weldedKeys.add(ek);
       const lbl = edgeLabel(ring, i, String(sid), p.seamLabelSize);
       if (lbl) engrave.push(lbl);
+      seamEdges.push({ i, sid, label: lbl });
     }
+
+    const kose = p.reliefHoles ? reliefHoles(ring, patch.folds, reliefDiameter(p)) : [];
 
     for (const f of patch.folds) {
       folds.push({
@@ -405,13 +448,15 @@ function buildPatchParts(a, p, warnings) {
     }
 
     parts.push({
-      id, kind: 'yaprak', outline: ring, holes: [], engrave,
+      id, kind: 'yaprak', outline: ring, holes: kose.map((k) => k.ring), engrave,
       w: b.w, h: b.h,
       meta: {
         facets: patch.placed.size,
         folds: patch.folds.length,
+        reliefHoles: kose.length,
         seams: edges.map((e) => (e.edgeKey ? a.seamIdByKey.get(e.edgeKey) : null)).filter(Boolean),
       },
+      _ring0: ring0, _seamEdges: seamEdges, _circles: kose.slice(),
     });
   });
 

@@ -99,6 +99,7 @@ function weldGuide(info, seams, folds = []) {
   const concave = seams.filter((s) => s.angle > 181).length;
   const sharp = seams.filter((s) => s.angle < 60);
 
+  const percin = info.joinMethod === 'percin';
   const lines = [
     `Heykel ölçüsü: ${round(m.x)} × ${round(m.y)} × ${round(m.z)} mm`,
     info.unfold
@@ -106,6 +107,25 @@ function weldGuide(info, seams, folds = []) {
         + `${info.seamCount} kaynak dikişi, ${p.thickness} mm sac.`
       : `${info.facetCount} faset, ${info.seamCount} kaynak dikişi, ${p.thickness} mm sac.`,
     `Toplam yüzey alanı: ${round(info.totalArea / 1e6, 2)} m².`,
+    ...(percin ? [
+      `Birleşim: perçinli kulakçık — ${info.tabCount} kulakçık, ${info.rivetCount} adet ` +
+        `Ø${p.rivetDiameter} kör perçin (%10 yedekle ${Math.ceil(info.rivetCount * 1.1)}), ` +
+        `${info.weldSeamCount} dikiş kaynakla.`,
+      '',
+      'PERÇİNLİ BİRLEŞİM',
+      '  Her perçinli dikişin BİR tarafında kulakçık vardır; kulakçık dikiş',
+      '  kenarındaki kertikli çizgiden bükülür ve eş parçanın ALTINA girer.',
+      '  Kulakçık tarafındaki etiket "12·143°" biçimindedir: 12 dikiş numarası,',
+      '  143° kulakçığı büktükten sonra iki yüzey arasında kalacak iç açı.',
+      '  Eş parçada yuvarlak delik, kulakçıkta oval yuva vardır; üst üste getirip',
+      `  Ø${p.rivetDiameter} kör (pop) perçin atın. Oval yuva sac kalınlığından doğan`,
+      '  kaymayı karşılar; perçinin pulu yuvayı içeriden örter.',
+      '  Perçin başı dışta kalır ve yüzeyde düzenli bir desen olur.',
+      ...(info.reliefHoleCount ? [
+        `  Yaprakların içindeki ${info.reliefHoleCount} küçük delik köşe deliğidir: büküm`,
+        '  hatlarının buluştuğu noktada sacın yırtılmasını önler, perçin için değildir.',
+      ] : []),
+    ] : []),
     '',
     'NASIL BİRLEŞİR',
     info.unfold
@@ -187,13 +207,16 @@ function weldGuide(info, seams, folds = []) {
     }
   }
 
-  lines.push('', 'KAYNAK DİKİŞİ LİSTESİ', '  No    Parçalar      Uzunluk   Açı      Tip');
+  lines.push('', percin ? 'DİKİŞ LİSTESİ' : 'KAYNAK DİKİŞİ LİSTESİ',
+    '  No    Parçalar      Uzunluk   Açı      Tip' + (percin ? '        Birleşim' : ''));
   for (const s of seams) {
     const type = s.angle < 179 ? 'dışbükey' : s.angle > 181 ? 'içbükey' : 'düz';
+    const birlesim = !percin ? ''
+      : s.join === 'percin' ? `  perçin ×${s.rivets} (kulakçık ${s.tabOn})` : '  kaynak';
     lines.push(
       `  ${String(s.id).padEnd(5)} ` +
       `${s.aId || '?'}–${s.bId || '?'}`.padEnd(13) +
-      ` ${(round(s.length) + ' mm').padEnd(9)} ${(round(s.angle) + '°').padEnd(8)} ${type}`
+      ` ${(round(s.length) + ' mm').padEnd(9)} ${(round(s.angle) + '°').padEnd(8)} ${type.padEnd(10)}${birlesim}`
     );
   }
   return lines.join('\n');

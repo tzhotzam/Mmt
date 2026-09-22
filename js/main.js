@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-e';
+const APP_VERSION = '2026-09-22-f';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -147,6 +147,11 @@ function readParams() {
       autoLimit: num('p-autoLimit', 250),
       dashCut: num('p-dashCut', 30),
       dashGap: num('p-dashGap', 8),
+      joinMethod: els['p-joinMethod'].value,
+      tabWidth: num('p-tabWidth', 20),
+      rivetDiameter: num('p-rivetDiameter', 4),
+      rivetPitch: num('p-rivetPitch', 80),
+      reliefHoles: bool('p-reliefHoles'),
       // Yaprak levhaya sığmalı.
       maxPatchW: num('p-sheetW', 2440) - 2 * num('p-margin', 10),
       maxPatchH: num('p-sheetH', 1220) - 2 * num('p-margin', 10),
@@ -907,7 +912,9 @@ function renderSummary() {
     ['Boyut', `${Math.round(i.modelSize.x)}×${Math.round(i.modelSize.y)}×${Math.round(i.modelSize.z)} mm`],
     ['Faset', i.facetCount],
     ...(i.unfold ? [['Yaprak', i.partCount], ['Büküm', i.foldCount]] : []),
-    ['Kaynak dikişi', i.seamCount],
+    ...(i.joinMethod === 'percin'
+      ? [['Perçin', i.rivetCount], ['Kaynak dikişi', i.weldSeamCount]]
+      : [['Kaynak dikişi', i.seamCount]]),
     ['Sac', `${i.params.thickness} mm`],
     ['Levha', `${s.sheetCount} × ${s.sheetSize}`],
     ['Doluluk', `%${s.utilisation}`],

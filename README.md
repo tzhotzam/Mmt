@@ -115,6 +115,21 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   bacakları da yumuşatabilir); ayrıntı kaybı istemezseniz onarımı kapatın.
   İnce bacaklı figürlerde hedef yüzey sayısını 800-1000'e çıkarmak bacakları
   belirginleştirir.
+- **Perçinli kulakçık (kaynaksız birleşim).** "Birleşim: Perçinli kulakçık"
+  seçilince her dikişin bir tarafına 45° pahlı bir kulakçık eklenir;
+  kulakçık kertikli çizgiden bükülüp eş parçanın altına girer. Eş parçada
+  yuvarlak delik, kulakçıkta oval yuva kesilir, oradan kör (pop) perçin
+  atılır — kaynak, taşlama, boya yanığı yok; perçin başları yüzeyde desen
+  olur. Delik konumları telafisiz kenarın ortasından simetrik verildiği için
+  iki parçada aynı noktaya düşer; oval yuva sac kalınlığından doğan kaymayı
+  karşılar. Kulakçık tarafındaki etiket `12·143°` biçimindedir (dikiş no ·
+  bükümden sonra kalacak iç açı). Kısa kenara, dar fasete ya da iç açısı
+  30°'nin altındaki bıçak sırtı dikişe kulakçık sığmaz; bunlar kaynakta
+  kalır ve montaj listesinde işaretlenir. Ölçüldü: 1200 mm'lik bir figürde
+  175 dikişin 110'u perçinlendi (139 perçin), 40'ı bıçak sırtıydı.
+- **Köşe delikleri.** Yaprağın içinde büküm hatlarının buluştuğu her noktaya
+  küçük bir delik (iki sac kalınlığı, 3-8 mm) açılır; sac orada her yönden
+  bükülmeye zorlandığı için yırtılır ya da kabarır, delik bunu önler.
 - **Bükülemeyecek kenar büküm olmaz.** Düzden 150°'den fazla sapan (iç açısı
   30°'nin altında) kenarlar açınıma katılmaz, kaynak dikişi kalır.
 - **Görselden de çalışır.** 3B model yoksa görsel, kapalı bir kabartma
@@ -425,6 +440,7 @@ js/
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
   remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)
+  joints.js           perçinli kulakçık ve köşe delikleri
   relief3d.js         yükseklik haritasından kapalı kabartma hacmi
   mesh.js             köşe kaynaklama, eş düzlem birleştirme, dihedral açı
   unfold.js           açınım: çakışmasız öbekleme, sınır izi, kertik, büküm payı

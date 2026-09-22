@@ -33,6 +33,7 @@ import { generateSlices } from '../js/modes/slices.js';
 import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js';
 import { decimate } from '../js/decimate.js';
 import { voxelRemesh, meshHealth } from '../js/remesh.js';
+import { applyRivetJoints, reliefHoles, icerdeMi } from '../js/joints.js';
 import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
 import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
@@ -1477,6 +1478,156 @@ test('model onarımı arayüzde seçilebilir ve servis çalışanında', () => {
   assert.ok(/els\['p-remesh'\]/.test(js), 'main.js seçimi okumuyor');
   assert.ok(/state\.remeshCache = null/.test(js), 'görsel yüklenince onarım önbelleği temizlenmiyor');
   assert.ok(oku('sw.js').includes("'./js/remesh.js'"), 'remesh.js çevrimdışı listede yok');
+});
+
+console.log('perçinli birleşim');
+
+/**
+ * Ortak kenarlı iki üçgen parça: A (0,0)-(120,0)-(60,90), B aynı kenarı
+ * TERS yönde dolaşan, açınımda başka yere taşınıp döndürülmüş eş üçgen.
+ * Kalınlık telafisi taklidi için dış halkalar 2 mm içeri çekilmiş.
+ */
+function perçinCifti() {
+  const a0 = [[0, 0], [120, 0], [60, 90]];
+  // B: aynı kenar (120,0)->(0,0) yönünde; 90° döndürülüp (500, 100)'e taşınmış.
+  const rot = ([x, y]) => [500 - y, 100 + x];
+  const b0 = [[120, 0], [0, 0], [60, -90]].map(rot);
+  const orient = (r) => (signedArea(r) < 0 ? r.slice().reverse() : r);
+  const A0 = orient(a0), B0 = orient(b0);
+  const ic = (r) => offsetPerEdge(r, r.map(() => 2));
+  const kenar = (r, P, Q) => r.findIndex((pt, i) => {
+    const nx = r[(i + 1) % r.length];
+    const esit = (u, v) => Math.hypot(u[0] - v[0], u[1] - v[1]) < 1e-9;
+    return (esit(pt, P) && esit(nx, Q)) || (esit(pt, Q) && esit(nx, P));
+  });
+  const ia = kenar(A0, [0, 0], [120, 0]);
+  const ib = kenar(B0, rot([0, 0]), rot([120, 0]));
+  const lbl = () => ({ type: 'text', text: '1', x: 0, y: 0, size: 4.5 });
+  const parca = (id, r0, i) => {
+    const label = lbl();
+    return { id, outline: ic(r0), holes: [], engrave: [label], w: 0, h: 0, meta: {},
+      _ring0: r0, _seamEdges: [{ i, sid: 1, label }], _circles: [] };
+  };
+  return { parts: [parca('P01', A0, ia), parca('P02', B0, ib)], ia, ib };
+}
+
+const PERCIN_P = {
+  rivetDiameter: 4, tabWidth: 20, rivetPitch: 50, thickness: 2, seamLabelSize: 4.5,
+  maxBend: 150, bridgeMode: 'oto', dashCut: 30, dashGap: 8, bridgeWidth: 25, autoLimit: 250,
+};
+
+test('perçin delikleri iki parçada aynı yere düşer', () => {
+  const { parts } = perçinCifti();
+  const seams = [{ id: 1, angle: 120 }];
+  const st = applyRivetJoints(parts, seams, PERCIN_P);
+  assert.equal(st.percin, 1, 'dikiş perçinlenmedi');
+  assert.equal(st.rivets, 2, '120 mm kenar, 50 mm aralık → 2 perçin');
+  const tab = parts.find((p) => p.id === seams[0].tabOn);
+  const del = parts.find((p) => p !== tab);
+  // Delik ve yuva merkezlerinin, kendi telafisiz kenar ortasına göre kenar
+  // boyunca uzaklıkları aynı küme olmalı (kenar yönünden bağımsız).
+  const merkez = (ring) => [ring.reduce((t, q) => t + q[0], 0) / ring.length, ring.reduce((t, q) => t + q[1], 0) / ring.length];
+  const konum = (part, holes) => {
+    const se = part._seamEdges[0];
+    const r0 = part._ring0;
+    const A = r0[se.i], B = r0[(se.i + 1) % r0.length];
+    const L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
+    const M = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+    return holes.map((h) => {
+      const c = merkez(h);
+      return {
+        boy: Math.abs((c[0] - M[0]) * u[0] + (c[1] - M[1]) * u[1]),
+        en: Math.abs((c[0] - M[0]) * -u[1] + (c[1] - M[1]) * u[0]),
+      };
+    }).sort((x, y) => x.boy - y.boy);
+  };
+  const kd = konum(del, del.holes), kt = konum(tab, tab.holes);
+  assert.equal(kd.length, 2);
+  assert.equal(kt.length, 2);
+  for (let j = 0; j < 2; j++) {
+    assert.ok(Math.abs(kd[j].boy - kt[j].boy) < 0.01, `kenar boyunca ${kd[j].boy} ≠ ${kt[j].boy}`);
+    assert.ok(Math.abs(kd[j].en - kt[j].en) < 0.01, `kenardan uzaklık ${kd[j].en} ≠ ${kt[j].en}`);
+  }
+});
+
+test('kulakçık parçanın dışına eklenir, delikler parçanın içinde kalır', () => {
+  const { parts } = perçinCifti();
+  const alanOnce = parts.map((p) => Math.abs(signedArea(p.outline)));
+  const seams = [{ id: 1, angle: 120 }];
+  applyRivetJoints(parts, seams, PERCIN_P);
+  const tab = parts.find((p) => p.id === seams[0].tabOn);
+  const i = parts.indexOf(tab);
+  assert.ok(Math.abs(signedArea(tab.outline)) > alanOnce[i] + 500, 'kulakçık alanı eklenmedi');
+  assert.ok(signedArea(tab.outline) > 0, 'kulakçıklı halka yön değiştirdi');
+  for (const p of parts) {
+    for (const h of p.holes) {
+      for (const pt of h) assert.ok(pointInRing(pt, p.outline), `${p.id} deliği parçadan taşıyor`);
+    }
+  }
+  // Kulakçığın büküm hattı kertikli çizilir.
+  assert.ok(tab.engrave.some((e) => e.layer === 'BUKUM'), 'kulakçık büküm izi yok');
+  assert.ok(tab.engrave.some((e) => e.layer === 'KESIM'), 'kulakçık kertiği yok');
+  assert.match(tab._seamEdges[0].label.text, /^1·120°$/, 'kulakçık etiketinde büküm açısı yok');
+});
+
+test('bıçak sırtı dikiş perçinlenmez, kaynakta kalır', () => {
+  const { parts } = perçinCifti();
+  const seams = [{ id: 1, angle: 12 }];
+  const st = applyRivetJoints(parts, seams, PERCIN_P);
+  assert.equal(st.percin, 0);
+  assert.equal(st.keskin, 1);
+  assert.equal(seams[0].join, 'kaynak');
+});
+
+test('kısa kenara kulakçık zorla sokulmaz', () => {
+  const { parts } = perçinCifti();
+  const st = applyRivetJoints(parts, [{ id: 1, angle: 120 }], { ...PERCIN_P, tabWidth: 60 });
+  // 120 mm kenara 60 mm derin kulakçık pahıyla sığmaz; kaynağa düşmeli.
+  assert.equal(st.percin + st.kaynak, 1);
+  if (st.percin) {
+    for (const p of parts) assert.ok(signedArea(p.outline) > 0);
+  }
+});
+
+test('köşe delikleri yalnızca yaprak İÇİNDEKİ büküm kavşaklarına açılır', () => {
+  const kare = [[0, 0], [200, 0], [200, 200], [0, 200]];
+  const folds = [
+    { p1: [0, 0], p2: [100, 100] },      // köşeden merkeze
+    { p1: [100, 100], p2: [200, 200] },  // merkezden köşeye
+    { p1: [100, 100], p2: [0, 200] },
+  ];
+  const h = reliefHoles(kare, folds, 4);
+  assert.equal(h.length, 1, 'yalnız merkezdeki kavşak delinmeli');
+  assert.ok(Math.hypot(h[0].c[0] - 100, h[0].c[1] - 100) < 1e-9);
+  assert.ok(icerdeMi([100, 100], kare, 5));
+});
+
+test('poligonal kabukta perçin seçilince kaynak dikişi düşer', () => {
+  const d = decimate(denseSphere(100), 120);
+  const kaynak = generateFacets(d.tris, { targetSize: 1000, minArea: 0, unfold: true, joinMethod: 'kaynak' });
+  const percin = generateFacets(d.tris, { targetSize: 1000, minArea: 0, unfold: true, joinMethod: 'percin', thickness: 1.5 });
+  assert.equal(kaynak.info.rivetCount, 0);
+  assert.ok(percin.info.rivetCount > 0, 'hiç perçin yok');
+  assert.ok(percin.info.weldSeamCount < kaynak.info.seamCount / 2,
+    `perçinden sonra ${percin.info.weldSeamCount}/${kaynak.info.seamCount} dikiş hâlâ kaynakta`);
+  assert.ok(percin.seams.every((s) => s.join === 'percin' || s.join === 'kaynak' || !s.aId || !s.bId));
+  for (const p of percin.parts) {
+    assert.ok(!('_ring0' in p) && !('_seamEdges' in p), 'geçici alanlar temizlenmedi');
+    assert.ok(signedArea(p.outline) > 0, `${p.id} yön bozuldu`);
+  }
+  const g = assemblyGuide(percin.info, percin.seams, percin.folds);
+  assert.ok(g.includes('PERÇİNLİ BİRLEŞİM'), 'montaj kılavuzunda perçin bölümü yok');
+  assert.match(g, /perçin ×\d+ \(kulakçık Y\d+\)/, 'dikiş listesinde perçin satırı yok');
+});
+
+test('birleşim ayarları arayüzde', () => {
+  const html = oku('index.html');
+  for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {
+    assert.ok(html.includes(`id="${id}"`), `${id} yok`);
+  }
+  const js = oku('js/main.js');
+  assert.ok(/joinMethod: els\['p-joinMethod'\]\.value/.test(js), 'birleşim seçimi okunmuyor');
 });
 
 console.log('açınım (kertikli büküm)');
