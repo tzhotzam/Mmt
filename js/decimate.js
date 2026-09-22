@@ -31,11 +31,11 @@ function quadricError(q, x, y, z) {
   );
 }
 
-function addPlaneQuadric(q, a, b, c, d) {
-  q[0] += a * a; q[1] += a * b; q[2] += a * c; q[3] += a * d;
-  q[4] += b * b; q[5] += b * c; q[6] += b * d;
-  q[7] += c * c; q[8] += c * d;
-  q[9] += d * d;
+function addPlaneQuadric(q, a, b, c, d, w = 1) {
+  q[0] += w * a * a; q[1] += w * a * b; q[2] += w * a * c; q[3] += w * a * d;
+  q[4] += w * b * b; q[5] += w * b * c; q[6] += w * b * d;
+  q[7] += w * c * c; q[8] += w * c * d;
+  q[9] += w * d * d;
 }
 
 /**
@@ -68,54 +68,92 @@ function segmenteUzaklik(p, ax, ay, az, bx, by, bz) {
   return Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy), p[2] - (az + t * dz));
 }
 
-/** En küçük elemanı üstte tutan ikili yığın (lazy silme ile). */
-class Heap {
-  constructor() { this.a = []; }
-  get size() { return this.a.length; }
-  push(item) {
-    const a = this.a;
-    a.push(item);
-    let i = a.length - 1;
+/**
+ * Kenar kuyruğu: en ucuz çökertmeyi üstte tutan ikili yığın (lazy silme).
+ *
+ * Kayıtlar nesne değil, tipli dizilerde tutulur; boşalan yuvalar yeniden
+ * kullanılır. Nesneli ilk sürümde 100 bin üçgenlik bir ağı sadeleştirmenin
+ * yarısı kuyrukta ve çöp toplamada geçiyordu (yarım milyonu aşkın kayıt).
+ */
+class EdgeHeap {
+  constructor(cap = 1024) {
+    this.n = 0;              // yığındaki kayıt sayısı
+    this.cap = 0;
+    this.bos = [];           // yeniden kullanılabilir yuvalar
+    this.sonYuva = 0;
+    this.buyut(cap);
+  }
+  buyut(cap) {
+    const eski = this;
+    const yeni = (Tip, k, dizi) => { const a = new Tip(cap * k); if (dizi) a.set(dizi); return a; };
+    this.cost = yeni(Float64Array, 1, eski.cost);
+    this.pos = yeni(Float64Array, 3, eski.pos);
+    this.uv = yeni(Int32Array, 4, eski.uv);   // u, v, su, sv
+    this.yigin = yeni(Int32Array, 1, eski.yigin);
+    this.cap = cap;
+  }
+  get size() { return this.n; }
+  push(u, v, cost, x, y, z, su, sv) {
+    let k;
+    if (this.bos.length) k = this.bos.pop();
+    else {
+      if (this.sonYuva >= this.cap) this.buyut(this.cap * 2);
+      k = this.sonYuva++;
+    }
+    this.cost[k] = cost;
+    this.pos[k * 3] = x; this.pos[k * 3 + 1] = y; this.pos[k * 3 + 2] = z;
+    this.uv[k * 4] = u; this.uv[k * 4 + 1] = v; this.uv[k * 4 + 2] = su; this.uv[k * 4 + 3] = sv;
+    const a = this.yigin, c = this.cost;
+    let i = this.n++;
     while (i > 0) {
       const p = (i - 1) >> 1;
-      if (a[p].cost <= a[i].cost) break;
-      [a[p], a[i]] = [a[i], a[p]];
+      if (c[a[p]] <= cost) break;
+      a[i] = a[p];
       i = p;
     }
+    a[i] = k;
   }
+  /** En ucuz kaydın yuvasını döndürür; çağıran işi bitince free() etmeli. */
   pop() {
-    const a = this.a;
-    if (!a.length) return null;
+    if (!this.n) return -1;
+    const a = this.yigin, c = this.cost;
     const top = a[0];
-    const last = a.pop();
-    if (a.length) {
-      a[0] = last;
+    const last = a[--this.n];
+    const n = this.n;
+    if (n) {
+      const lc = c[last];
       let i = 0;
       for (;;) {
-        const l = i * 2 + 1, r = l + 1;
-        let m = i;
-        if (l < a.length && a[l].cost < a[m].cost) m = l;
-        if (r < a.length && a[r].cost < a[m].cost) m = r;
-        if (m === i) break;
-        [a[m], a[i]] = [a[i], a[m]];
+        const l = i * 2 + 1;
+        if (l >= n) break;
+        const r = l + 1;
+        const m = r < n && c[a[r]] < c[a[l]] ? r : l;
+        if (c[a[m]] >= lc) break;
+        a[i] = a[m];
         i = m;
       }
+      a[i] = last;
     }
     return top;
   }
+  free(k) { this.bos.push(k); }
 }
 
 /** Üçgenin en küçük iç açısı (radyan). Kıymık üçgende sıfıra yaklaşır. */
 function enKucukAci(P, f) {
-  const [a, b, c] = f;
-  const kenar = (i, j) => Math.hypot(
-    P[j * 3] - P[i * 3], P[j * 3 + 1] - P[i * 3 + 1], P[j * 3 + 2] - P[i * 3 + 2]
-  );
-  const ab = kenar(a, b), bc = kenar(b, c), ca = kenar(c, a);
-  if (ab < 1e-20 || bc < 1e-20 || ca < 1e-20) return 0;
-  // Kosinüs teoremi; en kısa kenarın karşısındaki açı en küçüktür.
-  const aci = (x, y, z) => Math.acos(Math.max(-1, Math.min(1, (y * y + z * z - x * x) / (2 * y * z))));
-  return Math.min(aci(bc, ab, ca), aci(ca, ab, bc), aci(ab, bc, ca));
+  const a = f[0] * 3, b = f[1] * 3, c = f[2] * 3;
+  const kare = (i, j) => {
+    const dx = P[j] - P[i], dy = P[j + 1] - P[i + 1], dz = P[j + 2] - P[i + 2];
+    return dx * dx + dy * dy + dz * dz;
+  };
+  const ab = kare(a, b), bc = kare(b, c), ca = kare(c, a);
+  if (ab < 1e-40 || bc < 1e-40 || ca < 1e-40) return 0;
+  // Kosinüs teoremi; en kısa kenarın karşısındaki açı en küçüktür, yalnızca
+  // o hesaplanır.
+  let x = ab, y = bc, z = ca;
+  if (bc < x) { x = bc; y = ab; z = ca; }
+  if (ca < x) { x = ca; y = ab; z = bc; }
+  return Math.acos(Math.max(-1, Math.min(1, (y + z - x) / (2 * Math.sqrt(y * z)))));
 }
 
 function faceNormal(P, f) {
@@ -167,11 +205,18 @@ export function decimate(tris, targetFaces, opts = {}) {
   const indexOf = new Map();
   const pos = [];
   const faces = [];
+  // Aynı köşe NESNESİ birden çok üçgende geçiyorsa (hacimden yeniden
+  // kurulan ağlar böyle gelir) metin anahtarı hiç kurulmaz; 120 bin
+  // üçgende kaynaklama süresinin çoğu anahtar metinlerini üretmekti.
+  const nesne = new Map();
   for (const t of tris) {
     const idx = t.map((p) => {
+      let i = nesne.get(p);
+      if (i !== undefined) return i;
       const k = anahtar(p);
-      let i = indexOf.get(k);
+      i = indexOf.get(k);
       if (i === undefined) { i = pos.length / 3; indexOf.set(k, i); pos.push(p[0], p[1], p[2]); }
+      nesne.set(p, i);
       return i;
     });
     // Dejenere üçgenleri (iki köşesi aynı) al­ma.
@@ -189,12 +234,19 @@ export function decimate(tris, targetFaces, opts = {}) {
     if (L > 1e-20) {
       const a = n[0] / L, b = n[1] / L, c = n[2] / L;
       const d = -(a * P[f[0] * 3] + b * P[f[0] * 3 + 1] + c * P[f[0] * 3 + 2]);
-      for (const v of f) addPlaneQuadric(Q.subarray(v * 10, v * 10 + 10), a, b, c, d);
+      // ALAN AĞIRLIĞI: her düzlem, üçgenin alanı kadar sayılır. Ağırlıksız
+      // hâlde sık bölünmüş bölgeler (çok sayıda küçük üçgen) aynı yüzeyi
+      // defalarca oylayıp aşırı pahalı görünüyor, seyrek bölgeler ucuz
+      // kalıp önce eriyordu. Hacimden kurulan ağlarda üçgen boyu çok
+      // düzensizdir; ağırlıksız sadeleştirme gövdeyi yassılttı.
+      const w = L / 2;
+      for (const v of f) addPlaneQuadric(Q.subarray(v * 10, v * 10 + 10), a, b, c, d, w);
     }
     for (const v of f) vFaces[v].push(fi);
   });
 
   const alive = new Uint8Array(faces.length).fill(1);
+  const olcek2 = olcek * olcek;
   const vAlive = new Uint8Array(vn).fill(1);
   // Köşe birleştikçe takip: birleşen köşe hangi köşeye gitti?
   const yerine = new Int32Array(vn);
@@ -202,11 +254,11 @@ export function decimate(tris, targetFaces, opts = {}) {
   const kok = (i) => { while (yerine[i] !== i) { yerine[i] = yerine[yerine[i]]; i = yerine[i]; } return i; };
 
   // ---- Kenarları topla ---------------------------------------------------
-  const heap = new Heap();
+  const heap = new EdgeHeap(Math.max(1024, faces.length * 2));
   const surum = new Int32Array(vn);       // köşe her değiştiğinde artar
+  const qs = new Float64Array(10);        // tekrar kullanılan çalışma alanı
   const kenarEkle = (u, v) => {
     if (u === v) return;
-    const qs = new Float64Array(10);
     for (let i = 0; i < 10; i++) qs[i] = Q[u * 10 + i] + Q[v * 10 + i];
     // Aday konumlar: iki uç, orta nokta ve QUADRIC'İN EN İYİ NOKTASI.
     //
@@ -217,11 +269,12 @@ export function decimate(tris, targetFaces, opts = {}) {
     // eğri bir bölgede yüzeyin ÜSTÜNE düşer ve büzülmeyi dengeler.
     const ux = P[u * 3], uy = P[u * 3 + 1], uz = P[u * 3 + 2];
     const wx = P[v * 3], wy = P[v * 3 + 1], wz = P[v * 3 + 2];
-    const adaylar = [
-      [ux, uy, uz],
-      [wx, wy, wz],
-      [(ux + wx) / 2, (uy + wy) / 2, (uz + wz) / 2],
-    ];
+    let bx = (ux + wx) / 2, by = (uy + wy) / 2, bz = (uz + wz) / 2;
+    let enUcuz = quadricError(qs, bx, by, bz);
+    let e = quadricError(qs, ux, uy, uz);
+    if (e < enUcuz) { enUcuz = e; bx = ux; by = uy; bz = uz; }
+    e = quadricError(qs, wx, wy, wz);
+    if (e < enUcuz) { enUcuz = e; bx = wx; by = wy; bz = wz; }
     const opt = optimalPoint(qs);
     if (opt && icerde(opt) && segmenteUzaklik(opt, ux, uy, uz, wx, wy, wz) <= 0.5 * Math.hypot(wx - ux, wy - uy, wz - uz)) {
       // İki sınır birden:
@@ -231,48 +284,86 @@ export function decimate(tris, targetFaces, opts = {}) {
       //    200 üçgende bir köşe model boyunun milyonlarca katı uzağa kaçtı.
       //  - Modelin kutusunun dışına hiç çıkamaz. Son emniyet; kaçak artık
       //    imkânsız.
-      adaylar.push(opt);
+      e = quadricError(qs, opt[0], opt[1], opt[2]);
+      if (e < enUcuz) { enUcuz = e; bx = opt[0]; by = opt[1]; bz = opt[2]; }
     }
-    let enIyi = adaylar[2];
-    let enUcuz = Infinity;
-    for (const c of adaylar) {
-      const e = quadricError(qs, c[0], c[1], c[2]);
-      if (e < enUcuz) { enUcuz = e; enIyi = c; }
-    }
-    heap.push({ u, v, cost: enUcuz, pos: enIyi, su: surum[u], sv: surum[v] });
+    heap.push(u, v, enUcuz, bx, by, bz, surum[u], surum[v]);
   };
 
-  const gorulen = new Set();
-  for (const f of faces) {
-    for (let k = 0; k < 3; k++) {
-      const a = f[k], b = f[(k + 1) % 3];
-      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
-      if (gorulen.has(key)) continue;
-      gorulen.add(key);
-      kenarEkle(a, b);
+  /** Yaşayan bütün kenarları kuyruğa koy. */
+  const kenarlariTopla = () => {
+    const gorulen = new Set();
+    for (let fi = 0; fi < faces.length; fi++) {
+      if (!alive[fi]) continue;
+      const f = faces[fi].map(kok);
+      for (let k = 0; k < 3; k++) {
+        const a = f[k], b = f[(k + 1) % 3];
+        const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+        if (gorulen.has(key)) continue;
+        gorulen.add(key);
+        kenarEkle(a, b);
+      }
     }
-  }
+  };
 
   // ---- Çökert -------------------------------------------------------------
   let yasayanYuz = faces.length;
   let collapsed = 0;
+  const red = { sinir: 0, bag: 0, ters: 0, kiymik: 0 };
 
-  /** Köşenin yaşayan yüzeylerinden komşu köşe kümesi. */
-  const komsular = (x) => {
-    const s = new Set();
-    for (const fi of vFaces[x]) {
+  // Komşu kümeleri Set yerine damga dizileriyle tutulur: her çökertme
+  // denemesinde iki Set kurmak, büyük ağlarda süreyi ve çöp toplamayı
+  // belirgin biçimde artırıyordu.
+  const damgaU = new Int32Array(vn);
+  const damgaV = new Int32Array(vn);
+  let damga = 0;
+  /** u ile v'nin ortak komşu sayısı (u ve v hariç). */
+  const ortakKomsu = (u, v) => {
+    damga++;
+    for (const fi of vFaces[u]) {
       if (!alive[fi]) continue;
-      for (const y of faces[fi]) { const k = kok(y); if (k !== x) s.add(k); }
+      for (const y of faces[fi]) { const k = kok(y); if (k !== u) damgaU[k] = damga; }
     }
-    return s;
+    let ortak = 0;
+    for (const fi of vFaces[v]) {
+      if (!alive[fi]) continue;
+      for (const y of faces[fi]) {
+        const k = kok(y);
+        if (k === v || damgaV[k] === damga) continue;
+        damgaV[k] = damga;
+        if (damgaU[k] === damga) ortak++;
+      }
+    }
+    return ortak;
   };
 
-  while (yasayanYuz > targetFaces && heap.size) {
-    const e = heap.pop();
-    const u = kok(e.u), v = kok(e.v);
-    if (u === v || !vAlive[u] || !vAlive[v]) continue;
+  // KADEMELİ GEVŞETME. Reddedilen bir kenar, komşusu değişmedikçe kuyruğa
+  // geri girmez; kıymık eşiği sıkıysa kuyruk hedefe varmadan boşalır.
+  // Ölçüldü — hacimden yeniden kurulan (voxel remesh) at modelinde işlem
+  // 300 hedefinde 878 üçgende duruyordu, reddedilenlerin %70'i kıymık
+  // yüzündendi. Kuyruk boşalınca eşik yarıya indirilip bütün kenarlar
+  // yeniden fiyatlanır; 0.5°'nin altında eşik tamamen kalkar. Önce kaliteli
+  // çökertmeler yapıldığı için kıymık yalnızca gerçekten gerektiği kadar
+  // oluşur. Ters dönme ve bağlantı koşulu ASLA gevşetilmez: onlar ağı
+  // bozar, kıymık yalnızca çirkindir.
+  let esik = minAci;
+  kenarlariTopla();
+  while (yasayanYuz > targetFaces) {
+    if (!heap.size) {
+      if (esik === 0) break;
+      esik = esik > (0.5 * Math.PI) / 180 ? esik / 2 : 0;
+      kenarlariTopla();
+      continue;
+    }
+    const k = heap.pop();
+    const eu = heap.uv[k * 4], ev = heap.uv[k * 4 + 1];
+    const taze = heap.uv[k * 4 + 2] === surum[eu] && heap.uv[k * 4 + 3] === surum[ev];
+    const e = taze ? { pos: [heap.pos[k * 3], heap.pos[k * 3 + 1], heap.pos[k * 3 + 2]] } : null;
+    heap.free(k);
     // Bayat kayıt: köşelerden biri bu kayıt kuyruğa girdikten sonra değişti.
-    if (e.su !== surum[e.u] || e.sv !== surum[e.v]) continue;
+    if (!taze) continue;
+    const u = kok(eu), v = kok(ev);
+    if (u === v || !vAlive[u] || !vAlive[v]) continue;
 
     // BAĞLANTI KOŞULU (link condition). Bu kontrol olmadan çökertme ağı
     // manifold olmaktan çıkarıyordu: örnek modelde açık kenar 6'dan 28'e
@@ -280,18 +371,15 @@ export function decimate(tris, targetFaces, opts = {}) {
     // tam olarak (u,v) kenarını paylaşan yüzeylerin karşı köşeleri olmalı.
     // Fazladan bir ortak komşu varsa çökertme yüzeyde delik açar ya da
     // birbirine değmeyen iki bölgeyi yapıştırır.
-    const ku = komsular(u);
-    const kv = komsular(v);
-    let ortak = 0;
-    for (const x of ku) if (kv.has(x)) ortak++;
+    const ortak = ortakKomsu(u, v);
     let kenarYuzu = 0;
     for (const fi of vFaces[u]) {
       if (!alive[fi]) continue;
       const f = faces[fi].map(kok);
       if (f.includes(u) && f.includes(v)) kenarYuzu++;
     }
-    if (ortak !== kenarYuzu) continue;
-    if (kenarYuzu !== 2) continue;      // sınır/kenar kenarına dokunma
+    if (kenarYuzu !== 2) { red.sinir++; continue; }      // sınır/kenar kenarına dokunma
+    if (ortak !== kenarYuzu) { red.bag++; continue; }
 
     // Yüzey ters dönüyor mu? Dönerse ağ kendini keser; o çökertmeyi atla.
     const yedek = [P[u * 3], P[u * 3 + 1], P[u * 3 + 2]];
@@ -307,23 +395,31 @@ export function decimate(tris, targetFaces, opts = {}) {
       const n2 = faceNormal(P, f2);
       const kalite = enKucukAci(P, f2);
       P[u * 3] = yedek[0]; P[u * 3 + 1] = yedek[1]; P[u * 3 + 2] = yedek[2];
-      if (eski[0] * n2[0] + eski[1] * n2[1] + eski[2] * n2[2] <= 0) { ters = true; break; }
+      // Neredeyse sıfır alanlı eski yüzeyin normali anlamsızdır; onunla
+      // kıyaslamak her çökertmeyi rastgele reddeder. O yüzey atlanır.
+      const eskiL = Math.hypot(eski[0], eski[1], eski[2]);
+      if (eskiL > 1e-14 * olcek2 && eski[0] * n2[0] + eski[1] * n2[1] + eski[2] * n2[2] <= 0) { ters = 'ters'; break; }
       // KIYMIK OLUŞTURAN çökertmeyi reddet — ama yalnızca kaliteyi
       // KÖTÜLEŞTİRİYORSA. Eşik altındaki her üçgeni reddetmek sadeleştirmeyi
       // kilitliyordu: modelin kendisinde zaten kıymıklar var ve onlara
       // dokunan her çökertme reddedilince işlem hedef ne olursa olsun ~580
       // üçgende takılıyordu. Mevcut bir kıymığı iyileştiren ya da ortadan
       // kaldıran çökertme serbest.
-      if (kalite < minAci && kalite < eskiKalite) { ters = true; break; }
+      if (kalite < esik && kalite < eskiKalite) { ters = 'kiymik'; break; }
     }
-    if (ters) continue;
+    if (ters) { red[ters]++; continue; }
 
     // v -> u. Konumu yeni noktaya taşı.
     P[u * 3] = e.pos[0]; P[u * 3 + 1] = e.pos[1]; P[u * 3 + 2] = e.pos[2];
     for (let i = 0; i < 10; i++) Q[u * 10 + i] += Q[v * 10 + i];
     yerine[v] = u;
     vAlive[v] = 0;
+    // İKİ köşenin de sürümü artar. Yalnızca u artınca v'yi içeren eski
+    // kayıtlar (v,x) kok() ile (u,x)'e dönüp "taze" görünüyordu; konumu ve
+    // bedeli artık var olmayan bir kenar için hesaplanmıştı, köşe yanlış
+    // yere sıçrıyordu.
     surum[u]++;
+    surum[v]++;
     collapsed++;
 
     // Bu kenarı paylaşan yüzeyler yok olur.
@@ -352,5 +448,5 @@ export function decimate(tris, targetFaces, opts = {}) {
     if (f[0] === f[1] || f[1] === f[2] || f[0] === f[2]) continue;
     out.push(f.map((i) => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]]));
   }
-  return { tris: out, before, after: out.length, collapsed };
+  return { tris: out, before, after: out.length, collapsed, rejected: red };
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-09-22-d">
+<meta name="app-version" content="2026-09-22-e">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-09-22-d';
+  var V = '2026-09-22-e';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -371,6 +371,13 @@
       </label>
       <label>Hedef yüzey sayısı <small>3B model yoğunsa buna sadeleştirilir · 0 = kapalı</small>
         <input type="number" id="p-targetFaces" value="300" min="0" max="20000" step="50">
+      </label>
+      <label>Model onarımı <small>delikli/bozuk modeli hacimden yeniden kurar</small>
+        <select id="p-remesh">
+          <option value="oto" selected>Otomatik (bozuksa onar)</option>
+          <option value="acik">Her zaman onar</option>
+          <option value="kapali">Kapalı</option>
+        </select>
       </label>
       <label>Kabartma poligon sayısı <small>görselden kabartmada, uzun kenar boyunca</small>
         <input type="number" id="p-reliefCells" value="14" min="4" max="60" step="1">

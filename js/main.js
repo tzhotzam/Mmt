@@ -17,6 +17,7 @@ import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
 import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
 import { generateSlices, SLICE_DEFAULTS } from './modes/slices.js';
 import { decimate } from './decimate.js';
+import { voxelRemesh, meshHealth } from './remesh.js';
 import { meshFromHeightmap } from './relief3d.js';
 import { nest, applyPlacement } from './nest.js';
 import { sheetToDxf } from './export/dxf.js';
@@ -30,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-d';
+const APP_VERSION = '2026-09-22-e';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -99,6 +100,7 @@ const state = {
   uploadGrid: null,      // YÜKLENEN içerik (görsel/model) — desen değil
   uploadKind: null,      // 'foto' | 'model'
   decimateCache: null,   // sadeleştirilmiş ağ (model + hedef değişmedikçe)
+  remeshCache: null,     // onarılmış (hacimden yeniden kurulmuş) ağ ve ağ sağlığı
   meshInfo: null,
   patternSeed: 0.42,
   patternAspect: 1.5,
@@ -352,6 +354,7 @@ async function loadImageFile(file) {
   // kabuk, yeni yüklenen görsel yerine eski modeli işlemeye devam ederdi.
   state.tris = null;
   state.decimateCache = null;
+  state.remeshCache = null;
   composeSource();
   setSourceStatus(`Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
   resetPaint();
@@ -644,10 +647,15 @@ function regenerate() {
   render();
 }
 
-/** Üçgen ağdan besleneen modlar: poligonal kabuk ve dilim. */
+/** Onarımda uzun kenar boyunca voksel sayısı. At modelinde 64 ve 80'de
+ * ince bacaklar koptu, 96'da alt bacak parçalandı, 128'de sağlam kaldı. */
+const REMESH_RES = 128;
+
 /**
  * Poligonal kabuk için üçgen ağı hazırlar.
  *
+ *  - Model bozuksa (delik, çakışık kenar, düğümlü yüzey) önce hacimden
+ *    yeniden kurulur — bkz. remesh.js.
  *  - 3B model yüklüyse ve hedef yüzey sayısından yoğunsa SADELEŞTİRİLİR.
  *    Yapay zekâ/tarama modelleri adında "low poly" yazsa da ince bölünmüş
  *    eğri yüzeylerdir; sadeleştirilmeden faset modunda yüzlerce parça ve
@@ -661,24 +669,54 @@ function regenerate() {
 function facetMeshSource() {
   if (state.tris) {
     const hedef = Math.round(num('p-targetFaces', 300));
-    if (hedef > 0 && state.tris.length > hedef) {
-      // Aynı model ve aynı hedef için sonucu sakla; kaydırıcı her
-      // oynadığında yeniden sadeleştirmek yarım saniye yer.
-      // Model kimliği referansla karşılaştırılır: üçgen sayısına bakmak,
+    const secim = els['p-remesh']?.value || 'oto';
+
+    // ONARIM (hacimden yeniden kurma). Delikli, çakışık kenarlı ya da
+    // düğüm düğüm kulplu modeller doğrudan sadeleştirilemez — at modelinde
+    // gövde dev kıymıklara dönüştü. Ağ sağlığı model başına bir kez ölçülür.
+    if (state.remeshCache?.src !== state.tris) {
+      state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null };
+    }
+    const rc = state.remeshCache;
+    const onar = secim === 'acik' || (secim === 'oto' && rc.health.bozuk);
+    if (onar && !rc.tris) {
+      const r = voxelRemesh(state.tris, { resolution: REMESH_RES, smooth: 1 });
+      rc.tris = r.tris;
+      rc.info = r.info;
+    }
+    const taban = onar ? rc.tris : state.tris;
+    const notlar = [];
+    if (onar) {
+      const h = rc.health;
+      notlar.push(
+        (secim === 'oto'
+          ? `Model bozuktu (${h.openEdges} açık kenar, ${h.nonManifold} çakışık kenar` +
+            (h.euler < -20 ? `, düğümlü yüzey` : '') + ') ve doğrudan sadeleştirilemezdi. '
+          : '') +
+        'Model hacim olarak yeniden kuruldu: delikler kapandı, saç teli gibi ' +
+        'ince ayrıntılar yumuşatıldı, kopuk kırıntılar atıldı. Ayrıntı ' +
+        'kaybı istemezseniz "Model onarımı"nı kapatın.'
+      );
+    }
+
+    if (hedef > 0 && taban.length > hedef) {
+      // Aynı ağ ve aynı hedef için sonucu sakla; kaydırıcı her oynadığında
+      // yeniden sadeleştirmek saniyeler yer.
+      // Ağ kimliği referansla karşılaştırılır: üçgen sayısına bakmak,
       // aynı sayıda üçgenli iki farklı modeli karıştırırdı.
-      if (state.decimateCache?.src !== state.tris || state.decimateCache.hedef !== hedef) {
-        const d = decimate(state.tris, hedef);
-        state.decimateCache = { src: state.tris, hedef, tris: d.tris, before: d.before, after: d.after };
+      if (state.decimateCache?.src !== taban || state.decimateCache.hedef !== hedef) {
+        const d = decimate(taban, hedef);
+        state.decimateCache = { src: taban, hedef, tris: d.tris, before: state.tris.length, after: d.after };
       }
       const c = state.decimateCache;
-      return {
-        tris: c.tris,
-        not: `Model ${c.before} üçgenden ${c.after} üçgene sadeleştirildi ` +
-          '(hedef yüzey sayısı). Daha çok ayrıntı için değeri artırın, daha az ' +
-          've büyük parça için düşürün.',
-      };
+      notlar.push(
+        `Model ${c.before} üçgenden ${c.after} üçgene sadeleştirildi ` +
+        '(hedef yüzey sayısı). Daha çok ayrıntı için değeri artırın, daha az ' +
+        've büyük parça için düşürün.'
+      );
+      return { tris: c.tris, not: notlar.join(' ') };
     }
-    return { tris: state.tris, not: null };
+    return { tris: taban, not: notlar.length ? notlar.join(' ') : null };
   }
   if (state.sourceGrid) {
     const g = applyFilters(state.sourceGrid, readFilters());

@@ -37,6 +37,9 @@ export const FACET_DEFAULTS = {
   bridgeWidth: 25,    // tek köprü modunda ortada kalan dolu pay (mm)
   autoLimit: 250,     // 'oto' modda bu uzunluğun altı tek köprü
   bendRadius: 0,   // 0 → sac kalınlığı kadar varsayılır
+  // Bundan keskin kenar bükülmez, kaynak dikişi kalır (derece, düzden
+  // sapma). 150° → iç açı 30°: abkant presin sivri takımla inebildiği sınır.
+  maxBend: 150,
   kFactor: 0.4,
   maxPatchW: Infinity,
   maxPatchH: Infinity,
@@ -307,8 +310,12 @@ function buildPatchParts(a, p, warnings) {
   for (const [gi, list] of a.neighborOf) {
     const d = denseOf.get(gi);
     if (d === undefined) continue;
+    // Bükülemeyecek kadar keskin kenar açınıma bağlanmaz, dikiş olarak
+    // kalır. Sınır yokken bıçak sırtı kenarlar (neredeyse kendi üstüne
+    // katlanan iki faset) büküm sayılıyor, büküm payı hesabı tavana vurup
+    // "672.7 mm" gibi anlamsız uyarılar veriyordu — sac öyle bükülmez.
     neighborDense.set(d, list
-      .filter((n) => denseOf.has(n.facet))
+      .filter((n) => denseOf.has(n.facet) && Math.abs(180 - n.angle) <= p.maxBend)
       .map((n) => ({ ...n, facet: denseOf.get(n.facet) })));
   }
 

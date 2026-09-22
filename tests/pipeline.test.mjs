@@ -32,6 +32,7 @@ import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js'
 import { generateSlices } from '../js/modes/slices.js';
 import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js';
 import { decimate } from '../js/decimate.js';
+import { voxelRemesh, meshHealth } from '../js/remesh.js';
 import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
 import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
@@ -1222,7 +1223,8 @@ test('poligonal kabuk arayüzü sadeleştirme ve kabartma alanlarını taşır',
   assert.ok(/function facetMeshSource/.test(js), 'kaynak seçimi yok');
   // Önbellek model KİMLİĞİNE bakmalı; üçgen sayısına bakan anahtar aynı
   // sayıda üçgenli iki modeli karıştırırdı.
-  assert.ok(/decimateCache\?\.src !== state\.tris/.test(js), 'önbellek modeli referansla ayırmıyor');
+  assert.ok(/decimateCache\?\.src !== taban/.test(js), 'önbellek modeli referansla ayırmıyor');
+  assert.ok(/remeshCache\?\.src !== state\.tris/.test(js), 'onarım önbelleği modeli referansla ayırmıyor');
   // Görsel yüklenince eski 3B model kaynak olmaktan çıkmalı.
   const yukle = js.match(/async function loadImageFile[\s\S]*?\n}/)?.[0] || '';
   assert.ok(/state\.tris = null/.test(yukle), 'görsel yüklenince eski model temizlenmiyor');
@@ -1368,6 +1370,113 @@ test('dihedralAngle dışbükey/içbükey ayrımı', () => {
   assert.ok(Math.abs(dihedralAngle([0, 0, 1], [1, 0, 0], [0, 0, 0], [1, 0, -1]) - 90) < 1e-6);
   // İçbükey: B'nin merkezi A'nın normali yönünde
   assert.ok(dihedralAngle([0, 0, 1], [1, 0, 0], [0, 0, 0], [1, 0, 1]) > 180);
+});
+
+console.log('bozuk model onarımı');
+
+/**
+ * At modelindeki bozuklukların küçük bir taklidi: kapalı bir kürenin
+ * bir bölgesi DELİNMİŞ (açık kenarlar), üstüne gövdeye dokunan ince bir
+ * "saç teli" ve havada asılı kopuk bir kırıntı eklenmiş.
+ */
+function bozukKure() {
+  const kure = denseSphere(100, 48, 32);
+  // Delik: kutup çevresindeki üçgenlerin bir kısmını sil.
+  const delikli = kure.filter((t) => !(t[0][2] > 92 && t[0][0] > 0));
+  const tel = [];
+  // İnce tel: 1 mm kalınlığında, 60 mm uzunluğunda üçgen prizma.
+  const a = [[0, 0.6, 95], [0.5, -0.3, 95], [-0.5, -0.3, 95]];
+  const b = a.map(([x, y, z]) => [x + 60, y, z + 40]);
+  for (let i = 0; i < 3; i++) {
+    const j = (i + 1) % 3;
+    tel.push([a[i], b[i], b[j]], [a[i], b[j], a[j]]);
+  }
+  tel.push([a[0], a[2], a[1]], [b[0], b[1], b[2]]);
+  // Kırıntı: gövdeden uzakta küçük bir dörtyüzlü.
+  const k = [[150, 0, 0], [180, 0, 0], [165, 26, 0], [165, 9, 25]];
+  const kirinti = [[k[0], k[2], k[1]], [k[0], k[1], k[3]], [k[1], k[2], k[3]], [k[0], k[3], k[2]]];
+  return delikli.concat(tel, kirinti);
+}
+
+test('ağ sağlığı delikli modeli bozuk, temiz modeli sağlam bulur', () => {
+  const temiz = meshHealth(denseSphere());
+  assert.equal(temiz.openEdges, 0);
+  assert.equal(temiz.nonManifold, 0);
+  assert.equal(temiz.euler, 2, 'küre Euler karakteristiği 2 olmalı');
+  assert.equal(temiz.bozuk, false);
+  const bozuk = meshHealth(bozukKure());
+  assert.ok(bozuk.openEdges > 20, `delik görülmedi (${bozuk.openEdges})`);
+  assert.equal(bozuk.bozuk, true);
+});
+
+test('birkaç açık kenar onarım tetiklemez', () => {
+  // Temiz yapay zekâ modelinde 6 çakışık kenar vardı; onarım ince
+  // bacakları yumuşatıp siliyordu. Az sayıda kusur doğrudan sadeleşmeli.
+  const kure = denseSphere();
+  const h = meshHealth(kure.slice(0, kure.length - 2));
+  assert.ok(h.openEdges > 0 && h.openEdges <= 6);
+  assert.equal(h.bozuk, false);
+});
+
+test('onarım bozuk modelden kapalı ve tek parça ağ kurar', () => {
+  const r = voxelRemesh(bozukKure(), { resolution: 64, smooth: 1 });
+  const c = checkClosed(r.tris, 1e-9);
+  assert.ok(c.closed, `onarılan ağda ${c.openEdges} açık kenar`);
+  // Hacim korunmalı: 100 mm yarıçaplı küre ≈ 4.19 milyon mm³.
+  const kure = (4 / 3) * Math.PI * 100 ** 3;
+  assert.ok(Math.abs(c.volume - kure) / kure < 0.08, `hacim ${c.volume.toFixed(0)} (beklenen ~${kure.toFixed(0)})`);
+  // Kopuk kırıntı atılmalı: ağ kürenin kutusunun dışına taşmamalı.
+  const maxX = r.tris.flat().reduce((m, p) => Math.max(m, p[0]), -Infinity);
+  assert.ok(maxX < 145, `kırıntı atılmadı (x = ${maxX.toFixed(1)})`);
+  assert.ok(r.info.removed > 0, 'atılan parça bildirilmedi');
+});
+
+test('onarım ince teli yumuşatıp siler', () => {
+  const r = voxelRemesh(bozukKure(), { resolution: 64, smooth: 1 });
+  // Tel ucu (x≈60, z≈135) ile gövdeden en uzak nokta karşılaştırılır.
+  const uzak = r.tris.flat().reduce((m, p) => Math.max(m, Math.hypot(p[0], p[1], p[2])), 0);
+  assert.ok(uzak < 115, `tel duruyor (en uzak nokta ${uzak.toFixed(1)} mm)`);
+});
+
+test('onarılan ağ hedef yüzey sayısına tam iner', () => {
+  // Hacimden kurulan ağ kıymık üçgen doludur; kıymık eşiği sabit kalınca
+  // sadeleştirme at modelinde 300 hedefinde 878 üçgende duruyordu.
+  const r = voxelRemesh(bozukKure(), { resolution: 64, smooth: 1 });
+  const d = decimate(r.tris, 300);
+  assert.equal(d.after, 300);
+  assert.ok(checkClosed(d.tris, 1e-9).closed, 'sadeleştirme onarılan ağı açtı');
+});
+
+test('bozuk modelde poligonal kabuk dağılmaz', () => {
+  // Doğrudan sadeleştirilen bozuk modelde açık kenarlar kalıyor ve dikişler
+  // eşsiz çıkıyordu; onarımdan geçen model kapalı fasetler vermeli.
+  const r = voxelRemesh(bozukKure(), { resolution: 64, smooth: 1 });
+  const d = decimate(r.tris, 300);
+  const f = generateFacets(d.tris, { targetSize: 600, minArea: 0, unfold: true });
+  assert.equal(f.info.openEdges, 0);
+  assert.ok(!f.warnings.some((w) => w.includes('karşı tarafı yok')), 'açık kenar kaldı');
+});
+
+test('bükülemeyecek kadar keskin kenar büküme dönmez', () => {
+  // Bıçak sırtı kenar (iç açı ~10°) açınımda büküm sayılıyor, büküm payı
+  // hesabı tavana vurup 672.7 mm gibi anlamsız sonuç veriyordu.
+  const r = voxelRemesh(bozukKure(), { resolution: 64, smooth: 1 });
+  const d = decimate(r.tris, 300);
+  const f = generateFacets(d.tris, { targetSize: 600, minArea: 0, unfold: true, maxBend: 150 });
+  for (const fold of f.folds || []) {
+    assert.ok(Math.abs(180 - fold.angle) <= 150, `${fold.angle.toFixed(0)}° büküm açınıma girdi`);
+  }
+  assert.ok(!f.warnings.some((w) => /büküm payı \d{3,}/.test(w)), 'yüzlerce mm büküm payı uyarısı');
+});
+
+test('model onarımı arayüzde seçilebilir ve servis çalışanında', () => {
+  const html = oku('index.html');
+  assert.ok(html.includes('id="p-remesh"'), 'p-remesh yok');
+  for (const v of ['oto', 'acik', 'kapali']) assert.ok(html.includes(`value="${v}"`), `${v} seçeneği yok`);
+  const js = oku('js/main.js');
+  assert.ok(/els\['p-remesh'\]/.test(js), 'main.js seçimi okumuyor');
+  assert.ok(/state\.remeshCache = null/.test(js), 'görsel yüklenince onarım önbelleği temizlenmiyor');
+  assert.ok(oku('sw.js').includes("'./js/remesh.js'"), 'remesh.js çevrimdışı listede yok');
 });
 
 console.log('açınım (kertikli büküm)');

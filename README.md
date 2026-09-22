@@ -102,6 +102,21 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   indirir; aynı model 300 üçgende 19-22 yaprak, ~175 kaynak verir, biçim
   ortalama %1,2 sapmayla korunur. Zaten düşük poligonlu model dokunulmadan
   geçer.
+- **Bozuk modeller onarılır.** Delikli, kenarları üst üste binmiş ya da
+  saç teli gibi ince ayrıntıyla dolu bir model yüzeyden sadeleştirilemez:
+  97.048 üçgenli bir at modelinde (135 açık kenar, 33 çakışık kenar)
+  sadeleştirme saçlara dokunamadı, bütçeyi gövdeden yedi ve heykel dev
+  kıymıklara "patladı". **Model onarımı** (varsayılan: Otomatik) böyle bir
+  modeli hacim olarak yeniden kurar — içerisi/dışarısı üç eksenden ışınla
+  oylanır, delikler kapanır, iç boşluklar dolar, yumuşatmayla ince teller
+  erir, kopuk kırıntılar atılır ve yüzey kapalı bir ağ olarak yeniden
+  çıkarılır. At bu yoldan 300 yüzeyde 21 yaprak verir, açık kenar sıfır.
+  Birkaç kusurlu kenarı olan temiz modellere dokunulmaz (onarım ince
+  bacakları da yumuşatabilir); ayrıntı kaybı istemezseniz onarımı kapatın.
+  İnce bacaklı figürlerde hedef yüzey sayısını 800-1000'e çıkarmak bacakları
+  belirginleştirir.
+- **Bükülemeyecek kenar büküm olmaz.** Düzden 150°'den fazla sapan (iç açısı
+  30°'nin altında) kenarlar açınıma katılmaz, kaynak dikişi kalır.
 - **Görselden de çalışır.** 3B model yoksa görsel, kapalı bir kabartma
   hacmine çevrilir: ön yüz düşük poligonlu, arka düz, yanlar etek. Bu duvara
   asılan bir **kabartmadır** — tek fotoğrafta arka taraf yoktur, olmayan
@@ -409,6 +424,7 @@ js/
   modes/slices.js     dilimli heykel: kesit parçaları + mil delikleri
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
+  remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)
   relief3d.js         yükseklik haritasından kapalı kabartma hacmi
   mesh.js             köşe kaynaklama, eş düzlem birleştirme, dihedral açı
   unfold.js           açınım: çakışmasız öbekleme, sınır izi, kertik, büküm payı
