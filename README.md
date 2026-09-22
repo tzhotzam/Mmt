@@ -127,6 +127,13 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   30°'nin altındaki bıçak sırtı dikişe kulakçık sığmaz; bunlar kaynakta
   kalır ve montaj listesinde işaretlenir. Ölçüldü: 1200 mm'lik bir figürde
   175 dikişin 110'u perçinlendi (139 perçin), 40'ı bıçak sırtıydı.
+- **Parça sayısını doğrudan yazın.** "Parça sayısı" alanına 80 yazarsanız
+  program yaprakları 80 parça çıkacak biçimde böler; heykelin biçimi
+  değişmez, yalnızca kesim yerleri değişir. Yaprak başına faset sınırı
+  kesirli dağıtılıp aranır (tam sayı sınırla 62'den 116'ya atlıyordu).
+  Gerçek boy atta 47 → 47, 80 → 80, 200 → 200 parça, arama ~0,1 s.
+  Faset sayısından fazlası ya da levha/yaprak ölçüsünün izin verdiğinden
+  azı istenirse en yakın sonuç verilir ve söylenir.
 - **Daha çok / daha küçük parça.** Dört ayar var (1200 mm'lik bir figürde
   ölçüldü, perçinli):
   | Ayar | Değer | Parça | En büyük |

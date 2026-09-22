@@ -87,7 +87,7 @@ function mergeBounds(a, b) {
  *
  * @param {Array} facets  { poly2d, vmap: Map(vi->[x,y]), edgeKeys, area }
  * @param {Map}   neighborOf  fi -> [{ facet, edgeKey, v1, v2, angle }]
- * @param {object} opts { maxW, maxH, maxFacets, clearance }
+ * @param {object} opts { maxW, maxH, maxFacets (sayı ya da yaprak sırası → sınır), clearance }
  */
 export function unfoldPatches(facets, neighborOf, opts = {}) {
   const { maxW = Infinity, maxH = Infinity, maxFacets = 40, clearance = 0.4 } = opts;
@@ -110,11 +110,14 @@ export function unfoldPatches(facets, neighborOf, opts = {}) {
     const folds = [];
     let bounds = boundsOf(facets[seed].poly2d);
     const queue = [seed];
+    // Sınır sabit sayı ya da yaprak sırasına göre değişen bir işlev olabilir;
+    // işlevle ortalama sınır kesirli verilebilir (hedef parça sayısı araması).
+    const cap = typeof maxFacets === 'function' ? maxFacets(pi) : maxFacets;
 
-    while (queue.length && placed.size < maxFacets) {
+    while (queue.length && placed.size < cap) {
       const cur = queue.shift();
       for (const nb of neighborOf.get(cur) || []) {
-        if (placed.size >= maxFacets) break;
+        if (placed.size >= cap) break;
         if (assigned[nb.facet] !== -1) continue;
 
         const host = placed.get(cur);

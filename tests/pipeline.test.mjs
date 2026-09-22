@@ -1719,6 +1719,23 @@ test('bilgi notları uyarı kutusundan ayrı durur', () => {
   assert.ok(oku('index.html').includes('id="notes"'), 'not kutusu yok');
 });
 
+test('istenen parça sayısı tutturulur, ulaşılamazsa söylenir', () => {
+  // Kullanıcı "47 değil 80 parça olsun" diyebilmeli. Tam sayı faset sınırı
+  // kaba sıçradığı için sınır kesirli dağıtılıp aranıyor.
+  const d = decimate(denseSphere(100), 400);
+  const P = { targetSize: 1500, minArea: 0, unfold: true, thickness: 1.5, joinMethod: 'percin' };
+  const oto = generateFacets(d.tris, P).parts.length;
+  for (const hedef of [oto + 7, oto + 25, Math.max(3, oto - 3)]) {
+    const r = generateFacets(d.tris, { ...P, targetParts: hedef });
+    assert.ok(Math.abs(r.parts.length - hedef) <= 1, `hedef ${hedef}, çıkan ${r.parts.length}`);
+  }
+  const cok = generateFacets(d.tris, { ...P, targetParts: 100000 });
+  assert.ok(cok.notes.some((n) => /en çok \d+ parça/.test(n)), 'üst sınır söylenmiyor');
+  const html = oku('index.html');
+  assert.ok(html.includes('id="p-targetParts"'), 'arayüzde parça sayısı alanı yok');
+  assert.ok(/targetParts: Math\.round\(num\('p-targetParts'/.test(oku('js/main.js')), 'parça sayısı okunmuyor');
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {

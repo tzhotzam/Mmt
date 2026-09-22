@@ -32,6 +32,7 @@ export const FACET_DEFAULTS = {
   // Açınım
   unfold: false,
   maxFacetsPerPatch: 24,
+  targetParts: 0,       // >0: yaprak sayısını buna en yakın yapacak sınır aranır
   bridgeMode: 'oto',  // 'dagitik' | 'tek' | 'oto'
   dashCut: 30,
   dashGap: 8,
@@ -96,6 +97,9 @@ export function generateFacets(rawTris, userParams = {}) {
   const built = p.unfold
     ? buildPatchParts(a, p, warnings, notes)
     : buildLooseParts(a, p, warnings);
+  if (!p.unfold && p.targetParts > 0) {
+    notes.push('Parça sayısı yalnızca açınım açıkken ayarlanır; açınım kapalıyken her faset ayrı parçadır.');
+  }
 
   const birlesim = { percin: 0, kaynak: a.seams.length, keskin: 0, rivets: 0, tabs: 0 };
   if (p.joinMethod === 'percin') {
@@ -371,12 +375,19 @@ function buildPatchParts(a, p, warnings, notes = warnings) {
   // iki yanda kulakçık derinliği kadar büyütebilir. Sınır o kadar daraltılır;
   // yoksa 400 mm istenen yaprak 427 mm çıkıyordu (levhaya/kabine sığmaz).
   const kulakPayi = p.joinMethod === 'percin' ? 2 * Math.max(p.tabWidth, 10) : 0;
-  const { patches } = unfoldPatches(facetList, neighborDense, {
-    maxFacets: Math.max(1, Math.round(p.maxFacetsPerPatch)),
+  const acinimAyar = {
     clearance: Math.max(0.2, p.thickness * 0.15),
     maxW: p.maxPatchW - kulakPayi,
     maxH: p.maxPatchH - kulakPayi,
-  });
+  };
+  let patches;
+  if (p.targetParts > 0) {
+    patches = hedefParcaAra(facetList, neighborDense, acinimAyar, Math.round(p.targetParts), notes);
+  } else {
+    ({ patches } = unfoldPatches(facetList, neighborDense, {
+      ...acinimAyar, maxFacets: Math.max(1, Math.round(p.maxFacetsPerPatch)),
+    }));
+  }
 
   const parts = [];
   const folds = [];
@@ -491,6 +502,58 @@ function buildPatchParts(a, p, warnings, notes = warnings) {
   }
 
   return { parts, folds };
+}
+
+/**
+ * HEDEF PARÇA SAYISI. Kullanıcı "47 değil 80 parça olsun" diyebilsin.
+ *
+ * Heykelin biçimine dokunulmaz; yalnızca yaprakların kaç faset alacağı
+ * değişir. Yaprak başına faset sınırı tam sayı olunca parça sayısı kaba
+ * sıçrar (ölçüldü: sınır 6 → 62 parça, 3 → 116; arası yok). Bu yüzden sınır
+ * KESİRLİ verilir: c ortalamalı sınır, k. yaprağa floor((k+1)c) - floor(kc)
+ * faset düşecek biçimde dağıtılır. Parça sayısı c büyüdükçe (kabaca tekdüze)
+ * azalır; c ikiye bölmeyle aranır ve hedefe en yakın sonuç seçilir.
+ *
+ * Ulaşılamayan hedefte (faset sayısından fazla, ya da levha/yaprak ölçüsünün
+ * izin verdiğinden az) en yakın sonuç kullanılır ve not düşülür.
+ */
+function hedefParcaAra(facetList, neighborDense, ayar, hedef, notes) {
+  const dene = (c) => unfoldPatches(facetList, neighborDense, {
+    ...ayar,
+    maxFacets: (k) => Math.max(1, Math.floor((k + 1) * c) - Math.floor(k * c)),
+  }).patches;
+
+  const enCok = dene(1);                         // her faset ayrı yaprak
+  let enIyi = enCok;
+  if (hedef >= enCok.length) {
+    if (hedef > enCok.length) {
+      notes.push(`Hedef ${hedef} parça, ama en çok ${enCok.length} parça çıkabiliyor ` +
+        '(her faset ayrı). Daha çok parça için "Hedef yüzey sayısı"nı artırın.');
+    }
+    return enCok;
+  }
+  let lo = 1, hi = Math.max(2, facetList.length);
+  const enAz = dene(hi);
+  if (hedef <= enAz.length) {
+    if (hedef < enAz.length) {
+      notes.push(`Hedef ${hedef} parça, ama en az ${enAz.length} parça çıkabiliyor ` +
+        '(levha / yaprak ölçüsü ve heykelin biçimi izin vermiyor). Levha ya da ' +
+        '"Yaprak en büyük ölçüsü"nü büyütün.');
+    }
+    return enAz;
+  }
+  enIyi = Math.abs(enAz.length - hedef) < Math.abs(enCok.length - hedef) ? enAz : enCok;
+  for (let i = 0; i < 24 && hi - lo > 1e-3; i++) {
+    const c = (lo + hi) / 2;
+    const ps = dene(c);
+    if (Math.abs(ps.length - hedef) < Math.abs(enIyi.length - hedef)) enIyi = ps;
+    if (ps.length === hedef) break;
+    if (ps.length > hedef) lo = c; else hi = c;
+  }
+  if (enIyi.length !== hedef) {
+    notes.push(`Hedef ${hedef} parça → en yakın ${enIyi.length} parça bulundu.`);
+  }
+  return enIyi;
 }
 
 /**
