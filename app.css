@@ -186,6 +186,19 @@ canvas.view { touch-action: none; }
 
 .warnings ul { margin: 0; padding-left: 18px; }
 
+/* Bilgi notları: uyarı değil — sakin, kapalı başlar. */
+.notes {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.07);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.notes summary { cursor: pointer; user-select: none; }
+.notes ul { margin: 6px 0 0; padding-left: 18px; }
+
 .uploads {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

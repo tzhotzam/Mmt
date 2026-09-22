@@ -43,7 +43,7 @@ export const FACET_DEFAULTS = {
   maxBend: 150,
   // Birleşim: 'kaynak' | 'percin' (her dikişe perçinli kulakçık)
   joinMethod: 'kaynak',
-  tabWidth: 20,       // kulakçık derinliği (mm)
+  tabWidth: 15,       // kulakçık derinliği (mm); 20 → 15: gerçek boy atta sığmayan dikiş 33 → 21
   rivetDiameter: 4,   // kör perçin çapı; delik +0.1 mm
   rivetPitch: 80,     // perçinler arası en çok (mm)
   reliefHoles: true,  // büküm hatlarının birleştiği iç köşelere delik
@@ -56,6 +56,10 @@ export const FACET_DEFAULTS = {
 export function generateFacets(rawTris, userParams = {}) {
   const p = { ...FACET_DEFAULTS, ...userParams };
   const warnings = [];
+  // Bilgi notları: sorun değil, bilgi. Arayüz bunları kırmızı uyarı kutusunda
+  // değil, kapalı gri bir "Bilgi" satırında gösterir — hepsi aynı kutuda
+  // uzun uzun yazınca kullanıcı sürekli bir şey bozuk sanıyordu.
+  const notes = [];
 
   const scaled = scaleTriangles(rawTris, p.targetSize, p.sizeAxis);
   const mesh = buildMesh(scaled.tris);
@@ -90,36 +94,25 @@ export function generateFacets(rawTris, userParams = {}) {
   }
 
   const built = p.unfold
-    ? buildPatchParts(a, p, warnings)
+    ? buildPatchParts(a, p, warnings, notes)
     : buildLooseParts(a, p, warnings);
 
   const birlesim = { percin: 0, kaynak: a.seams.length, keskin: 0, rivets: 0, tabs: 0 };
   if (p.joinMethod === 'percin') {
     Object.assign(birlesim, applyRivetJoints(built.parts, a.seams, p));
-    const parcalar = [];
     // Çok kısa dikişler ayrı sayılır: iki yanındaki perçinli dikişler parçayı
-    // zaten tutar; "kaynak" diye tek sayıda toplanınca iş gözü korkutuyordu
-    // (gerçek boy atta kaynakta kalan 201 dikişin 141'i 40 mm'den kısaydı).
+    // zaten tutar (gerçek boy atta kaynakta kalan 201 dikişin 141'i 40 mm'den
+    // kısaydı). Özet bir BİLGİ notudur; ayrıntı montaj listesinde.
     const KISA = 40;
     const kisa = a.seams.filter((s) => s.join === 'kaynak' && s.length < KISA
       && Math.abs(180 - s.angle) <= p.maxBend).length;
     const uzun = birlesim.kaynak - kisa;
-    if (kisa) {
-      parcalar.push(`${kisa} dikiş ${KISA} mm'den kısa — komşu perçinler bunları ` +
-        'tutar; isterseniz birer punta ya da damla yapıştırıcı yeter');
-    }
-    if (uzun > 0) {
-      parcalar.push(`${uzun} dikişe kulakçık ya da perçin deliği sığmadı ` +
-        '(faset dar ya da kulakçık parçanın kendisine çarpıyor — ' +
-        'heykeli büyütmek bu sayıyı düşürür)');
-    }
-    if (birlesim.keskin) {
-      parcalar.push(`${birlesim.keskin} dikiş bükülemeyecek kadar keskin (iç açı 30°'nin altında)`);
-    }
+    const parcalar = [];
+    if (kisa) parcalar.push(`${kisa} kısa (<${KISA} mm, komşu perçinler tutar)`);
+    if (uzun > 0) parcalar.push(`${uzun} kulakçık sığmadı (heykel büyüdükçe azalır)`);
+    if (birlesim.keskin) parcalar.push(`${birlesim.keskin} bıçak sırtı (iç açı <30°)`);
     if (parcalar.length) {
-      warnings.push(
-        `Perçinsiz kalan dikişler: ${parcalar.join('; ')}. Montaj listesinde "kaynak" diye işaretli.`
-      );
+      notes.push(`Perçinsiz dikişler — montaj listesinde "kaynak": ${parcalar.join(', ')}.`);
     }
     birlesim.kaynak += birlesim.keskin;
   }
@@ -147,6 +140,7 @@ export function generateFacets(rawTris, userParams = {}) {
     parts: built.parts,
     seams: a.seams,
     folds: built.folds || [],
+    notes,
     info: {
       mode: 'facets',
       unfold: p.unfold,
@@ -347,7 +341,7 @@ function buildLooseParts(a, p, warnings) {
 
 // ----------------------------------------------------------------- AÇINIM
 
-function buildPatchParts(a, p, warnings) {
+function buildPatchParts(a, p, warnings, notes = warnings) {
   let yaprakTelafiCoken = 0;
   const facetList = [];
   const denseToGroup = [];
@@ -491,9 +485,8 @@ function buildPatchParts(a, p, warnings) {
 
   const maxDed = folds.reduce((m, f) => Math.max(m, Math.abs(f.deduction)), 0);
   if (maxDed > p.thickness) {
-    warnings.push(
-      `Keskin köşe varsayımıyla kesilen açınımda en büyük büküm payı ${maxDed.toFixed(1)} mm. ` +
-      'Kertikli bükümde bu fark küçülür; bükümü kertik çizgisinin tam ortasından yapın.'
+    notes.push(
+      `En büyük büküm payı ${maxDed.toFixed(1)} mm — bükümü kertik çizgisinin tam ortasından yapın.`
     );
   }
 
@@ -538,10 +531,15 @@ function linkSeams(seams, groupToId, warnings, elenen = null, baglam = '') {
   if (!sebepler.length && baglam) sebepler.push(baglam);
 
   warnings.push(
-    `${orphan} dikişin karşı parçası yok — bu dikişler kaynaklanamaz. ` +
+    `${orphan} dikişin karşı parçası yok — heykelde küçük boşluk kalır, bu kenarlar ` +
+    'kaynaklanamaz; montajda sac yamayla kapatın. ' +
     (sebepler.length ? `Sebep: ${sebepler.join('; ')}.` : 'Sebep çözümlenemedi.') +
-    ' Model kapalı ve temiz bir hacim değilse Blender\'da "Merge by Distance" + ' +
-    '"Recalculate Normals" uygulayıp tekrar deneyin.'
+    // Blender tavsiyesi yalnızca sorun büyükse: birkaç boşluk için model
+    // düzeltmeye göndermek gereksiz iş.
+    (orphan > 20
+      ? ' Model kapalı ve temiz bir hacim değilse Blender\'da "Merge by Distance" + ' +
+        '"Recalculate Normals" uygulayıp tekrar deneyin.'
+      : '')
   );
 }
 

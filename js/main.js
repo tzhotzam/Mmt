@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-j';
+const APP_VERSION = '2026-09-22-k';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -96,6 +96,7 @@ const state = {
   planFocus: -1,         // plan görünümünde tam ekran açılan parça (-1: ızgara)
   planCells: [],
   planView: { k: 1, px: 0, py: 0 },   // tek parça görünümünde yakınlaştırma
+  notes: [],             // bilgi notları (uyarı değil) — kapalı gri kutuda
   reliefInfo: null,
   viewAxis: 'z',
   sourceKind: null,      // 'foto' | 'desen' | 'model' — otomatik yumuşatma buna bakar
@@ -157,7 +158,7 @@ function readParams() {
       dashCut: num('p-dashCut', 30),
       dashGap: num('p-dashGap', 8),
       joinMethod: els['p-joinMethod'].value,
-      tabWidth: num('p-tabWidth', 20),
+      tabWidth: num('p-tabWidth', 15),
       rivetDiameter: num('p-rivetDiameter', 4),
       rivetPitch: num('p-rivetPitch', 80),
       reliefHoles: bool('p-reliefHoles'),
@@ -706,13 +707,9 @@ function facetMeshSource() {
     if (onar) {
       const h = rc.health;
       notlar.push(
-        (secim === 'oto'
-          ? `Model bozuktu (${h.openEdges} açık kenar, ${h.nonManifold} çakışık kenar` +
-            (h.euler < -20 ? `, düğümlü yüzey` : '') + ') ve doğrudan sadeleştirilemezdi. '
-          : '') +
-        'Model hacim olarak yeniden kuruldu: delikler kapandı, saç teli gibi ' +
-        'ince ayrıntılar yumuşatıldı, kopuk kırıntılar atıldı. Ayrıntı ' +
-        'kaybı istemezseniz "Model onarımı"nı kapatın.'
+        'Model onarıldı' +
+        (secim === 'oto' ? ` (${h.openEdges} delik kenarı, ${h.nonManifold} çakışık kenar vardı)` : '') +
+        ': delikler kapandı, ince teller yumuşadı.'
       );
     }
 
@@ -726,11 +723,7 @@ function facetMeshSource() {
         state.decimateCache = { src: taban, hedef, tris: d.tris, before: state.tris.length, after: d.after };
       }
       const c = state.decimateCache;
-      notlar.push(
-        `Model ${c.before} üçgenden ${c.after} üçgene sadeleştirildi ` +
-        '(hedef yüzey sayısı). Daha çok ayrıntı için değeri artırın, daha az ' +
-        've büyük parça için düşürün.'
-      );
+      notlar.push(`${c.before} üçgen → ${c.after} üçgene sadeleştirildi (hedef yüzey sayısı).`);
       return { tris: c.tris, not: notlar.join(' ') };
     }
     return { tris: taban, not: notlar.length ? notlar.join(' ') : null };
@@ -747,9 +740,8 @@ function facetMeshSource() {
         backThickness: Math.max(5, num('p-reliefDepth', 60) * 0.25),
         cells: Math.round(num('p-reliefCells', 14)),
       }),
-      not: 'Görselden kabartma kuruldu: ön yüz düşük poligonlu, arka düz. Bu ' +
-        'duvara asılan bir KABARTMADIR — tek fotoğrafta arka taraf olmadığı ' +
-        'için serbest duran heykel çıkmaz. Heykel için 3B model yükleyin.',
+      not: 'Görselden duvar kabartması kuruldu (arkası düz). Serbest duran heykel ' +
+        'için 3B model yükleyin.',
     };
   }
   return null;
@@ -764,6 +756,7 @@ function regenerateMesh() {
     state.cutList = null;
     state.nestResult = null;
     state.warnings = [];
+    state.notes = [];
     els['stage-hint'].hidden = false;
     els['stage-hint'].textContent = state.mode === 'facets'
       ? 'Görsel ya da 3B model (STL/OBJ) yükleyin. Görselden duvar kabartması, ' +
@@ -782,7 +775,8 @@ function regenerateMesh() {
   const result = state.mode === 'slices'
     ? generateSlices(kaynak.tris, readParams())
     : generateFacets(kaynak.tris, readParams());
-  if (kaynak.not) result.warnings.unshift(kaynak.not);
+  state.notes = (result.notes || []).slice();
+  if (kaynak.not) state.notes.unshift(kaynak.not);
   state.parts = result.parts;
   state.info = result.info;
   state.seams = result.seams || [];
@@ -952,10 +946,26 @@ function showWarnings(list) {
   if (!list?.length) {
     els.warnings.hidden = true;
     els.warnings.innerHTML = '';
-    return;
+  } else {
+    els.warnings.hidden = false;
+    els.warnings.innerHTML = `<ul>${list.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`;
   }
-  els.warnings.hidden = false;
-  els.warnings.innerHTML = `<ul>${list.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`;
+  showNotes();
+}
+
+/**
+ * Bilgi notları ayrı, KAPALI bir kutuda. Uyarı değildir; kullanıcı istediğinde
+ * açar. Açık/kapalı tercihi mod değişse de korunur.
+ */
+function showNotes() {
+  const el = els.notes;
+  if (!el) return;
+  const list = (state.mode === 'facets' || state.mode === 'slices') ? state.notes : [];
+  if (!list?.length) { el.hidden = true; el.innerHTML = ''; return; }
+  const acik = el.querySelector('details')?.open || false;
+  el.hidden = false;
+  el.innerHTML = `<details${acik ? ' open' : ''}><summary>Bilgi · ${list.length} not</summary>` +
+    `<ul>${list.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul></details>`;
 }
 
 function renderCutList() {

@@ -1705,6 +1705,20 @@ test('iğne faset atılmaz, düzlemine oturduğu komşusuna katılır', () => {
   assert.equal(r2.merged, 0, 'belirgin eğik faset düzleme bastırıldı');
 });
 
+test('bilgi notları uyarı kutusundan ayrı durur', () => {
+  // Sadeleştirme notu, büküm payı ve perçinsiz dikiş özeti UYARI değil;
+  // hepsi kırmızı kutuda uzun uzun yazınca kullanıcı sürekli hata sanıyordu.
+  const d = decimate(denseSphere(100), 200);
+  const r = generateFacets(d.tris, { targetSize: 1000, minArea: 0, unfold: true, joinMethod: 'percin', thickness: 1.5 });
+  assert.ok(Array.isArray(r.notes), 'notes dizisi yok');
+  assert.ok(!r.warnings.some((w) => /büküm payı/.test(w)), 'büküm payı hâlâ uyarıda');
+  assert.ok(!r.warnings.some((w) => /Perçinsiz/.test(w)), 'perçinsiz özet hâlâ uyarıda');
+  const js = oku('js/main.js');
+  assert.ok(/function showNotes/.test(js) && /state\.notes/.test(js), 'arayüz notları ayrı göstermiyor');
+  assert.ok(!/result\.warnings\.unshift\(kaynak\.not\)/.test(js), 'sadeleştirme notu uyarıya ekleniyor');
+  assert.ok(oku('index.html').includes('id="notes"'), 'not kutusu yok');
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {
