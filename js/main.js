@@ -16,6 +16,8 @@ import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
 import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
 import { generateSlices, SLICE_DEFAULTS } from './modes/slices.js';
+import { decimate } from './decimate.js';
+import { meshFromHeightmap } from './relief3d.js';
 import { nest, applyPlacement } from './nest.js';
 import { sheetToDxf } from './export/dxf.js';
 import { sheetToSvg } from './export/svg.js';
@@ -28,7 +30,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-c';
+const APP_VERSION = '2026-09-22-d';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -96,6 +98,7 @@ const state = {
   sourceStats: null,     // kaynak teşhisi (ton yoğunluğu)
   uploadGrid: null,      // YÜKLENEN içerik (görsel/model) — desen değil
   uploadKind: null,      // 'foto' | 'model'
+  decimateCache: null,   // sadeleştirilmiş ağ (model + hedef değişmedikçe)
   meshInfo: null,
   patternSeed: 0.42,
   patternAspect: 1.5,
@@ -133,7 +136,7 @@ function readParams() {
       targetSize: num('p-targetSize', 600),
       sizeAxis: els['p-sizeAxis'].value,
       angleTol: num('p-angleTol', 1),
-      minArea: num('p-facetMinArea', 150),
+      minArea: num('p-facetMinArea', 40),
       thicknessComp: bool('p-thicknessComp'),
       unfold: bool('p-unfold'),
       maxFacetsPerPatch: Math.round(num('p-maxFacetsPerPatch', 24)),
@@ -345,6 +348,10 @@ async function loadImageFile(file) {
 
   state.uploadGrid = gridFromImageData(img, cols, rows);
   state.uploadKind = 'foto';
+  // Önceden yüklenmiş 3B model artık kaynak değil. Temizlenmezse poligonal
+  // kabuk, yeni yüklenen görsel yerine eski modeli işlemeye devam ederdi.
+  state.tris = null;
+  state.decimateCache = null;
   composeSource();
   setSourceStatus(`Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
   resetPaint();
@@ -638,18 +645,76 @@ function regenerate() {
 }
 
 /** Üçgen ağdan besleneen modlar: poligonal kabuk ve dilim. */
+/**
+ * Poligonal kabuk için üçgen ağı hazırlar.
+ *
+ *  - 3B model yüklüyse ve hedef yüzey sayısından yoğunsa SADELEŞTİRİLİR.
+ *    Yapay zekâ/tarama modelleri adında "low poly" yazsa da ince bölünmüş
+ *    eğri yüzeylerdir; sadeleştirilmeden faset modunda yüzlerce parça ve
+ *    binlerce kaynaklanamaz dikiş çıkar.
+ *  - Model yoksa ama görsel varsa, görselden KAPALI bir kabartma hacmi
+ *    kurulur (ön yüz düşük poligonlu, arka düz, yanlar etek). Serbest duran
+ *    heykel değil, duvara asılan kabartmadır — tek fotoğrafta arka taraf yok.
+ *
+ * @returns {{tris, not}|null}
+ */
+function facetMeshSource() {
+  if (state.tris) {
+    const hedef = Math.round(num('p-targetFaces', 300));
+    if (hedef > 0 && state.tris.length > hedef) {
+      // Aynı model ve aynı hedef için sonucu sakla; kaydırıcı her
+      // oynadığında yeniden sadeleştirmek yarım saniye yer.
+      // Model kimliği referansla karşılaştırılır: üçgen sayısına bakmak,
+      // aynı sayıda üçgenli iki farklı modeli karıştırırdı.
+      if (state.decimateCache?.src !== state.tris || state.decimateCache.hedef !== hedef) {
+        const d = decimate(state.tris, hedef);
+        state.decimateCache = { src: state.tris, hedef, tris: d.tris, before: d.before, after: d.after };
+      }
+      const c = state.decimateCache;
+      return {
+        tris: c.tris,
+        not: `Model ${c.before} üçgenden ${c.after} üçgene sadeleştirildi ` +
+          '(hedef yüzey sayısı). Daha çok ayrıntı için değeri artırın, daha az ' +
+          've büyük parça için düşürün.',
+      };
+    }
+    return { tris: state.tris, not: null };
+  }
+  if (state.sourceGrid) {
+    const g = applyFilters(state.sourceGrid, readFilters());
+    const boy = num('p-targetSize', 600);
+    const a = state.aspect || 1;
+    return {
+      tris: meshFromHeightmap(g, {
+        width: a >= 1 ? boy : boy * a,
+        height: a >= 1 ? boy / a : boy,
+        depth: num('p-reliefDepth', 60),
+        backThickness: Math.max(5, num('p-reliefDepth', 60) * 0.25),
+        cells: Math.round(num('p-reliefCells', 14)),
+      }),
+      not: 'Görselden kabartma kuruldu: ön yüz düşük poligonlu, arka düz. Bu ' +
+        'duvara asılan bir KABARTMADIR — tek fotoğrafta arka taraf olmadığı ' +
+        'için serbest duran heykel çıkmaz. Heykel için 3B model yükleyin.',
+    };
+  }
+  return null;
+}
+
 function regenerateMesh() {
   state.seams = [];
-  if (!state.tris) {
+  const kaynak = state.mode === 'facets' ? facetMeshSource() : (state.tris ? { tris: state.tris, not: null } : null);
+  if (!kaynak || !kaynak.tris?.length) {
     state.parts = [];
     state.info = null;
     state.cutList = null;
     state.nestResult = null;
     state.warnings = [];
     els['stage-hint'].hidden = false;
-    els['stage-hint'].textContent =
-      'Bu mod için 3B model gerekir (görsel yeterli değil): STL veya OBJ yükleyin. ' +
-      'Denemek için "Hazır desen"e dokunun — gömülü bir model gelir.';
+    els['stage-hint'].textContent = state.mode === 'facets'
+      ? 'Görsel ya da 3B model (STL/OBJ) yükleyin. Görselden duvar kabartması, ' +
+        'modelden serbest duran heykel çıkar.'
+      : 'Bu mod için 3B model gerekir (görsel yeterli değil): STL veya OBJ yükleyin. ' +
+        'Denemek için "Hazır desen"e dokunun — gömülü bir model gelir.';
     els.summary.innerHTML = '';
     showWarnings([]);
     // Önizlemeler de TEMİZLENMELİ. Eskiden temizlenmiyordu: modele ihtiyaç
@@ -660,8 +725,9 @@ function regenerateMesh() {
     return;
   }
   const result = state.mode === 'slices'
-    ? generateSlices(state.tris, readParams())
-    : generateFacets(state.tris, readParams());
+    ? generateSlices(kaynak.tris, readParams())
+    : generateFacets(kaynak.tris, readParams());
+  if (kaynak.not) result.warnings.unshift(kaynak.not);
   state.parts = result.parts;
   state.info = result.info;
   state.seams = result.seams || [];

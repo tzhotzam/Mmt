@@ -93,6 +93,21 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 - **Gevşek faset** — Her yüzey ayrı parça, tamamı kaynakla birleşir. Basit,
   ama montajda açıyı tutmak tamamen kaynakçıya kalır.
 
+- **Yoğun modeller otomatik sadeleştirilir.** Yapay zekâ ile üretilen ya
+  da taranan modeller adında "low poly" yazsa bile ince bölünmüş EĞRİ
+  yüzeylerdir. Ölçüldü: 16.126 üçgenli bir Meshy modelinde komşu üçgenlerin
+  yalnızca %14'ü düz. Böyle bir ağda birleştirilecek düz yüzey yok; eskiden
+  195 yaprak ve 1.439 kaynaklanamaz dikiş çıkıyordu. **Hedef yüzey sayısı**
+  (varsayılan 300) modeli kenar çökertme + karesel hata ölçütüyle o sayıya
+  indirir; aynı model 300 üçgende 19-22 yaprak, ~175 kaynak verir, biçim
+  ortalama %1,2 sapmayla korunur. Zaten düşük poligonlu model dokunulmadan
+  geçer.
+- **Görselden de çalışır.** 3B model yoksa görsel, kapalı bir kabartma
+  hacmine çevrilir: ön yüz düşük poligonlu, arka düz, yanlar etek. Bu duvara
+  asılan bir **kabartmadır** — tek fotoğrafta arka taraf yoktur, olmayan
+  bilgi uydurulmaz; serbest duran heykel için 3B model gerekir. "Kabartma
+  poligon sayısı" düşükse biçim soyutlaşır (logo harfleri okunmaz), yüksekse
+  parça sayısı artar.
 - Low-poly modellerde her görünen yüzey birden çok üçgene bölünmüştür;
   bunlar **geri birleştirilir**, böylece düz bir yüzeyin ortasından gereksiz
   kaynak çekilmez. (Küp = 12 üçgen → 6 kare parça.)
@@ -393,6 +408,8 @@ js/
   modes/facets.js     poligonal kabuk: faset parçaları + kaynak dikişleri
   modes/slices.js     dilimli heykel: kesit parçaları + mil delikleri
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
+  decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
+  relief3d.js         yükseklik haritasından kapalı kabartma hacmi
   mesh.js             köşe kaynaklama, eş düzlem birleştirme, dihedral açı
   unfold.js           açınım: çakışmasız öbekleme, sınır izi, kertik, büküm payı
   nest.js             levha yerleşimi

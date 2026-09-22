@@ -5,7 +5,7 @@
 // APP_VERSION ile AYNI olmalı. Üçü ayrışırsa tarayıcı yeni HTML'i eski
 // JavaScript'le birleştirebilir; testler bu üçünü karşılaştırır.
 
-const VERSION = '2026-09-22-c';
+const VERSION = '2026-09-22-d';
 const CACHE = `cnc-panel-${VERSION}`;
 
 const ASSETS = [
@@ -38,6 +38,8 @@ const ASSETS = [
   './js/modes/facets.js',
   './js/modes/slices.js',
   './js/slice.js',
+  './js/decimate.js',
+  './js/relief3d.js',
   './js/export/dxf.js',
   './js/export/svg.js',
 ];

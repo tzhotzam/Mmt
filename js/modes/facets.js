@@ -24,7 +24,7 @@ export const FACET_DEFAULTS = {
   thickness: 3,
   angleTol: 1,
   thicknessComp: true,
-  minArea: 150,
+  minArea: 40,          // ölçüldü: sadeleştirilmiş modelde 150 → 59 öksüz dikiş, 40 → 15
   labelSize: 7,
   seamLabelSize: 4.5,
   offset: 0,
@@ -246,13 +246,15 @@ function buildLooseParts(a, p, warnings) {
   const parts = [];
   const groupToId = new Map();
 
+  let telafiCoken = 0;
   a.facets.forEach((f) => {
     if (!f) return;
     let ring = f.poly2d;
     if (p.thicknessComp && p.thickness > 0) {
       const dists = f.seamOfEdge.map((id) => (id ? seamInset(a.seams[id - 1].angle, p.thickness) : 0));
       const moved = offsetPerEdge(ring, dists);
-      if (moved) ring = moved;
+      if (moved && !telafiCokerMi(ring, moved)) ring = moved;
+      else if (moved) telafiCoken++;
     }
     if (p.offset !== 0) {
       const moved = offsetPerEdge(ring, ring.map(() => -p.offset));
@@ -282,12 +284,14 @@ function buildLooseParts(a, p, warnings) {
   });
 
   linkSeams(a.seams, groupToId, warnings, a.elenen);
+  if (telafiCoken) warnings.push(telafiUyarisi(telafiCoken, p.thickness));
   return { parts };
 }
 
 // ----------------------------------------------------------------- AÇINIM
 
 function buildPatchParts(a, p, warnings) {
+  let yaprakTelafiCoken = 0;
   const facetList = [];
   const denseToGroup = [];
   a.facets.forEach((f) => {
@@ -340,7 +344,8 @@ function buildPatchParts(a, p, warnings) {
         return sid ? seamInset(a.seams[sid - 1].angle, p.thickness) : 0;
       });
       const moved = offsetPerEdge(ring, dists);
-      if (moved) ring = moved;
+      if (moved && !telafiCokerMi(ring, moved)) ring = moved;
+      else if (moved) yaprakTelafiCoken++;
     }
     if (p.offset !== 0) {
       const moved = offsetPerEdge(ring, ring.map(() => -p.offset));
@@ -402,6 +407,8 @@ function buildPatchParts(a, p, warnings) {
       },
     });
   });
+
+  if (yaprakTelafiCoken) warnings.push(telafiUyarisi(yaprakTelafiCoken, p.thickness));
 
   // Büküme dönüşen dikişler artık kaynaklanmıyor — listeden düşür.
   const welded = a.seams.filter((s) => weldedKeys.has(s.key));
@@ -467,6 +474,33 @@ function linkSeams(seams, groupToId, warnings, elenen = null, baglam = '') {
 }
 
 // ------------------------------------------------------------- YARDIMCILAR
+
+/**
+ * Kalınlık telafisi faseti yok etti mi?
+ *
+ * Telafi her kenarı (t/2)·cot(θ/2) kadar içe kaydırır. Küçük bir fasette ve
+ * keskin dihedral açıda bu kayma fasetin iç yarıçapını aşar: halka sıfıra
+ * iner ya da ters döner. offsetPerEdge yine de bir halka döndürüyordu ve
+ * parça öyle tutuluyordu — 0 mm²'lik, kesilemeyen parçalar çıkıyordu.
+ * Ölçüldü: 250 üçgene sadeleştirilmiş bir modelde telafi açıkken en küçük
+ * parçalar 0, 0, 1, 2, 5 mm²; kapalıyken 34, 35, 35, 39, 47 mm².
+ */
+function telafiCokerMi(once, sonra) {
+  const a0 = signedArea(once);
+  const a1 = signedArea(sonra);
+  // Yön değiştiyse halka kendini kesmiştir; alanın %15'inin altına indiyse
+  // parça kullanılamayacak kadar küçülmüştür.
+  return Math.sign(a0) !== Math.sign(a1) || Math.abs(a1) < Math.abs(a0) * 0.15;
+}
+
+function telafiUyarisi(n, t) {
+  return (
+    `${n} fasette kalınlık telafisi parçayı yok ediyordu (${t} mm sac, keskin ` +
+    'açı, küçük faset). Bu parçalar telafisiz kesildi — kenarları birkaç ' +
+    'milimetre fazla çıkar, montajda taşlayın. Sayı yüksekse heykeli büyütün ' +
+    'ya da "Hedef yüzey sayısı"nı düşürüp fasetleri büyütün.'
+  );
+}
 
 function centerLabel(text, b, size) {
   return { type: 'text', text, x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, size };

@@ -31,6 +31,8 @@ import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/pain
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
 import { generateSlices } from '../js/modes/slices.js';
 import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js';
+import { decimate } from '../js/decimate.js';
+import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
 import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
 import {
@@ -1086,6 +1088,144 @@ test('dilim modu arayüzde ve önbellek listesinde', () => {
   const sw = oku('sw.js');
   assert.ok(sw.includes("'./js/slice.js'"), 'slice.js önbellek listesinde yok');
   assert.ok(sw.includes("'./js/modes/slices.js'"), 'slices.js önbellek listesinde yok');
+});
+
+// --- Sadeleştirme ve görselden kabartma ---------------------------------
+console.log('sadeleştirme ve görselden kabartma');
+
+/** Yoğun, EĞRİ yüzeyli kapalı küre — yapay zekâ modellerinin tipik hâli. */
+function denseSphere(r = 100, seg = 48, ring = 32) {
+  const v = [];
+  for (let i = 0; i <= ring; i++) {
+    const phi = (Math.PI * i) / ring;
+    for (let j = 0; j < seg; j++) {
+      const th = (2 * Math.PI * j) / seg;
+      v.push([r * Math.sin(phi) * Math.cos(th), r * Math.sin(phi) * Math.sin(th), r * Math.cos(phi)]);
+    }
+  }
+  const idx = (i, j) => i * seg + (j % seg);
+  const f = [];
+  for (let i = 0; i < ring; i++) {
+    for (let j = 0; j < seg; j++) {
+      if (i > 0) f.push([idx(i, j), idx(i + 1, j), idx(i, j + 1)]);
+      if (i < ring - 1) f.push([idx(i, j + 1), idx(i + 1, j), idx(i + 1, j + 1)]);
+    }
+  }
+  return f.map(([a, b, c]) => [v[a], v[b], v[c]]);
+}
+
+test('sadeleştirme hedefe iner ve ağı kapalı tutar', () => {
+  const tris = denseSphere();
+  const once = checkClosed(tris, 1e-6);
+  assert.ok(once.closed, 'test küresi kapalı değil');
+  const d = decimate(tris, 200);
+  assert.ok(d.after <= 220, `hedef 200, ${d.after} üçgende kaldı`);
+  const sonra = checkClosed(d.tris, 1e-6);
+  // Bağlantı koşulu olmadan çökertme ağı manifold olmaktan çıkarıyordu:
+  // gerçek bir modelde açık kenar 6'dan 28'e fırlıyordu.
+  assert.ok(sonra.closed, `sadeleştirme ağda ${sonra.openEdges} açık kenar bıraktı`);
+  assert.ok(sonra.volume > 0, 'sadeleştirme ağı ters çevirdi');
+});
+
+test('sadeleştirme biçimi korur, büzmez', () => {
+  // Yalnızca orta noktaya çökertmek dışbükey yüzeyi içe büzer; en iyi
+  // nokta çözülmezse küre küçülür.
+  const tris = denseSphere(100);
+  const d = decimate(tris, 300);
+  let enUzak = 0, enYakin = Infinity;
+  for (const t of d.tris) {
+    for (const p of t) {
+      const r = Math.hypot(p[0], p[1], p[2]);
+      enUzak = Math.max(enUzak, r);
+      enYakin = Math.min(enYakin, r);
+    }
+  }
+  // Köşeler 100 mm yarıçaplı yüzeyin yakınında kalmalı.
+  assert.ok(enYakin > 90, `küre içe büzülmüş: en yakın köşe ${enYakin.toFixed(1)} mm`);
+  assert.ok(enUzak < 110, `köşe dışarı kaçmış: ${enUzak.toFixed(1)} mm`);
+});
+
+test('sadeleştirme hiçbir köşeyi modelin dışına kaçırmaz', () => {
+  // "Orta noktadan 2 kenar boyu" izni kenarlar uzadıkça katlanıyor, bir
+  // köşe model boyunun milyonlarca katı uzağa gidiyordu.
+  const tris = denseSphere(100);
+  for (const hedef of [400, 150, 60]) {
+    const d = decimate(tris, hedef);
+    for (const t of d.tris) {
+      for (const p of t) {
+        for (const c of p) assert.ok(Math.abs(c) < 105, `hedef ${hedef}: köşe ${c} dışarıda`);
+      }
+    }
+  }
+});
+
+test('zaten az üçgenli model sadeleştirilmez', () => {
+  const tris = cubeTris(100);
+  const d = decimate(tris, 300);
+  assert.equal(d.after, tris.length);
+  assert.equal(d.tris, tris, 'düşük poligonlu model olduğu gibi dönmeli');
+});
+
+test('görselden kurulan kabartma kapalı ve dışa dönük', () => {
+  const g = makeGrid(60, 40);
+  for (let y = 0; y < 40; y++) {
+    for (let x = 0; x < 60; x++) {
+      g.data[y * 60 + x] = Math.exp(-(((x - 30) ** 2) / 200 + ((y - 20) ** 2) / 100));
+    }
+  }
+  for (const cells of [8, 16, 28]) {
+    const tris = meshFromHeightmap(g, { width: 600, height: 400, depth: 60, cells });
+    const k = checkClosed(tris, 1e-6);
+    assert.ok(k.closed, `hücre ${cells}: kabartma kapalı değil (${k.openEdges} açık kenar)`);
+    // İlk sürümde normaller içe dönüktü — faset modunda dışbükey/içbükey
+    // dikişler yer değiştirirdi.
+    assert.ok(k.volume > 0, `hücre ${cells}: normaller içe dönük`);
+  }
+});
+
+test('kabartma kameraya bakan yöne çıkar', () => {
+  // Önizleme model (x,y,z) → sahne (x,z,-y) eşler, kamera +z'de. Kabartma
+  // +y'ye çıksaydı kamera düz arka yüze bakardı; ilk sürümde tam bu oldu.
+  const g = makeGrid(20, 20, 1);
+  const tris = meshFromHeightmap(g, { width: 200, height: 200, depth: 50, backThickness: 10, cells: 6 });
+  let enKucukY = Infinity, enBuyukY = -Infinity;
+  for (const t of tris) for (const p of t) { enKucukY = Math.min(enKucukY, p[1]); enBuyukY = Math.max(enBuyukY, p[1]); }
+  assert.ok(enBuyukY <= 1e-9, 'arka yüz y=0 olmalı');
+  assert.ok(enKucukY < -50, 'kabartma -y yönüne çıkmalı');
+});
+
+test('görselden kabartma poligonal kabukta parça üretir', () => {
+  const g = makeGrid(60, 40);
+  for (let i = 0; i < g.data.length; i++) g.data[i] = 0.5 + 0.5 * Math.sin(i / 37);
+  const tris = meshFromHeightmap(g, { width: 600, height: 400, depth: 60, cells: 10 });
+  const r = generateFacets(tris, { targetSize: 600, minArea: 0, unfold: false });
+  assert.ok(r.parts.length > 10, `yalnızca ${r.parts.length} parça çıktı`);
+  assert.ok(!r.warnings.some((w) => w.includes('karşı tarafı yok')), 'kabartma kapalı değil');
+});
+
+test('kalınlık telafisi faseti yok etmez', () => {
+  // Telafi küçük fasette halkayı sıfıra indiriyordu ve parça öyle
+  // tutuluyordu: 0 mm²'lik, kesilemeyen parçalar çıkıyordu.
+  const d = decimate(denseSphere(100), 250);
+  const r = generateFacets(d.tris, { targetSize: 300, minArea: 0, thickness: 4, thicknessComp: true, unfold: false });
+  for (const p of r.parts) {
+    assert.ok(Math.abs(signedArea(p.outline)) > 0.5, `${p.id} telafide yok olmuş`);
+  }
+});
+
+test('poligonal kabuk arayüzü sadeleştirme ve kabartma alanlarını taşır', () => {
+  const html = oku('index.html');
+  for (const id of ['p-targetFaces', 'p-reliefCells', 'p-reliefDepth']) {
+    assert.ok(html.includes(`id="${id}"`), `${id} yok`);
+  }
+  const js = oku('js/main.js');
+  assert.ok(/function facetMeshSource/.test(js), 'kaynak seçimi yok');
+  // Önbellek model KİMLİĞİNE bakmalı; üçgen sayısına bakan anahtar aynı
+  // sayıda üçgenli iki modeli karıştırırdı.
+  assert.ok(/decimateCache\?\.src !== state\.tris/.test(js), 'önbellek modeli referansla ayırmıyor');
+  // Görsel yüklenince eski 3B model kaynak olmaktan çıkmalı.
+  const yukle = js.match(/async function loadImageFile[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(/state\.tris = null/.test(yukle), 'görsel yüklenince eski model temizlenmiyor');
 });
 
 test('hiç faset kalmayınca sessiz kalmaz, sebebini söyler', () => {
