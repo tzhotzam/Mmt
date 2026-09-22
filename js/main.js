@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-h';
+const APP_VERSION = '2026-09-22-i';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -125,6 +125,12 @@ function bool(id) {
   return !!els[id]?.checked;
 }
 
+/** Yaprak ölçü sınırı: levha ile "yaprak en büyük ölçüsü"nden küçüğü. */
+function yaprakSiniri(levha) {
+  const k = num('p-maxLeafSize', 0);
+  return k > 0 ? Math.min(levha, k) : levha;
+}
+
 function readParams() {
   const common = {
     panelW: num('p-panelW', 900),
@@ -155,9 +161,10 @@ function readParams() {
       rivetDiameter: num('p-rivetDiameter', 4),
       rivetPitch: num('p-rivetPitch', 80),
       reliefHoles: bool('p-reliefHoles'),
-      // Yaprak levhaya sığmalı.
-      maxPatchW: num('p-sheetW', 2440) - 2 * num('p-margin', 10),
-      maxPatchH: num('p-sheetH', 1220) - 2 * num('p-margin', 10),
+      // Yaprak levhaya sığmalı; kullanıcı daha küçüğünü isteyebilir (taşıma,
+      // boya kabini, elle bükme). İki sınırdan küçüğü geçerli.
+      maxPatchW: yaprakSiniri(num('p-sheetW', 2440) - 2 * num('p-margin', 10)),
+      maxPatchH: yaprakSiniri(num('p-sheetH', 1220) - 2 * num('p-margin', 10)),
     };
   }
   if (state.mode === 'slices') {

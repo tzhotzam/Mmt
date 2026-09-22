@@ -357,11 +357,15 @@ function buildPatchParts(a, p, warnings) {
       .map((n) => ({ ...n, facet: denseOf.get(n.facet) })));
   }
 
+  // Perçinli birleşimde kulakçıklar açınımdan SONRA eklenir ve yaprağı her
+  // iki yanda kulakçık derinliği kadar büyütebilir. Sınır o kadar daraltılır;
+  // yoksa 400 mm istenen yaprak 427 mm çıkıyordu (levhaya/kabine sığmaz).
+  const kulakPayi = p.joinMethod === 'percin' ? 2 * Math.max(p.tabWidth, 10) : 0;
   const { patches } = unfoldPatches(facetList, neighborDense, {
     maxFacets: Math.max(1, Math.round(p.maxFacetsPerPatch)),
     clearance: Math.max(0.2, p.thickness * 0.15),
-    maxW: p.maxPatchW,
-    maxH: p.maxPatchH,
+    maxW: p.maxPatchW - kulakPayi,
+    maxH: p.maxPatchH - kulakPayi,
   });
 
   const parts = [];
@@ -651,15 +655,36 @@ export function offsetPerEdge(ring, dists) {
     });
   }
 
+  // Köşe, iki kaydırılmış kenar çizgisinin kesişimidir. Ama iki kenar
+  // neredeyse AYNI DOĞRUDAYSA ve farklı miktarda kaydırıldıysa kesişim
+  // uzaklara kaçar: ölçüldü — 1200 mm'lik bir heykelde bir köşe 6 metre öteye
+  // gitti, parça 543 × 6138 mm çıktı. Kaçış sınırı aşılırsa köşe, iki
+  // kenarın ayrı ayrı kaydırılmış köşe noktalarının ortasına konur (köşe
+  // sayısı değişmez; kenar sırası başka yerlerde kullanılıyor).
+  const maxD = Math.max(1e-9, ...dists.map(Math.abs));
+  const sinir = 4 * maxD + 1;
   const out = [];
   for (let i = 0; i < n; i++) {
     const l1 = lines[(i - 1 + n) % n];
     const l2 = lines[i];
+    const V = ring[i];
+    const orta = () => {
+      const d1 = dists[(i - 1 + n) % n], d2 = dists[i];
+      return [
+        V[0] + (-l1.dy * d1 - l2.dy * d2) / 2,
+        V[1] + (l1.dx * d1 + l2.dx * d2) / 2,
+      ];
+    };
     const det = l1.dx * (-l2.dy) - l1.dy * (-l2.dx);
-    if (Math.abs(det) < 1e-9) { out.push([l2.px, l2.py]); continue; }
+    if (Math.abs(det) < 1e-9) { out.push(orta()); continue; }
     const rx = l2.px - l1.px, ry = l2.py - l1.py;
     const t = (rx * (-l2.dy) - ry * (-l2.dx)) / det;
-    out.push([l1.px + l1.dx * t, l1.py + l1.dy * t]);
+    const P = [l1.px + l1.dx * t, l1.py + l1.dy * t];
+    // Yalnızca kenarların AYNI yöne gittiği (dönüş < 90°) köşelerde: orada
+    // doğru kesişim en fazla ~1.4·d uzaktadır, fazlası kaçıştır. Sivri uçta
+    // (dönüş > 90°) kesişim meşru olarak uzaktır; ona dokunulmaz.
+    const ayniYon = l1.dx * l2.dx + l1.dy * l2.dy > 0;
+    out.push(ayniYon && Math.hypot(P[0] - V[0], P[1] - V[1]) > sinir ? orta() : P);
   }
 
   if (signedArea(out) <= 0) return null;

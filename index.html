@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-09-22-h">
+<meta name="app-version" content="2026-09-22-i">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-09-22-h';
+  var V = '2026-09-22-i';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -423,8 +423,11 @@
       <label class="check">
         <input type="checkbox" id="p-reliefHoles" checked> Köşe delikleri <small>(bükümlerin birleştiği noktalara)</small>
       </label>
-      <label>Yaprak başına en çok faset
+      <label>Yaprak başına en çok faset <small>düşürmek = daha çok, daha küçük parça</small>
         <input type="number" id="p-maxFacetsPerPatch" value="24" min="1" max="200" step="1">
+      </label>
+      <label>Yaprak en büyük ölçüsü (mm) <small>taşıma/boya için · 0 = levha kadar</small>
+        <input type="number" id="p-maxLeafSize" value="0" min="0" max="4000" step="50">
       </label>
       <label>Büküm köprüsü
         <select id="p-bridgeMode">

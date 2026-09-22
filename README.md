@@ -127,6 +127,20 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   30°'nin altındaki bıçak sırtı dikişe kulakçık sığmaz; bunlar kaynakta
   kalır ve montaj listesinde işaretlenir. Ölçüldü: 1200 mm'lik bir figürde
   175 dikişin 110'u perçinlendi (139 perçin), 40'ı bıçak sırtıydı.
+- **Daha çok / daha küçük parça.** Dört ayar var (1200 mm'lik bir figürde
+  ölçüldü, perçinli):
+  | Ayar | Değer | Parça | En büyük |
+  |---|---|---|---|
+  | varsayılan | — | 31 | 847 mm |
+  | Yaprak en büyük ölçüsü | 400 mm | 51 | 389 mm |
+  | Yaprak başına en çok faset | 6 | 62 | 770 mm |
+  | Hedef yüzey sayısı | 1000 | 95 | 520 mm |
+  | Açınım kapalı | — | 296 (her faset ayrı) | 324 mm |
+
+  Taşıma, boya kabini ya da elle bükme için ölçü sınırı en doğrudan yoldur;
+  kulakçıklar da hesaba katılır. Hedef yüzey sayısı biçimi de değiştirir
+  (daha çok ve küçük faset); diğerleri biçime dokunmadan yalnızca kesim
+  yerlerini artırır. Her ek kesim, bükümü bir perçinli dikişe çevirir.
 - **Köşe delikleri.** Yaprağın içinde büküm hatlarının buluştuğu her noktaya
   küçük bir delik (iki sac kalınlığı, 3-8 mm) açılır; sac orada her yönden
   bükülmeye zorlandığı için yırtılır ya da kabarır, delik bunu önler.

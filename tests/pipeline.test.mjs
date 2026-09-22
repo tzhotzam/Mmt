@@ -1650,6 +1650,40 @@ test('three.js depoda: 3B önizleme internetsiz çalışır', () => {
   assert.ok(fs.existsSync(path.join(KOK, 'vendor/three/LICENSE')), 'three.js lisansı yok');
 });
 
+test('kalınlık telafisi neredeyse düz köşede köşeyi uzağa fırlatmaz', () => {
+  // İki kenar neredeyse aynı doğrudayken farklı kaydırılınca kesişim
+  // uzaklara kaçıyordu: 1200 mm'lik heykelde 543 × 6138 mm'lik parça çıktı.
+  const ring = [[0, 0], [100, 0], [200, 0.5], [150, 80]];
+  const out = offsetPerEdge(ring, [4, 0.2, 2, 2]);
+  assert.ok(out, 'halka döndürmedi');
+  for (let i = 0; i < ring.length; i++) {
+    const d = Math.hypot(out[i][0] - ring[i][0], out[i][1] - ring[i][1]);
+    assert.ok(d < 20, `köşe ${i} ${d.toFixed(0)} mm kaçtı`);
+  }
+  // Sivri uçta (dönüş > 90°) meşru uzak kesişim korunur.
+  const sivri = [[0, 0], [300, 20], [0, 40]];
+  const o2 = offsetPerEdge(sivri, [3, 3, 3]);
+  assert.ok(o2[1][0] < 300 - 20, 'sivri uç telafide kırpılmadı');
+});
+
+test('yaprak en büyük ölçüsü kulakçıklarla birlikte aşılmaz', () => {
+  const d = decimate(denseSphere(100), 200);
+  for (const L of [500, 300]) {
+    const r = generateFacets(d.tris, {
+      targetSize: 1000, minArea: 0, unfold: true, joinMethod: 'percin', thickness: 1.5,
+      maxPatchW: L, maxPatchH: L,
+    });
+    for (const p of r.parts) {
+      // Tek faset sınırdan büyükse bölünemez; onlar hariç.
+      if (p.meta.facets === 1) continue;
+      assert.ok(p.w <= L + 0.5 && p.h <= L + 0.5, `${p.id} ${p.w.toFixed(0)}×${p.h.toFixed(0)} > ${L}`);
+    }
+  }
+  const html = oku('index.html');
+  assert.ok(html.includes('id="p-maxLeafSize"'), 'arayüzde yaprak ölçüsü alanı yok');
+  assert.ok(/num\('p-maxLeafSize'/.test(oku('js/main.js')), 'yaprak ölçüsü okunmuyor');
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {
