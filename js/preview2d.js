@@ -215,10 +215,15 @@ export function drawParts(canvas, parts) {
     ctx.scale(s, -s);
     ctx.translate(-(b.minX + b.maxX) / 2, -(b.minY + b.maxY) / 2);
 
+    // Dış halka ve delikler TEK yolda toplanır, çift-tek kuralıyla
+    // doldurulur: delikler böylece gerçekten boşluk olarak görünür.
+    // (Delikler eskiden hiç çizilmiyordu — faset modunda delik olmadığı
+    // için fark edilmemişti, ama dilim modunda mil deliği en kritik şey.)
     ctx.beginPath();
     tracePath(ctx, part.outline);
+    for (const hole of part.holes || []) tracePath(ctx, hole);
     ctx.fillStyle = 'rgba(245,158,11,0.18)';
-    ctx.fill();
+    ctx.fill('evenodd');
     ctx.strokeStyle = '#f59e0b';
     ctx.lineWidth = 1.4 / s;
     ctx.stroke();

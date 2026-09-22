@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-09-20-i">
+<meta name="app-version" content="2026-09-22-a">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-09-20-i';
+  var V = '2026-09-22-a';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -55,6 +55,7 @@
     <button id="mode-ribs" class="mode active" role="tab" aria-selected="true">Lamel / Dalga</button>
     <button id="mode-contour" class="mode" role="tab" aria-selected="false">Katman / Rölyef</button>
     <button id="mode-facets" class="mode" role="tab" aria-selected="false">Poligonal Kabuk</button>
+    <button id="mode-slices" class="mode" role="tab" aria-selected="false">Dilim / Heykel</button>
   </div>
 </header>
 
@@ -318,6 +319,44 @@
       <label>Dış köşe yuvarlatma (mm) <small>0 = keskin bırak</small>
         <input type="number" id="p-filletRadius" value="0" min="0" max="25" step="0.5">
       </label>
+    </div>
+
+    <div id="slices-params" class="grid" hidden>
+      <label>Heykel boyu (mm) <small>en uzun kenar</small>
+        <input type="number" id="p-sculptSize" value="1200" min="100" max="4000" step="10">
+      </label>
+      <label>Ölçü ekseni
+        <select id="p-sliceSizeAxis">
+          <option value="max">En uzun kenar</option>
+          <option value="x">X (en)</option>
+          <option value="y">Y (derinlik)</option>
+          <option value="z">Z (yükseklik)</option>
+        </select>
+      </label>
+      <label>Dilim ekseni <small>dilimlerin dizildiği yön</small>
+        <select id="p-sliceAxis">
+          <option value="z">Z — yatay dilimler, üst üste</option>
+          <option value="y">Y — dikey dilimler, önden arkaya</option>
+          <option value="x">X — dikey dilimler, soldan sağa</option>
+        </select>
+      </label>
+      <label>Dilimler arası (mm) <small>0 = sıkı istif</small>
+        <input type="number" id="p-sliceGap" value="0" min="0" max="60" step="1">
+      </label>
+      <label>En küçük ada (mm²) <small>parmak ucu gibi kırıntıları eler</small>
+        <input type="number" id="p-sliceMinArea" value="300" min="0" max="20000" step="50">
+      </label>
+      <label>Mil çapı (mm)
+        <input type="number" id="p-rodDiameter" value="10" min="3" max="40" step="1">
+      </label>
+      <label>Mil sayısı <small>2 mil dönmeyi de engeller</small>
+        <input type="number" id="p-rodCount" value="2" min="1" max="4" step="1">
+      </label>
+      <p class="seg-hint" style="grid-column:1/-1">
+        Kapalı bir 3B model ister (STL/OBJ). Her dilim levhadan kesilir, mile
+        dizilir. Milin geçmediği parçalar komşusuna yapıştırılır — montaj
+        kılavuzunda işaretli.
+      </p>
     </div>
 
     <div id="facets-params" class="grid" hidden>

@@ -43,6 +43,29 @@ export function bbox(points) {
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
 }
 
+/**
+ * Poligonun ağırlık merkezi (alan merkezi).
+ *
+ * Dikkat: İÇBÜKEY bir poligonda bu nokta poligonun DIŞINDA kalabilir
+ * (hilal, U biçimi). Mil deliği gibi "içeride olmalı" gereken işlerde
+ * sonucu pointInRing ile doğrulayın.
+ */
+export function centroid(ring) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0, n = ring.length; i < n; i++) {
+    const p = ring[i], q = ring[(i + 1) % n];
+    const f = p[0] * q[1] - q[0] * p[1];
+    a += f;
+    cx += (p[0] + q[0]) * f;
+    cy += (p[1] + q[1]) * f;
+  }
+  if (Math.abs(a) < 1e-12) {
+    const b = bbox(ring);
+    return [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2];
+  }
+  return [cx / (3 * a), cy / (3 * a)];
+}
+
 export function bboxOfRings(rings) {
   const all = [];
   for (const r of rings) for (const p of r) all.push(p);

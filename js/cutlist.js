@@ -63,6 +63,7 @@ export function buildCutList(parts, nestResult, info, opts = {}) {
 
 export function assemblyGuide(info, seams = [], folds = []) {
   if (info.mode === 'facets') return weldGuide(info, seams, folds);
+  if (info.mode === 'slices') return sliceGuide(info);
   if (info.mode === 'ribs') {
     const p = info.params;
     return [
@@ -209,4 +210,61 @@ export function cutListToCsv(cutList) {
 function round(v, digits = 0) {
   const m = Math.pow(10, digits);
   return Math.round(v * m) / m;
+}
+
+/**
+ * Dilimli heykel montaj kılavuzu.
+ *
+ * Kritik iki bilgi: milin ne kadar uzun olması gerektiği ve hangi parçaların
+ * milden geçmediği. İkincisi söylenmezse usta parçayı eline alıp nereye
+ * oturacağını bulamaz.
+ */
+function sliceGuide(info) {
+  const p = info.params;
+  const yigin = info.layerCount * p.thickness + (info.layerCount - 1) * p.gap;
+  // Mil, yığını geçip altta bağlantı payı bırakmalı.
+  const milBoyu = Math.ceil((yigin + 80) / 10) * 10;
+
+  const satirlar = [
+    `Heykel: ${round(info.modelSize.x)} × ${round(info.modelSize.y)} × ${round(info.modelSize.z)} mm.`,
+    `${info.layerCount} dilim, ${p.thickness} mm malzemeden` +
+      (p.gap > 0 ? `, aralarında ${p.gap} mm boşluk.` : ', sıkı istif (boşluksuz).'),
+    `Dilim ekseni: ${String(p.axis).toUpperCase()} — dilimler bu eksen boyunca dizilir.`,
+    `Yığın yüksekliği ${round(yigin)} mm.`,
+    '',
+    `MİL: ${info.rodPoints.length} adet, Ø${p.rodDiameter} mm.`,
+    `  En az ${milBoyu} mm boyunda olmalı (yığın + 80 mm bağlantı payı).`,
+    '  Delikler mil çapında açılır; sıkı geçme isteniyorsa 0,2 mm küçültün.',
+  ];
+
+  if (info.rodPoints.length === 1) {
+    satirlar.push('  TEK MİL: parçalar mil etrafında dönebilir. Montajda her dilimi');
+    satirlar.push('  gözle hizalayın ya da mil sayısını 2 yapıp yeniden üretin.');
+  }
+  if (p.gap > 0) {
+    satirlar.push(`  Dilimler arasına ${p.gap} mm kalınlığında ara pul (boru/rondela) gerekir.`);
+  }
+
+  if (info.rodlessParts > 0) {
+    satirlar.push('');
+    satirlar.push(`DİKKAT: ${info.rodlessParts} parçadan mil geçmiyor.`);
+    satirlar.push('  Bunlar kesitin ana gövdeden kopuk adalarıdır (ayrı bacak, uzanan kol).');
+    satirlar.push('  Kendi başlarına durmazlar; bir alt ve bir üst komşularına tutkalla');
+    satirlar.push('  yapıştırılmalıdır. Numaraları D<dilim><harf> biçimindedir: aynı');
+    satirlar.push('  dilimin a, b, c parçaları yan yana gelir.');
+  }
+
+  satirlar.push(
+    '',
+    'Montaj sırası:',
+    '  1. Milleri düz bir tabana dik sabitleyin (flanş ya da taban levhasına gömme).',
+    '  2. D001\'den başlayarak dilimleri sırayla geçirin; gravür numarası hep aynı',
+    '     yöne baksın, yoksa yığın burulur.',
+    '  3. Her 8-10 dilimde bir gönye ve şakül kontrolü yapın.',
+    '  4. Kopuk adaları (yukarıdaki uyarı) komşu dilimlere yapıştırın.',
+    '  5. Üstte mili gizlemek için son dilimi tutkalla kapatın.',
+    '  6. Zımpara: dilim kenarları istifte hafif basamak yapar; 120 kumla',
+    '     kenarları yuvarlatmak bu basamağı yumuşatır.'
+  );
+  return satirlar.join('\n');
 }

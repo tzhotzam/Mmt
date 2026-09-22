@@ -15,6 +15,7 @@ import {
 import { generateRibs, RIB_DEFAULTS } from './modes/ribs.js';
 import { generateContours, CONTOUR_DEFAULTS } from './modes/contour.js';
 import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
+import { generateSlices, SLICE_DEFAULTS } from './modes/slices.js';
 import { nest, applyPlacement } from './nest.js';
 import { sheetToDxf } from './export/dxf.js';
 import { sheetToSvg } from './export/svg.js';
@@ -27,7 +28,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-20-i';
+const APP_VERSION = '2026-09-22-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -144,6 +145,19 @@ function readParams() {
       // Yaprak levhaya sığmalı.
       maxPatchW: num('p-sheetW', 2440) - 2 * num('p-margin', 10),
       maxPatchH: num('p-sheetH', 1220) - 2 * num('p-margin', 10),
+    };
+  }
+  if (state.mode === 'slices') {
+    return {
+      ...SLICE_DEFAULTS,
+      thickness: common.thickness,
+      targetSize: num('p-sculptSize', 1200),
+      sizeAxis: els['p-sliceSizeAxis'].value,
+      axis: els['p-sliceAxis'].value,
+      gap: num('p-sliceGap', 0),
+      minArea: num('p-sliceMinArea', 300),
+      rodDiameter: num('p-rodDiameter', 10),
+      rodCount: Math.round(num('p-rodCount', 2)),
     };
   }
   if (state.mode === 'ribs') {
@@ -466,20 +480,20 @@ function applyPatternCode() {
 
 /** Desenler düzlem üretir; poligonal kabuk kapalı bir hacim ister. */
 function syncPatternAvailability() {
-  const kapali = state.mode === 'facets';
+  const kapali = state.mode === 'facets' || state.mode === 'slices';
   for (const id of ['p-pattern', 'p-patMix', 'p-patScale', 'p-patAngle', 'p-patDetail',
                     'p-seedText', 'p-patternCode', 'btn-pattern-random', 'btn-copy-code']) {
     if (els[id]) els[id].disabled = kapali;
   }
   els['pattern-hint'].textContent = kapali
-    ? 'Poligonal Kabuk kapalı bir 3B model ister; hazır desenler düz yüzey '
-      + 'ürettiği için bu modda kullanılamaz. Lamel veya Katman moduna geçin.'
+    ? 'Bu mod kapalı bir 3B model ister; hazır desenler düz yüzey ürettiği '
+      + 'için burada kullanılamaz. Lamel veya Katman moduna geçin.'
     : (PATTERNS[els['p-pattern'].value]?.hint || '');
 }
 
 function applyPattern() {
-  if (state.mode === 'facets') {
-    // Poligonal kabuk kapalı bir hacim ister; düz desen işe yaramaz.
+  if (state.mode === 'facets' || state.mode === 'slices') {
+    // Bu modlar kapalı bir hacim ister; düz desen işe yaramaz.
     state.tris = demoMeshTris();
     state.meshInfo = { format: 'Örnek', name: 'gömülü model', count: state.tris.length };
     reportMesh(rebuildFromMesh());
@@ -572,8 +586,8 @@ function scheduleRegen() {
 }
 
 function regenerate() {
-  if (state.mode === 'facets') {
-    regenerateFacets();
+  if (state.mode === 'facets' || state.mode === 'slices') {
+    regenerateMesh();
     return;
   }
   if (!state.sourceGrid) return;
@@ -621,7 +635,8 @@ function regenerate() {
   render();
 }
 
-function regenerateFacets() {
+/** Üçgen ağdan besleneen modlar: poligonal kabuk ve dilim. */
+function regenerateMesh() {
   state.seams = [];
   if (!state.tris) {
     state.parts = [];
@@ -630,15 +645,18 @@ function regenerateFacets() {
     state.nestResult = null;
     els['stage-hint'].hidden = false;
     els['stage-hint'].textContent =
-      'Bu mod için STL gerekir (görsel yeterli değil). Denemek için "Örnek desen"e dokunun.';
+      'Bu mod için 3B model gerekir (görsel yeterli değil): STL veya OBJ yükleyin. ' +
+      'Denemek için "Hazır desen"e dokunun — gömülü bir model gelir.';
     els.summary.innerHTML = '';
     showWarnings([]);
     return;
   }
-  const result = generateFacets(state.tris, readParams());
+  const result = state.mode === 'slices'
+    ? generateSlices(state.tris, readParams())
+    : generateFacets(state.tris, readParams());
   state.parts = result.parts;
   state.info = result.info;
-  state.seams = result.seams;
+  state.seams = result.seams || [];
   state.folds = result.folds || [];
   state.warnings = result.warnings;
 
@@ -656,7 +674,7 @@ function regenerateFacets() {
 function render() {
   if (state.view === '3d') preview3d?.update(state);
   else if (state.view === 'plan') {
-    if (state.mode === 'facets') drawParts(els['view-plan'], state.parts);
+    if (state.mode === 'facets' || state.mode === 'slices') drawParts(els['view-plan'], state.parts);
     else drawPlan(els['view-plan'], state);
   }
   else if (state.view === 'nest') drawNest(els['view-nest'], state.nestResult, state.sheetIndex);
@@ -1148,7 +1166,7 @@ els['btn-reset'].onclick = () => {
 
 function setMode(mode, persist = true) {
   state.mode = mode;
-  for (const m of ['ribs', 'contour', 'facets']) {
+  for (const m of ['ribs', 'contour', 'facets', 'slices']) {
     const btn = els[`mode-${m}`];
     btn.classList.toggle('active', mode === m);
     btn.setAttribute('aria-selected', String(mode === m));
@@ -1199,6 +1217,7 @@ els['dir-dark'].onclick = () => { setInvert(true); saveSettings(); scheduleRegen
 els['mode-ribs'].onclick = () => setMode('ribs');
 els['mode-contour'].onclick = () => setMode('contour');
 els['mode-facets'].onclick = () => setMode('facets');
+els['mode-slices'].onclick = () => setMode('slices');
 
 for (const tab of document.querySelectorAll('.tab')) {
   tab.onclick = () => setView(tab.dataset.view);

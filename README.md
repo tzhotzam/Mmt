@@ -33,6 +33,33 @@ kademeli bir kabartma çıkar.
   işaretlenir — hizalama derdi kalmaz.
 - Çok küçük adacıklar otomatik elenir, takım çapına göre uyarı verilir.
 
+### 3b. Dilim / Heykel modu (katmanlı heykel)
+Kapalı bir 3B model paralel düzlemlerle kesilir; her kesit levhadan çıkar ve
+parçalar bir **mile** dizilerek heykel kurulur. Piyasada "sliced sculpture",
+"katmanlı heykel" diye geçen iş.
+
+Lamel modundan farkı önemli: orada kesit tek bir yükseklik eğrisiydi (2,5B
+kabartma, duvara asılır). Burada modelin **gerçek kesiti** alınır — oturan
+bir figürün iki bacağı ayrı ayrı halka olarak çıkar, heykel serbest durur.
+
+- Dilim ekseni seçilebilir: Z (yatay dilimler, üst üste), Y veya X (dikey
+  dilimler). Aynı model, eksen değişince bambaşka görünür.
+- Kesitte **delik** varsa (kolun altı, halka biçimli gövde) delik olarak
+  kesilir, dolu geçilmez.
+- **Mil yeri otomatik seçilir.** "Merkez" diye tek bir doğru nokta yoktur;
+  oturan bir figürde kütle merkezi boşluğa düşebilir. Aday noktalar denenir
+  ve en çok parçadan geçen seçilir. İki mil, parçaların mil etrafında
+  dönmesini de engeller.
+- Milin geçmediği parçalar (gövdeden kopuk adalar) **sessizce bırakılmaz**:
+  sayılır, uyarı verilir, montaj kılavuzunda "bunları komşusuna yapıştır"
+  diye yazar.
+- Montaj kılavuzu gereken **mil boyunu** hesaplar (yığın + 80 mm bağlantı
+  payı) ve boşluklu istifte ara pul gerektiğini söyler.
+
+Ölçü örneği: 1,2 m boyunda bir figür, 18 mm malzeme, boşluksuz istif →
+66 dilim. Parça sayısı hızla artar; kalınlığı artırmak ya da heykeli
+küçültmek en etkili frendir.
+
 ### 3. Poligonal Kabuk modu (metal / kaynak)
 Kapalı bir 3B modeli (STL) düz yüzeylerine ayırır. Her yüzey sacdan ayrı bir
 parça olarak kesilir, parçalar kenarlarından **kaynakla** birleştirilir —
@@ -352,6 +379,8 @@ js/
   modes/ribs.js       lamel + kızak üretimi
   modes/contour.js    katman üretimi
   modes/facets.js     poligonal kabuk: faset parçaları + kaynak dikişleri
+  modes/slices.js     dilimli heykel: kesit parçaları + mil delikleri
+  slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   mesh.js             köşe kaynaklama, eş düzlem birleştirme, dihedral açı
   unfold.js           açınım: çakışmasız öbekleme, sınır izi, kertik, büküm payı
   nest.js             levha yerleşimi

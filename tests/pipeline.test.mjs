@@ -10,7 +10,7 @@ import {
   toneConcentration, fineDetailRatio,
 } from '../js/heightmap.js';
 import { contourRings } from '../js/marchingsquares.js';
-import { signedArea, classifyRings, simplify, pointInRing, offsetRing } from '../js/geom.js';
+import { signedArea, classifyRings, simplify, pointInRing, offsetRing, centroid } from '../js/geom.js';
 import { generateRibs } from '../js/modes/ribs.js';
 import { generateContours } from '../js/modes/contour.js';
 import { nest, applyPlacement } from '../js/nest.js';
@@ -29,6 +29,8 @@ import {
 import { otsuThreshold, distanceTransform, inflateSilhouette, blendRelief } from '../js/relief.js';
 import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/paint.js';
 import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
+import { generateSlices } from '../js/modes/slices.js';
+import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js';
 import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
 import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
 import {
@@ -804,6 +806,141 @@ function icoTris() {
              [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
   return f.map(([a, b, c]) => [v[a], v[b], v[c]]);
 }
+
+// --- Dilim modu ---------------------------------------------------------
+console.log('dilim (katmanlı heykel) modu');
+
+function cylinderTris(cx, cy, z0, z1, r, seg = 32) {
+  const v = [];
+  for (const z of [z0, z1]) {
+    for (let i = 0; i < seg; i++) {
+      const a = (2 * Math.PI * i) / seg;
+      v.push([cx + r * Math.cos(a), cy + r * Math.sin(a), z]);
+    }
+  }
+  v.push([cx, cy, z0]); const mAlt = v.length - 1;
+  v.push([cx, cy, z1]); const mUst = v.length - 1;
+  const f = [];
+  for (let i = 0; i < seg; i++) {
+    const j = (i + 1) % seg;
+    f.push([i, j, seg + j]); f.push([i, seg + j, seg + i]);
+    f.push([j, i, mAlt]); f.push([seg + i, seg + j, mUst]);
+  }
+  return f.map(([a, b, c]) => [v[a], v[b], v[c]]);
+}
+
+test('küpün her dilimi tam kare çıkar', () => {
+  const s = sliceMesh(cubeTris(100), { axis: 'z', pitch: 20 });
+  assert.ok(s.count >= 4, `dilim sayısı ${s.count}`);
+  for (const l of s.layers) {
+    assert.equal(l.rings.length, 1, `dilim ${l.index}: ${l.rings.length} halka`);
+    assert.equal(l.open, 0, 'kapalı modelde açık zincir olmamalı');
+    assert.ok(Math.abs(Math.abs(signedArea(l.rings[0])) - 10000) < 1,
+      `dilim ${l.index} alanı ${Math.abs(signedArea(l.rings[0]))}`);
+  }
+});
+
+test('delikli gövdede kesit iç ve dış halka verir', () => {
+  // Büyük silindirin içine küçük bir silindir oyulmuş gibi: iki halka.
+  const dis = cylinderTris(0, 0, 0, 100, 60);
+  const ic = cylinderTris(0, 0, -10, 110, 25).map((t) => [t[0], t[2], t[1]]); // ters normal = boşluk
+  const s = sliceMesh([...dis, ...ic], { axis: 'z', pitch: 25 });
+  const orta = s.layers[Math.floor(s.layers.length / 2)];
+  assert.equal(orta.rings.length, 2, 'dış halka + delik bekleniyor');
+  const sinif = classifyRings(orta.rings);
+  assert.equal(sinif.filter((x) => !x.hole).length, 1);
+  assert.equal(sinif.filter((x) => x.hole).length, 1);
+});
+
+test('açık model kapanmayan zincir olarak bildirilir', () => {
+  // Tek üçgen: kapalı hacim değil.
+  const s = sliceMesh([[[0, 0, 0], [100, 0, 0], [0, 100, 50]]], { axis: 'z', pitch: 10 });
+  const acik = s.layers.reduce((a, l) => a + l.open, 0);
+  assert.ok(acik > 0, 'açık yüzeyde kapanmayan zincir bildirilmeli');
+});
+
+test('ayrı gövdeler ayrı parça olur ve mil ikisinden de geçer', () => {
+  // Gövde + iki ayrı bacak: alt dilimlerde 3 ada, üst dilimlerde 1.
+  const tris = [
+    ...cylinderTris(0, 0, 300, 900, 90),
+    ...cylinderTris(-70, 0, 0, 300, 45),
+    ...cylinderTris(70, 0, 0, 300, 45),
+  ];
+  const r = generateSlices(tris, { targetSize: 1200, thickness: 18, gap: 0, rodCount: 2 });
+  assert.ok(r.parts.length > r.info.layerCount,
+    'ayrı bacaklar yüzünden parça sayısı dilim sayısını aşmalı');
+  assert.equal(r.info.rodPoints.length, 2, 'iki mil yerleştirilmeli');
+  assert.equal(r.info.rodlessParts, 0, 'her parçadan bir mil geçmeli');
+  // Gövde dilimi tek ada, iki mil deliği.
+  const govde = r.parts.filter((p) => p.meta.layer === r.info.layerCount - 6);
+  assert.equal(govde.length, 1);
+  assert.equal(govde[0].holes.length, 2);
+  // Delikler CW, dış halka CCW — DXF/dolgu kuralı.
+  assert.ok(signedArea(govde[0].outline) > 0, 'dış halka CCW olmalı');
+  for (const h of govde[0].holes) assert.ok(signedArea(h) < 0, 'delik CW olmalı');
+  // Bacak diliminde iki ayrı parça, her birinde bir mil.
+  const bacak = r.parts.filter((p) => p.meta.layer === 3);
+  assert.equal(bacak.length, 2, 'iki bacak ayrı parça olmalı');
+  for (const b of bacak) assert.equal(b.meta.rods, 1);
+  // Aynı dilimin adaları harfle ayrılmalı.
+  assert.notEqual(bacak[0].id, bacak[1].id);
+});
+
+test('milden geçmeyen parça sessizce bırakılmaz', () => {
+  // Gövdeden tamamen uzakta duran ikinci bir kule: tek mil ikisini tutamaz.
+  const tris = [
+    ...cylinderTris(0, 0, 0, 900, 90),
+    ...cylinderTris(600, 0, 0, 900, 40),
+  ];
+  const r = generateSlices(tris, { targetSize: 1200, thickness: 18, rodCount: 1 });
+  assert.ok(r.info.rodlessParts > 0, 'uzaktaki kule milsiz kalmalı');
+  assert.ok(r.warnings.some((w) => w.includes('mil geçmiyor')),
+    'milsiz parçalar için uyarı yok');
+});
+
+test('her ada elendiğinde boş çıktı değil, sebep döner', () => {
+  const r = generateSlices(cubeTris(100), { targetSize: 200, minArea: 1e9 });
+  assert.equal(r.parts.length, 0);
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /Hiç parça üretilemedi/);
+  assert.match(r.warnings[0], /En küçük ada|en küçük ada/);
+});
+
+test('dilim montaj kılavuzu mil boyunu ve yapıştırılacakları yazar', () => {
+  const tris = [
+    ...cylinderTris(0, 0, 0, 900, 90),
+    ...cylinderTris(600, 0, 0, 900, 40),
+  ];
+  const r = generateSlices(tris, { targetSize: 1200, thickness: 18, rodCount: 1 });
+  const g = assemblyGuide(r.info);
+  assert.match(g, /MİL/, 'mil bilgisi yok');
+  assert.match(g, /mm boyunda olmalı/, 'mil boyu yazılmıyor');
+  assert.match(g, /mil geçmiyor/, 'milsiz parçalar kılavuzda anılmıyor');
+  assert.match(g, /TEK MİL/, 'tek milin dönme riski yazılmıyor');
+});
+
+test('parça önizlemesi delikleri çiziyor', () => {
+  // Delikler hiç çizilmiyordu; faset modunda delik olmadığı için fark
+  // edilmemişti, ama dilim modunda mil deliği en kritik bilgi.
+  const js = oku('js/preview2d.js');
+  const govde = js.match(/export function drawParts[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(/part\.holes/.test(govde), 'drawParts delikleri çizmiyor');
+  assert.ok(/evenodd/.test(govde), 'delikler çift-tek kuralıyla boşaltılmalı');
+});
+
+test('dilim modu arayüzde ve önbellek listesinde', () => {
+  const html = oku('index.html');
+  assert.ok(html.includes('id="mode-slices"'), 'mod düğmesi yok');
+  assert.ok(html.includes('id="slices-params"'), 'ayar bölümü yok');
+  for (const id of ['p-sculptSize', 'p-sliceAxis', 'p-rodDiameter', 'p-rodCount']) {
+    assert.ok(html.includes(`id="${id}"`), `${id} yok`);
+  }
+  const js = oku('js/main.js');
+  assert.ok(/'ribs', 'contour', 'facets', 'slices'/.test(js), 'mod listesine eklenmemiş');
+  const sw = oku('sw.js');
+  assert.ok(sw.includes("'./js/slice.js'"), 'slice.js önbellek listesinde yok');
+  assert.ok(sw.includes("'./js/modes/slices.js'"), 'slices.js önbellek listesinde yok');
+});
 
 test('hiç faset kalmayınca sessiz kalmaz, sebebini söyler', () => {
   // En küçük faset değeri modelin tamamını eliyor. Eskiden uygulama boş
