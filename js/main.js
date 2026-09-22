@@ -28,7 +28,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-a';
+const APP_VERSION = '2026-09-22-b';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -643,12 +643,18 @@ function regenerateMesh() {
     state.info = null;
     state.cutList = null;
     state.nestResult = null;
+    state.warnings = [];
     els['stage-hint'].hidden = false;
     els['stage-hint'].textContent =
       'Bu mod için 3B model gerekir (görsel yeterli değil): STL veya OBJ yükleyin. ' +
       'Denemek için "Hazır desen"e dokunun — gömülü bir model gelir.';
     els.summary.innerHTML = '';
     showWarnings([]);
+    // Önizlemeler de TEMİZLENMELİ. Eskiden temizlenmiyordu: modele ihtiyaç
+    // duyan bir moda model olmadan geçilince önceki modun paneli 3B sahnede
+    // asılı kalıyor, kullanıcı "yeni mod çalışmıyor" sanıyordu.
+    preview3d?.update(state);
+    drawParts(els['view-plan'], []);
     return;
   }
   const result = state.mode === 'slices'

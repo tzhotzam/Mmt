@@ -928,6 +928,46 @@ test('parça önizlemesi delikleri çiziyor', () => {
   assert.ok(/evenodd/.test(govde), 'delikler çift-tek kuralıyla boşaltılmalı');
 });
 
+test('3B önizleme dilimleri kendi ekseni boyunca dizer', () => {
+  // Dilim modu için dal yoktu; katman dalına düşüp `meta.z` arıyordu ve
+  // dilimde öyle bir alan olmadığı için 48 dilim z=0'a yığılıyordu.
+  const js = oku('js/preview3d.js');
+  assert.ok(/info\.mode === 'slices'/.test(js), 'dilim modu için dal yok');
+  const dal = js.match(/info\.mode === 'slices'[\s\S]*?\n    \} else \{/)?.[0] || '';
+  assert.ok(/meta\.coord/.test(dal), 'dilim konumu meta.coord\'dan alınmıyor');
+  assert.ok(/info\.axis === 'x'/.test(dal) && /info\.axis === 'y'/.test(dal),
+    'üç dilim ekseni için ayrı yerleşim yok');
+  // Serbest duran heykelin arkasına duvar konmamalı.
+  assert.ok(/wall\.visible = false/.test(dal), 'dilim modunda duvar kapatılmıyor');
+});
+
+test('model gerektiren moda modelsiz geçince önizleme temizlenir', () => {
+  // Temizlenmezse önceki modun paneli 3B sahnede asılı kalıyor ve kullanıcı
+  // yeni modun çalışmadığını sanıyor.
+  const js = oku('js/main.js');
+  const govde = js.match(/function regenerateMesh[\s\S]*?\n  \}/)?.[0] || '';
+  assert.ok(govde, 'regenerateMesh bulunamadı');
+  assert.ok(/preview3d\?\.update\(state\)/.test(govde), '3B sahne temizlenmiyor');
+  assert.ok(/drawParts\(els\['view-plan'\], \[\]\)/.test(govde), 'plan tuvali temizlenmiyor');
+});
+
+test('dilim düzlem eksenleri çevrimsel (sağ elli)', () => {
+  // Çevrimsel olmayan sıra sol elli çerçeve verir; kesim doğru çıkar ama
+  // 3B önizlemede heykel aynalanmış görünür.
+  const js = oku('js/slice.js');
+  assert.ok(/if \(ai === 1\) return \[2, 0\]/.test(js),
+    'y ekseni için düzlem (z, x) olmalı — (x, z) sol elli çerçeve verir');
+  // Üç eksende de dış halka CCW çıkmalı.
+  for (const axis of ['x', 'y', 'z']) {
+    const s = sliceMesh(cubeTris(100), { axis, pitch: 25 });
+    for (const l of s.layers) {
+      assert.ok(signedArea(l.rings[0]) > 0, `${axis} ekseninde halka ters`);
+      assert.ok(Math.abs(Math.abs(signedArea(l.rings[0])) - 10000) < 1,
+        `${axis} ekseninde alan yanlış`);
+    }
+  }
+});
+
 test('dilim modu arayüzde ve önbellek listesinde', () => {
   const html = oku('index.html');
   assert.ok(html.includes('id="mode-slices"'), 'mod düğmesi yok');

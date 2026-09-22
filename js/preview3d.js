@@ -147,6 +147,35 @@ export async function createPreview3d(container) {
         geo.computeVertexNormals();
         group.add(new THREE.Mesh(geo, part.kind === 'lamel' ? material : railMaterial));
       }
+    } else if (info.mode === 'slices') {
+      // Dilimler kendi eksenleri boyunca DİZİLİR. Bu dal olmadığında dilim
+      // modu aşağıdaki katman dalına düşüyor, orada `meta.z` aranıyor ve
+      // dilimde öyle bir alan olmadığı için hepsi z=0'a yığılıyordu: 48
+      // dilim tek düzlemde üst üste biniyor, heykel katmanlanmış görünmüyordu.
+      //
+      // Sahne ekseni eşlemesi model (x,y,z) → sahne (x, z, -y). Her dilim
+      // ekseni için yerel (u, v, kalınlık) üçlüsü buna göre kurulur; üçü de
+      // sağ ellidir, aksi hâlde heykel aynalanırdı.
+      wall.visible = false;
+      const t = info.params.thickness;
+      for (const part of parts) {
+        const geo = extrude(part, t);
+        const c = (part.meta.coord ?? 0) - t / 2;   // levha, kesit düzlemine ortalanır
+        let m;
+        if (info.axis === 'x') {
+          // yerel u = model y, v = model z, kalınlık = model x
+          m = basis([0, 0, -1], [0, 1, 0], [1, 0, 0], [c, 0, 0]);
+        } else if (info.axis === 'y') {
+          // yerel u = model z, v = model x, kalınlık = model y
+          m = basis([0, 1, 0], [1, 0, 0], [0, 0, -1], [0, 0, -c]);
+        } else {
+          // yerel u = model x, v = model y, kalınlık = model z
+          m = basis([1, 0, 0], [0, 0, -1], [0, 1, 0], [0, c, 0]);
+        }
+        geo.applyMatrix4(m);
+        geo.computeVertexNormals();
+        group.add(new THREE.Mesh(geo, material));
+      }
     } else {
       wall.visible = true;
       const t = info.params.thickness;

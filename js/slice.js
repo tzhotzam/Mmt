@@ -14,10 +14,17 @@
 
 const AXES = { x: 0, y: 1, z: 2 };
 
-/** Eksene dik düzlemde hangi iki eksen "u" ve "v" olur? */
+/**
+ * Eksene dik düzlemde hangi iki eksen "u" ve "v" olur?
+ *
+ * Sıralama ÇEVRİMSELDİR: (y,z,x), (z,x,y), (x,y,z). Böylece (u, v, dilim
+ * ekseni) her zaman sağ elli bir çerçeve olur. Çevrimsel olmayan bir sıra
+ * (örneğin y ekseni için (x,z)) sol elli çerçeve verir ve 3B önizlemede
+ * heykel AYNALANMIŞ görünür — kesim doğru çıkar ama gözle yanlıştır.
+ */
 function planeAxes(ai) {
   if (ai === 0) return [1, 2];   // x boyunca dilim → düzlem (y, z)
-  if (ai === 1) return [0, 2];   // y boyunca dilim → düzlem (x, z)
+  if (ai === 1) return [2, 0];   // y boyunca dilim → düzlem (z, x)
   return [0, 1];                 // z boyunca dilim → düzlem (x, y)
 }
 
