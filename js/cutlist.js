@@ -221,6 +221,7 @@ function round(v, digits = 0) {
  */
 function sliceGuide(info) {
   const p = info.params;
+  const kare = p.rodShape === 'kare';
   const yigin = info.layerCount * p.thickness + (info.layerCount - 1) * p.gap;
   // Mil, yığını geçip altta bağlantı payı bırakmalı.
   const milBoyu = Math.ceil((yigin + 80) / 10) * 10;
@@ -232,17 +233,31 @@ function sliceGuide(info) {
     `Dilim ekseni: ${String(p.axis).toUpperCase()} — dilimler bu eksen boyunca dizilir.`,
     `Yığın yüksekliği ${round(yigin)} mm.`,
     '',
-    `MİL: ${info.rodPoints.length} adet, Ø${p.rodDiameter} mm.`,
+    kare
+      ? `KAZIK: ${info.rodPoints.length} adet, ${p.rodDiameter}×${p.rodDiameter} mm kare kesit.`
+      : `MİL: ${info.rodPoints.length} adet, Ø${p.rodDiameter} mm.`,
     `  En az ${milBoyu} mm boyunda olmalı (yığın + 80 mm bağlantı payı).`,
-    '  Delikler mil çapında açılır; sıkı geçme isteniyorsa 0,2 mm küçültün.',
+    kare
+      ? '  Yuvanın köşelerinde kemik payı var: dönen uç keskin iç köşe kesemez,'
+      : '  Delikler mil çapında açılır; sıkı geçme isteniyorsa 0,2 mm küçültün.',
+    ...(kare ? [
+      '  o pay olmasa kazık yuvaya birkaç mm eksik otururdu. Kazığın köşelerini',
+      '  yuvarlatmayın — yuva zaten paylı.',
+      '  Kare kesit dönmeyi kendi engeller; ikinci kazığa gerek yoktur.',
+    ] : []),
+    ...(info.maxRodSize > p.rodDiameter * 1.3 ? [
+      `  Bu heykel ${Math.floor(info.maxRodSize / 5) * 5} mm'ye kadar kaldırır —` +
+      ' daha kalın omurga istiyorsanız yer var.',
+    ] : []),
   ];
 
-  if (info.rodPoints.length === 1) {
+  if (!kare && info.rodPoints.length === 1) {
     satirlar.push('  TEK MİL: parçalar mil etrafında dönebilir. Montajda her dilimi');
     satirlar.push('  gözle hizalayın ya da mil sayısını 2 yapıp yeniden üretin.');
   }
   if (p.gap > 0) {
-    satirlar.push(`  Dilimler arasına ${p.gap} mm kalınlığında ara pul (boru/rondela) gerekir.`);
+    satirlar.push(`  Dilimler arasına ${p.gap} mm kalınlığında ara pul gerekir` +
+      (kare ? ' (kare kazıkta: aynı kesitte kısa takozlar).' : ' (boru/rondela).'));
   }
 
   if (info.rodlessParts > 0) {
@@ -257,7 +272,7 @@ function sliceGuide(info) {
   satirlar.push(
     '',
     'Montaj sırası:',
-    '  1. Milleri düz bir tabana dik sabitleyin (flanş ya da taban levhasına gömme).',
+    '  1. Omurgayı düz bir tabana dik sabitleyin (flanş ya da taban levhasına gömme).',
     '  2. D001\'den başlayarak dilimleri sırayla geçirin; gravür numarası hep aynı',
     '     yöne baksın, yoksa yığın burulur.',
     '  3. Her 8-10 dilimde bir gönye ve şakül kontrolü yapın.',

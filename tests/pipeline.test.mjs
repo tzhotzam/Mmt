@@ -968,6 +968,112 @@ test('dilim düzlem eksenleri çevrimsel (sağ elli)', () => {
   }
 });
 
+test('kare kazık yuvası köşe paylı ve ters yönde', () => {
+  const tris = cylinderTris(0, 0, 0, 900, 90);
+  const kare = generateSlices(tris, {
+    targetSize: 1200, rodShape: 'kare', rodDiameter: 60, rodCount: 1, toolDiameter: 6,
+  });
+  const p0 = kare.parts.find((p) => p.holes.length === 1);
+  assert.ok(p0, 'kazık yuvası açılmamış');
+  const yuva = p0.holes[0];
+  // Delik CW olmalı (dış halka CCW).
+  assert.ok(signedArea(yuva) < 0, 'yuva ters yönde değil');
+  // Köşe payı yuvayı BÜYÜTMELİ: pay olmasa kazık eksik otururdu.
+  const alan = Math.abs(signedArea(yuva));
+  assert.ok(alan > 3600, `yuva alanı ${alan.toFixed(0)}, ham kareden (3600) büyük olmalı`);
+  assert.ok(alan < 3600 * 1.2, 'köşe payı gereğinden çok malzeme almış');
+  assert.ok(yuva.length > 8, 'köşe payı eklenmemiş (düz kare)');
+  // Paysız istenirse ham kare çıkmalı.
+  const paysiz = generateSlices(tris, {
+    targetSize: 1200, rodShape: 'kare', rodDiameter: 60, rodCount: 1, toolDiameter: 0,
+  });
+  assert.equal(paysiz.parts.find((p) => p.holes.length === 1).holes[0].length, 4);
+});
+
+test('hiçbir yuva parçanın dışına taşmaz', () => {
+  // Kemik payı karenin KÖŞESİNDEN uç yarıçapı kadar daha dışarı çıkar.
+  // Boşluk yalnızca çevrel yarıçapla ölçülürse dar kesitlerde yuva kenardan
+  // taşar ve parça o köşeden kopar.
+  const tris = [...cylinderTris(0, 0, 300, 900, 90),
+    ...cylinderTris(-70, 0, 0, 300, 45), ...cylinderTris(70, 0, 0, 300, 45)];
+  for (const rodShape of ['yuvarlak', 'kare']) {
+    for (const rodDiameter of [10, 40, 60]) {
+      const r = generateSlices(tris, {
+        targetSize: 1200, rodShape, rodDiameter, rodCount: 1, toolDiameter: 6,
+      });
+      for (const part of r.parts) {
+        for (const h of part.holes) {
+          for (const pt of h) {
+            assert.ok(pointInRing(pt, part.outline),
+              `${rodShape} ${rodDiameter} mm: ${part.id} yuvası parçadan taşıyor`);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('kare kazık çevrel yarıçapıyla ölçülür', () => {
+  // Karenin köşesi merkeze kenar·√2/2 uzaklıktadır. Yarıçap olarak kenar/2
+  // kullanılsaydı kazık kâğıtta sığar, tezgâhta köşesi parçadan taşardı.
+  const tris = cylinderTris(0, 0, 0, 900, 40);   // ince kule
+  const r = generateSlices(tris, {
+    targetSize: 1200, rodShape: 'kare', rodDiameter: 100, rodCount: 1, toolDiameter: 6,
+  });
+  // 100 mm kare, çevrel yarıçap 70,7 — kulenin yarıçapından büyük, sığmamalı.
+  assert.equal(r.info.rodPoints.length, 0, 'sığmayan kazık yerleştirilmiş');
+  assert.ok(r.warnings.some((w) => w.includes('sığmıyor')), 'sığmama uyarısı yok');
+});
+
+test('önerilen omurga ölçüsü gerçekten çalışıyor', () => {
+  // Uyarının verdiği sayı işe yaramıyorsa uyarı değil, tuzaktır.
+  const modeller = [
+    cylinderTris(0, 0, 0, 900, 90),
+    [...cylinderTris(0, 0, 300, 900, 90),
+      ...cylinderTris(-70, 0, 0, 300, 45), ...cylinderTris(70, 0, 0, 300, 45)],
+  ];
+  for (const tris of modeller) {
+    for (const rodShape of ['yuvarlak', 'kare']) {
+      const buyuk = generateSlices(tris, {
+        targetSize: 1200, rodShape, rodDiameter: 500, rodCount: 1, toolDiameter: 6,
+      });
+      const u = buyuk.warnings.find((w) => w.includes('sığmıyor'));
+      assert.ok(u, `${rodShape}: 500 mm için sığmama uyarısı yok`);
+      const onerilen = Number(u.match(/~(\d+) mm/)[1]);
+      assert.ok(onerilen > 0, 'önerilen ölçü sıfır');
+      const dene = generateSlices(tris, {
+        targetSize: 1200, rodShape, rodDiameter: onerilen, rodCount: 1, toolDiameter: 6,
+      });
+      assert.ok(dene.info.rodPoints.length > 0,
+        `${rodShape}: önerilen ${onerilen} mm yerleştirilemedi`);
+      assert.ok(!dene.warnings.some((w) => w.includes('sığmıyor')),
+        `${rodShape}: önerilen ${onerilen} mm hâlâ sığmıyor`);
+    }
+  }
+});
+
+test('sığan ölçüde gereksiz uyarı çıkmaz', () => {
+  // Ölçü bilgisi yalnızca işe yaradığında uyarıdır; her seferinde yazmak
+  // gürültüdür ve gerçek uyarıları gölgeler.
+  const r = generateSlices(cylinderTris(0, 0, 0, 900, 90), {
+    targetSize: 1200, rodShape: 'kare', rodDiameter: 60, rodCount: 1, toolDiameter: 6,
+  });
+  assert.ok(!r.warnings.some((w) => w.includes('sığmıyor')), 'sığdığı hâlde uyarı var');
+  // Boşluk payı kılavuzda durmalı.
+  assert.match(assemblyGuide(r.info), /kadar kaldırır/, 'boşluk payı kılavuzda yok');
+});
+
+test('kare kazık kılavuzu köşe payını ve dönmeyi anlatır', () => {
+  const r = generateSlices(cylinderTris(0, 0, 0, 900, 90), {
+    targetSize: 1200, rodShape: 'kare', rodDiameter: 60, rodCount: 1, toolDiameter: 6,
+  });
+  const g = assemblyGuide(r.info);
+  assert.match(g, /KAZIK/, 'kazık başlığı yok');
+  assert.match(g, /60×60 mm/, 'kesit ölçüsü yazılmıyor');
+  assert.match(g, /kemik payı/, 'köşe payı anlatılmıyor');
+  assert.match(g, /dönmeyi kendi engeller/, 'kare kesitin dönme avantajı yazılmıyor');
+});
+
 test('dilim modu arayüzde ve önbellek listesinde', () => {
   const html = oku('index.html');
   assert.ok(html.includes('id="mode-slices"'), 'mod düğmesi yok');

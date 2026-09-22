@@ -46,10 +46,22 @@ bir figürün iki bacağı ayrı ayrı halka olarak çıkar, heykel serbest duru
   dilimler). Aynı model, eksen değişince bambaşka görünür.
 - Kesitte **delik** varsa (kolun altı, halka biçimli gövde) delik olarak
   kesilir, dolu geçilmez.
-- **Mil yeri otomatik seçilir.** "Merkez" diye tek bir doğru nokta yoktur;
+- **Omurga: yuvarlak mil ya da kare kazık.**
+  - *Yuvarlak mil* — ince (Ø8-12), her kesite sığar, ayrı bacak/kol gibi
+    dar adalara bile girer. Ama parçalar mil etrafında döner; dönmeyi
+    engellemek için iki mil gerekir.
+  - *Kare kazık* — tek başına dönmeyi engeller ve çok daha sağlamdır
+    (1,2 m heykel iki Ø10 mil üstünde sallanır, 60×60 dikme üstünde durur).
+    Bedeli: kalın olduğu için dar kesitlere girmez, milsiz parça sayısı
+    artar. Yuvanın köşelerine **kemik payı** açılır — dönen uç keskin iç
+    köşe kesemez, pay olmasa kazık yuvaya birkaç mm eksik otururdu.
+- **Yeri otomatik seçilir.** "Merkez" diye tek bir doğru nokta yoktur;
   oturan bir figürde kütle merkezi boşluğa düşebilir. Aday noktalar denenir
-  ve en çok parçadan geçen seçilir. İki mil, parçaların mil etrafında
-  dönmesini de engeller.
+  ve en çok parçadan geçen seçilir.
+- **Sığabilecek en büyük ölçüyü program söyler.** İstediğiniz ölçü sığmazsa
+  "en dar kesit en fazla ~X mm taşır" der; verilen sayı denenmiş ve
+  çalıştığı doğrulanmıştır. Sığıyorken uyarı çıkmaz, boşluk payı montaj
+  kılavuzunda durur.
 - Milin geçmediği parçalar (gövdeden kopuk adalar) **sessizce bırakılmaz**:
   sayılır, uyarı verilir, montaj kılavuzunda "bunları komşusuna yapıştır"
   diye yazar.
