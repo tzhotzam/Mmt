@@ -28,7 +28,7 @@ import {
 } from '../js/patterns.js';
 import { otsuThreshold, distanceTransform, inflateSilhouette, blendRelief } from '../js/relief.js';
 import { createPaintLayer, applyPaint, stamp, stroke, isEmpty } from '../js/paint.js';
-import { generateFacets, seamInset, offsetPerEdge } from '../js/modes/facets.js';
+import { generateFacets, seamInset, offsetPerEdge, dikCevir } from '../js/modes/facets.js';
 import { generateSlices } from '../js/modes/slices.js';
 import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js';
 import { decimate } from '../js/decimate.js';
@@ -1620,6 +1620,10 @@ test('poligonal kabukta perçin seçilince kaynak dikişi düşer', () => {
   const g = assemblyGuide(percin.info, percin.seams, percin.folds);
   assert.ok(g.includes('PERÇİNLİ BİRLEŞİM'), 'montaj kılavuzunda perçin bölümü yok');
   assert.match(g, /perçin ×\d+ \(kulakçık Y\d+\)/, 'dikiş listesinde perçin satırı yok');
+  assert.match(g, /\d+ dikiş \(\d+ perçinli, \d+ kaynak\)/, 'başlık perçinli dikişleri kaynak sayıyor');
+  assert.ok(!/birbirine puntalayın/.test(g), 'perçin montajında puntalama talimatı');
+  const buyuk = generateFacets(d.tris, { ...{ targetSize: 2500, minArea: 0, unfold: true, joinMethod: 'percin', thickness: 1.5 } });
+  assert.ok(assemblyGuide(buyuk.info, buyuk.seams, buyuk.folds).includes('İÇ İSKELET'), 'büyük heykelde iskelet notu yok');
 });
 
 test('plan görünümü kertik, büküm ve etiketleri çizer, parçaya dokununca büyütür', () => {
@@ -1765,6 +1769,17 @@ test('açınımda küçük ve kama fasetler delik bırakmaz', () => {
   const oksuz = f.seams.filter((x) => !x.aId || !x.bId).length;
   assert.equal(oksuz, 0, `${oksuz} dikiş eşsiz — heykelde delik var`);
   assert.ok(f.info.maxDeviation < 2, `faset düzlüğü ${f.info.maxDeviation.toFixed(2)} mm saptı`);
+});
+
+test('dik eksen Y seçilince model döner, ayna olmaz', () => {
+  // Y-yukarı kaydedilmiş şaha kalkmış at önizlemede yerde yatıyordu.
+  const kutu = denseSphere(10).map((t) => t.map(([x, y, z]) => [x, y * 3, z]));   // Y'de uzun
+  const d = dikCevir(kutu, 'y');
+  const kz = d.flat().map((p) => p[2]);
+  assert.ok(Math.max(...kz) - Math.min(...kz) > 55, 'Y ekseni yukarı dönmedi');
+  const v0 = checkClosed(kutu, 1e-6).volume, v1 = checkClosed(d, 1e-6).volume;
+  assert.ok(v0 > 0 && v1 > 0 && Math.abs(v0 - v1) / v0 < 1e-6, 'dönme hacmi/yönü bozdu (ayna?)');
+  assert.ok(oku('index.html').includes('id="p-upAxis"'), 'arayüzde dik eksen yok');
 });
 
 test('birleşim ayarları arayüzde', () => {

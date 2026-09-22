@@ -32,7 +32,8 @@ export const FACET_DEFAULTS = {
   // Açınım
   unfold: false,
   maxFacetsPerPatch: 24,
-  targetParts: 0,       // >0: yaprak sayısını buna en yakın yapacak sınır aranır
+  targetParts: 0,
+  upAxis: 'z',          // modelin DİK ekseni: 'z' | 'y' | 'x' (Y-yukarı dosyalar)       // >0: yaprak sayısını buna en yakın yapacak sınır aranır
   bridgeMode: 'oto',  // 'dagitik' | 'tek' | 'oto'
   dashCut: 30,
   dashGap: 8,
@@ -62,7 +63,7 @@ export function generateFacets(rawTris, userParams = {}) {
   // uzun uzun yazınca kullanıcı sürekli bir şey bozuk sanıyordu.
   const notes = [];
 
-  const scaled = scaleTriangles(rawTris, p.targetSize, p.sizeAxis);
+  const scaled = scaleTriangles(dikCevir(rawTris, p.upAxis), p.targetSize, p.sizeAxis);
   const mesh = buildMesh(scaled.tris);
   if (!mesh.faces.length) {
     return { parts: [], seams: [], folds: [], info: emptyInfo(p, scaled), warnings: ['Modelde geçerli üçgen bulunamadı.'] };
@@ -703,6 +704,21 @@ function emptyInfo(p, scaled) {
     modelSize: scaled.size, panelW: scaled.size.x || 1, panelH: scaled.size.z || 1,
     totalDepth: scaled.size.y || 0, totalArea: 0, triangles: scaled.tris, params: p,
   };
+}
+
+/**
+ * Modeli, seçilen dik eksen Z olacak biçimde döndürür (dönme; ayna değil —
+ * yüz yönleri ve dikiş açıları korunur).
+ *
+ * Birçok modelleme programı "Y yukarı" kaydeder. Program Z'yi yukarı kabul
+ * ettiği için böyle bir model önizlemede yan yatık görünür: şaha kalkmış at
+ * yerde yatıyor gibiydi. Parçalar duruştan bağımsızdır; bu yalnızca
+ * önizlemenin, ölçülerin (yükseklik) ve montaj kılavuzunun doğruluğu için.
+ */
+export function dikCevir(tris, upAxis = 'z') {
+  if (upAxis === 'y') return tris.map((t) => t.map(([x, y, z]) => [x, -z, y]));
+  if (upAxis === 'x') return tris.map((t) => t.map(([x, y, z]) => [-z, y, x]));
+  return tris;
 }
 
 /**

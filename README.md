@@ -158,6 +158,16 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   yüzey, 1,5 mm sac, 3000 × 1500 levha, yaprak en çok 1000 mm → 69 yaprak,
   438 perçin, 5 levha, 6,1 m² (~72 kg çelik). Perçinsiz kalan dikişlerin
   çoğu 40 mm'den kısadır; komşu perçinler onları tutar.
+- **Dik eksen.** Birçok program modeli "Y yukarı" kaydeder; bizim program Z'yi
+  yukarı sayar ve böyle bir model önizlemede yan yatık görünür (şaha kalkmış
+  at yerde yatıyordu). Gelişmiş ayarlarda "Dik eksen: Y yukarı" seçin.
+  Parçalar değişmez; önizleme, ölçüler ve montaj kılavuzu doğru olur.
+- **Örnek teslim — şaha kalkmış at, 2,5 m.** 800 yüzey (bacaklar okunur,
+  fasetler iri), yüzey birleştirme 1° (daha fazlası faset düzlüğünü sac
+  kalınlığının üstüne çıkarıyor), 1,5 mm sac, 3000×1500 levha, yaprak en çok
+  1000 mm, perçinli kulakçık 15 mm, Ø4 perçin: 50 yaprak, 398 perçin, 4 levha,
+  6 m², ~71 kg, sıfır uyarı. Kılavuz iç iskelet önerir (taban levhası +
+  ayaklardan gövdeye boru omurga).
 - **Köşe delikleri.** Yaprağın içinde büküm hatlarının buluştuğu her noktaya
   küçük bir delik (iki sac kalınlığı, 3-8 mm) açılır; sac orada her yönden
   bükülmeye zorlandığı için yırtılır ya da kabarır, delik bunu önler.

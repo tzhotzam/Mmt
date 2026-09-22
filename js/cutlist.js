@@ -92,20 +92,49 @@ export function assemblyGuide(info, seams = [], folds = []) {
   ].join('\n');
 }
 
+/**
+ * Büyük heykel için iç iskelet önerisi. Kabuk 1,5 mm sacdır; kendi ağırlığını
+ * taşır ama rüzgârı, çocukların tırmanmasını, taşımayı taşımaz.
+ */
+function iskeletNotu(m, info, percin) {
+  const boy = Math.max(m.x, m.y, m.z);
+  const kg = (info.totalArea / 1e6) * info.params.thickness * 7.85;
+  return [
+    '',
+    'İÇ İSKELET',
+    `  Heykel ${round(boy)} mm; kabuk yaklaşık ${round(kg)} kg (çelik). Kabuk taşıyıcı değildir.`,
+    '  Öneri: zemine dübelle sabitlenen 10 mm çelik taban levhası; ayaklardan',
+    '  gövdeye çıkan Ø42-48 boru ya da 40×40 kutu profil omurga, gövde içinde',
+    '  birkaç yatay kuşak. Kabuk kuşaklara, içeriden kaynatılmış küçük',
+    percin
+      ? '  bağlantı kulaklarıyla perçinlenir ya da cıvatalanır.'
+      : '  bağlantı kulaklarıyla puntalanır.',
+    '  Ayak içleri dardır: boruyu kabuktan ÖNCE yerleştirin, ayak yapraklarını',
+    '  borunun etrafına kapatın.',
+  ];
+}
+
 function weldGuide(info, seams, folds = []) {
   const p = info.params;
   const m = info.modelSize;
-  const convex = seams.filter((s) => s.angle < 179).length;
-  const concave = seams.filter((s) => s.angle > 181).length;
-  const sharp = seams.filter((s) => s.angle < 60);
-
   const percin = info.joinMethod === 'percin';
+  // Perçinli birleşimde kaynak notları yalnızca kaynakta kalan dikişler için.
+  const kaynaklar = percin ? seams.filter((s) => s.join !== 'percin') : seams;
+  const convex = kaynaklar.filter((s) => s.angle < 179).length;
+  const concave = kaynaklar.filter((s) => s.angle > 181).length;
+  const sharp = kaynaklar.filter((s) => s.angle < 60);
+
   const lines = [
     `Heykel ölçüsü: ${round(m.x)} × ${round(m.y)} × ${round(m.z)} mm`,
-    info.unfold
+    // Perçinde dikişlerin çoğu kaynak DEĞİL; "369 kaynak dikişi" yazmak
+    // (241'i perçinliyken) yanıltıyordu.
+    (info.unfold
       ? `${info.facetCount} faset → ${info.partCount} yaprak, ${info.foldCount} büküm, `
-        + `${info.seamCount} kaynak dikişi, ${p.thickness} mm sac.`
-      : `${info.facetCount} faset, ${info.seamCount} kaynak dikişi, ${p.thickness} mm sac.`,
+      : `${info.facetCount} faset, `)
+      + (percin
+        ? `${info.seamCount} dikiş (${info.tabCount} perçinli, ${info.weldSeamCount} kaynak), `
+        : `${info.seamCount} kaynak dikişi, `)
+      + `${p.thickness} mm sac.`,
     `Toplam yüzey alanı: ${round(info.totalArea / 1e6, 2)} m².`,
     ...(percin ? [
       `Birleşim: perçinli kulakçık — ${info.tabCount} kulakçık, ${info.rivetCount} adet ` +
@@ -131,8 +160,12 @@ function weldGuide(info, seams, folds = []) {
     info.unfold
       ? '  Her yaprağın üstünde kendi numarası (Y01, Y02, ...) yazar.'
       : '  Her parçanın üstünde kendi numarası (P01, P02, ...) yazar.',
-    '  Dış kenarlardaki küçük numaralar KAYNAK DİKİŞİ numaralarıdır.',
-    '  Aynı numaralı iki kenarı karşı karşıya getirip puntalayın.',
+    percin
+      ? '  Dış kenarlardaki küçük numaralar DİKİŞ numaralarıdır.'
+      : '  Dış kenarlardaki küçük numaralar KAYNAK DİKİŞİ numaralarıdır.',
+    percin
+      ? '  Aynı numaralı iki kenarı karşı karşıya getirin: kulakçık eşin altına girer.'
+      : '  Aynı numaralı iki kenarı karşı karşıya getirip puntalayın.',
     '  Her kenar numarası tam iki parçada geçer — eşini aşağıdaki listeden bulun.',
     ...(info.unfold ? [
       '',
@@ -152,11 +185,26 @@ function weldGuide(info, seams, folds = []) {
       '    b) Kaynakla doldurup taşlayın — kenar keskinleşir, yüzey kesintisiz olur.',
       '',
       '  Kabuk tek başına taşıyıcı değildir. Büyük heykellerde içeriye bir çatkı',
-      '  (profil/boru iskelet) kurup kabuğu ona puntalayın.',
+      percin
+        ? '  (profil/boru iskelet) kurup kabuğu ona perçin ya da cıvatayla bağlayın.'
+        : '  (profil/boru iskelet) kurup kabuğu ona puntalayın.',
     ] : []),
+    ...(Math.max(m.x, m.y, m.z) >= 1500 ? iskeletNotu(m, info, percin) : []),
     '',
     'MONTAJ SIRASI',
-    ...(info.unfold ? [
+    ...(info.unfold && percin ? [
+      '  1. Yaprakları kesin; kertikleri, delikleri ve yuvaları KESMEYİ unutmayın (KESIM katmanı).',
+      '  2. Çapakları alın. İsterseniz astarı ŞİMDİ, düz hâldeyken atın — içi de korunur.',
+      '  3. Her yaprağı kertik çizgisinin tam ortasından, yazan dereceye bükün.',
+      '     Çelik birkaç derece geri yaylanır; biraz fazla büküp bırakın.',
+      '  4. Kulakçıkları etiketteki açıya (ör. "12·143°" → 143°) bükün.',
+      '  5. İç iskeleti kurun (bkz. İÇ İSKELET). Alttan yukarı çalışın: önce',
+      '     ayaklar ve gövdenin alt yarısı, en son baş.',
+      '  6. Eş numaralı kenarları getirin, önce her dikişe BİR perçin atın',
+      '     (geçici, iskelet üstünde şekil otursun), sonra kalanları.',
+      '  7. "kaynak" işaretli dikişleri (montaj listesinin sonunda) puntalayın.',
+      '  8. Son kat boya: parlak tek renk faset kenarlarını ve perçin desenini öne çıkarır.',
+    ] : info.unfold ? [
       '  1. Yaprakları kesin; kertikli iç çizgileri KESMEYİ unutmayın (KESIM katmanı).',
       '  2. Her yaprağı kertik çizgisinin tam ortasından, yazan dereceye bükün.',
       '     Gönye veya açıölçerle kontrol edin; çelik birkaç derece geri yaylanır,',
@@ -175,7 +223,7 @@ function weldGuide(info, seams, folds = []) {
       '  6. Taşları taşlayıp yüzeyi düzleyin, ardından astar + boya.',
     ]),
     '',
-    'KAYNAK NOTLARI',
+    percin ? 'KAYNAKTA KALAN DİKİŞLER İÇİN NOTLAR' : 'KAYNAK NOTLARI',
     `  Dışbükey (dıştan V açılan) dikiş: ${convex} adet — V boşluğu kaynak metalini tutar.`,
     `  İçbükey dikiş: ${concave} adet — içeriden erişim zorsa dıştan köşe kaynağı yapın.`,
     p.thicknessComp
