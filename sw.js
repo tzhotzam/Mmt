@@ -1,11 +1,12 @@
-// Çevrimdışı çalışma için basit önbellek. three.js CDN'den geldiği için
-// 3B önizleme çevrimdışı devre dışı kalır; üretim ve dışa aktarma çalışır.
+// Çevrimdışı çalışma için basit önbellek. three.js da depoda (vendor/three)
+// durduğu için 3B önizleme dahil HER ŞEY internetsiz çalışır — atölyedeki
+// bilgisayarın internete bağlı olması gerekmez.
 //
 // SÜRÜM: index.html içindeki <meta name="app-version"> ve main.js içindeki
 // APP_VERSION ile AYNI olmalı. Üçü ayrışırsa tarayıcı yeni HTML'i eski
 // JavaScript'le birleştirebilir; testler bu üçünü karşılaştırır.
 
-const VERSION = '2026-09-22-g';
+const VERSION = '2026-09-22-h';
 const CACHE = `cnc-panel-${VERSION}`;
 
 const ASSETS = [
@@ -44,6 +45,8 @@ const ASSETS = [
   './js/relief3d.js',
   './js/export/dxf.js',
   './js/export/svg.js',
+  './vendor/three/three.module.min.js',
+  './vendor/three/addons/controls/OrbitControls.js',
 ];
 
 self.addEventListener('install', (e) => {

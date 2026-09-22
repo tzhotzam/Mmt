@@ -1636,6 +1636,20 @@ test('plan görünümü kertik, büküm ve etiketleri çizer, parçaya dokununca
   assert.ok(/addEventListener\('wheel'/.test(js) && /pointermove/.test(js), 'yakınlaştırma yok');
 });
 
+test('three.js depoda: 3B önizleme internetsiz çalışır', () => {
+  // Atölye bilgisayarı internete bağlı olmayabilir; CDN'den gelen three.js
+  // yüzünden kurulu uygulamada 3B önizleme açılmıyordu.
+  const html = oku('index.html');
+  const map = JSON.parse(html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]).imports;
+  assert.ok(!/^https?:/.test(map.three), `three hâlâ dışarıdan: ${map.three}`);
+  assert.ok(fs.existsSync(path.join(KOK, map.three)), `${map.three} yok`);
+  const orbit = map['three/addons/'] + 'controls/OrbitControls.js';
+  assert.ok(fs.existsSync(path.join(KOK, orbit)), `${orbit} yok`);
+  const sw = oku('sw.js');
+  for (const f of [map.three, orbit]) assert.ok(sw.includes(`'${f}'`), `${f} çevrimdışı listede yok`);
+  assert.ok(fs.existsSync(path.join(KOK, 'vendor/three/LICENSE')), 'three.js lisansı yok');
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {

@@ -1,5 +1,7 @@
-// three.js ile 3B önizleme. three CDN'den yüklenir; başarısız olursa
-// önizleme sessizce devre dışı kalır, uygulamanın geri kalanı çalışmaya devam eder.
+// three.js ile 3B önizleme. three depodan (vendor/three) yüklenir, böylece
+// kurulu uygulamada internetsiz de çalışır. Yine de yüklenemezse (eski
+// tarayıcı, WebGL yok) önizleme sessizce devre dışı kalır, uygulamanın geri
+// kalanı çalışmaya devam eder.
 
 let THREE = null;
 let OrbitControls = null;
@@ -20,8 +22,9 @@ export async function createPreview3d(container) {
   if (!ok) {
     container.innerHTML =
       '<p style="padding:20px;color:#9aa5b1;font-size:13px;text-align:center">' +
-      '3B önizleme için internet bağlantısı gerekiyor (three.js CDN). ' +
-      'Diğer sekmeler ve dışa aktarma çevrimdışı çalışır.</p>';
+      '3B önizleme bu tarayıcıda açılamadı (three.js yüklenemedi). ' +
+      'Sayfayı yenileyin; olmazsa Chrome ya da Edge deneyin. Diğer sekmeler ' +
+      've dışa aktarma çalışır.</p>';
     return { update() {}, resize() {}, dispose() {} };
   }
 

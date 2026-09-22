@@ -333,8 +333,9 @@ Ayrı bir program indirmeye gerek yok — site zaten kurulabilir bir uygulama
 *Uygulamalar → Bu siteyi uygulama olarak yükle*. Sonrasında:
 
 - Başlat menüsünde kendi simgesiyle durur, tarayıcı sekmesi olmadan açılır.
-- Çevrimdışı çalışır (yalnızca 3B önizleme internet ister — three.js
-  CDN'den geliyor). Ölçü girme, üretim, DXF/SVG çıkarma internetsiz çalışır.
+- Tamamen çevrimdışı çalışır — 3B önizleme dahil (three.js depoda,
+  `vendor/three`, MIT lisanslı). Bir kez açıldıktan sonra atölyedeki
+  bilgisayarın internete bağlı olması gerekmez.
 - İndirilen DXF dosyaları doğrudan bilgisayarın indirme klasörüne düşer;
   telefondan aktarma derdi kalmaz.
 
@@ -344,7 +345,7 @@ paketlenebilir — ama çoğu durumda gereksizdir.
 
 ### Telefona uygulama gibi kurmak
 Safari'de sayfayı açın → Paylaş → **Ana Ekrana Ekle**. Tam ekran açılır ve
-çevrimdışı çalışır (3B önizleme hariç — o three.js için internet ister).
+3B önizleme dahil çevrimdışı çalışır.
 
 ---
 
