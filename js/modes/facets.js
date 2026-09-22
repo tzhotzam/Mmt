@@ -225,7 +225,11 @@ function analyze(mesh, p) {
     if (pts.length < 3) { elenen.duzlem++; return; }
 
     const area = Math.abs(signedArea(pts));
-    if (area < p.minArea) { elenen.alan++; return; }
+    // Açınımda küçük faset atılmaz: bükümle bir yaprağa bağlanır, ayrı parça
+    // bile olmaz. Atmak heykelde DELİK bırakıyordu (hedef yüzey 1500'de
+    // gerçek boy atta 54 eşsiz dikiş). Filtre yalnızca her fasetin ayrı
+    // parça olduğu gevşek modda anlamlıdır.
+    if (area < p.minArea && !p.unfold) { elenen.alan++; return; }
 
     // Halkayı CCW'ye çevir; kenar verilerini aynı sıraya taşı.
     let ring = pts;

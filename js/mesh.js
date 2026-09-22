@@ -174,11 +174,40 @@ export function mergeSmallGroups(mesh, groups, minArea, maxDev) {
   const merkez = groups.map((g) => centroidOf(mesh, g));
   const canli = new Uint8Array(groups.length).fill(1);
 
-  const sira = groups.map((_, i) => i).filter((i) => alan[i] < minArea).sort((a, b) => alan[a] - alan[b]);
+  // Komşu grup sayısı: üçten azsa faset çokgen olamaz (iki faset arasında
+  // kalmış ince kama); boyutundan bağımsız olarak katılmaya adaydır.
+  // Açık kenara (karşısında yüz olmayan) dokunan grup kama sayılmaz: model
+  // orada zaten kapalı değil, onu yüzeyin geri kalanına yapıştırmak yanlış.
+  const kamaMi = (gi) => {
+    const set = new Set();
+    for (const fi of groups[gi].faces) {
+      const f = mesh.faces[fi];
+      for (let i = 0; i < 3; i++) {
+        const list = adj.get(edgeKey(f[i], f[(i + 1) % 3])) || [];
+        if (list.length < 2) return false;
+        for (const nb of list) {
+          const h = sahip[nb];
+          if (h !== gi && h >= 0 && canli[h]) set.add(h);
+        }
+      }
+    }
+    return set.size < 3;
+  };
+  const aday = (i) => alan[i] < minArea || kamaMi(i);
   let merged = 0;
+  // Birkaç tur: bir birleşme komşunun komşu sayısını düşürüp onu yeni bir
+  // kamaya çevirebilir. Tek turda bunlar atlanıyor, delik bırakıyordu.
+  for (let tur = 0; tur < 6; tur++) {
+  const oncekiMerged = merged;
+  const sira = groups.map((_, i) => i).filter((i) => canli[i] && aday(i)).sort((a, b) => alan[a] - alan[b]);
   for (const gi of sira) {
-    if (!canli[gi] || alan[gi] >= minArea) continue;
+    if (!canli[gi] || !aday(gi)) continue;
     const g = groups[gi];
+    // Kama biçimli (üçten az komşulu) faset çokgen olamaz; katılmazsa atılır
+    // ve DELİK bırakır. Delikten iyidir diye sapma sınırı ona uygulanmaz —
+    // yine de en az sapan komşu seçilir. (Hedef yüzey 1500'de gerçek boy
+    // atta sınırlı kurala rağmen 6 kama delik bırakıyordu.)
+    const sinir = kamaMi(gi) ? Infinity : maxDev;
     // Komşu gruplar ve ortak kenar uzunlukları.
     const ortak = new Map();
     for (const fi of g.faces) {
@@ -203,7 +232,7 @@ export function mergeSmallGroups(mesh, groups, minArea, maxDev) {
           sapma = Math.max(sapma, Math.abs(n[0] * (v[0] - c[0]) + n[1] * (v[1] - c[1]) + n[2] * (v[2] - c[2])));
         }
       }
-      if (sapma > maxDev) continue;
+      if (sapma > sinir) continue;
       if (sapma < enIyiSapma - 1e-9 || (Math.abs(sapma - enIyiSapma) <= 1e-9 && kenar > enIyiKenar)) {
         enIyi = h; enIyiSapma = sapma; enIyiKenar = kenar;
       }
@@ -214,6 +243,8 @@ export function mergeSmallGroups(mesh, groups, minArea, maxDev) {
     alan[enIyi] += alan[gi];
     canli[gi] = 0;
     merged++;
+  }
+  if (merged === oncekiMerged) break;
   }
   return { groups: groups.filter((_, i) => canli[i]), merged };
 }

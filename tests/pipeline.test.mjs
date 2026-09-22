@@ -1755,6 +1755,18 @@ test('önemli ayarlar öne çıkar, ayrıntılar Gelişmiş altında', () => {
   assert.ok(t && parseFloat(t[1]) <= 1, 'sac kalınlığı alt sınırı ince sacı reddediyor');
 });
 
+test('açınımda küçük ve kama fasetler delik bırakmaz', () => {
+  // "En küçük faset" filtresi ve "üçten az komşu" kuralı fasetleri atıyor,
+  // heykelde delik kalıyordu: gerçek boy atta hedef 1500'de 54 eşsiz dikiş.
+  // Açınımda küçük faset bükümle yaprağa bağlanır; kama komşusuna katılır.
+  const r = voxelRemesh(denseSphere(), { resolution: 64, smooth: 1 });
+  const d = decimate(r.tris, 600);
+  const f = generateFacets(d.tris, { targetSize: 300, minArea: 150, unfold: true, thickness: 2 });
+  const oksuz = f.seams.filter((x) => !x.aId || !x.bId).length;
+  assert.equal(oksuz, 0, `${oksuz} dikiş eşsiz — heykelde delik var`);
+  assert.ok(f.info.maxDeviation < 2, `faset düzlüğü ${f.info.maxDeviation.toFixed(2)} mm saptı`);
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {
