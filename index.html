@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-09-22-l">
+<meta name="app-version" content="2026-09-22-m">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-09-22-l';
+  var V = '2026-09-22-m';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -270,17 +270,17 @@
   <section class="panel">
     <h2>2 · Ölçüler ve malzeme</h2>
     <div class="grid">
-      <label>Panel eni (mm)
+      <label class="panel-olcu">Panel eni (mm)
         <input type="number" id="p-panelW" value="900" min="100" max="5000" step="10">
       </label>
-      <label>Panel boyu (mm)
+      <label class="panel-olcu">Panel boyu (mm)
         <input type="number" id="p-panelH" value="600" min="100" max="5000" step="10">
       </label>
-      <label class="check">
+      <label class="check panel-olcu">
         <input type="checkbox" id="p-lockAspect" checked> Görselin en-boy oranını koru
       </label>
-      <label id="lbl-thickness">Malzeme kalınlığı (mm)
-        <input type="number" id="p-thickness" value="18" min="3" max="50" step="0.5" list="thicknesses">
+      <label id="lbl-thickness" class="onemli">Malzeme kalınlığı (mm)
+        <input type="number" id="p-thickness" value="18" min="0.5" max="50" step="0.1" list="thicknesses">
         <datalist id="thicknesses">
           <option value="8"><option value="10"><option value="12">
           <option value="15"><option value="18"><option value="22"><option value="25">
@@ -367,91 +367,96 @@
     </div>
 
     <div id="facets-params" class="grid" hidden>
-      <label>Heykel boyu (mm) <small>en uzun kenar</small>
+      <label class="onemli">Heykel boyu (mm) <small>en uzun kenar</small>
         <input type="number" id="p-targetSize" value="600" min="50" max="4000" step="10">
       </label>
-      <label>Hedef yüzey sayısı <small>3B model yoğunsa buna sadeleştirilir · 0 = kapalı</small>
+      <label class="onemli">Hedef yüzey sayısı <small>3B model yoğunsa buna sadeleştirilir · 0 = kapalı</small>
         <input type="number" id="p-targetFaces" value="300" min="0" max="20000" step="50">
       </label>
-      <label>Parça sayısı <small>istediğin sayıyı yaz · 0 = otomatik</small>
+      <label class="onemli">Parça sayısı <small>istediğin sayıyı yaz · 0 = otomatik</small>
         <input type="number" id="p-targetParts" value="0" min="0" max="5000" step="1">
       </label>
-      <label>Model onarımı <small>delikli/bozuk modeli hacimden yeniden kurar</small>
-        <select id="p-remesh">
-          <option value="oto" selected>Otomatik (bozuksa onar)</option>
-          <option value="acik">Her zaman onar</option>
-          <option value="kapali">Kapalı</option>
-        </select>
-      </label>
-      <label>Kabartma poligon sayısı <small>görselden kabartmada, uzun kenar boyunca</small>
-        <input type="number" id="p-reliefCells" value="14" min="4" max="60" step="1">
-      </label>
-      <label>Kabartma derinliği (mm) <small>görselden kabartmada</small>
-        <input type="number" id="p-reliefDepth" value="60" min="5" max="400" step="5">
-      </label>
-      <label>Ölçü ekseni
-        <select id="p-sizeAxis">
-          <option value="max">En uzun kenar</option>
-          <option value="x">X (en)</option>
-          <option value="y">Y (derinlik)</option>
-          <option value="z">Z (yükseklik)</option>
-        </select>
-      </label>
-      <label>Yüzey birleştirme (°) <small>büyütmek parça sayısını düşürür</small>
-        <input type="number" id="p-angleTol" value="1" min="0" max="40" step="0.5">
-      </label>
-      <label>En küçük faset (mm²)
-        <input type="number" id="p-facetMinArea" value="40" min="0" max="20000" step="50">
-      </label>
-      <label class="check">
-        <input type="checkbox" id="p-thicknessComp" checked> Kalınlık telafisi <small>(model dış yüzeyse)</small>
-      </label>
-      <label class="check">
-        <input type="checkbox" id="p-unfold" checked> Açınım <small>(kertikli büküm — önerilir)</small>
-      </label>
-      <label>Birleşim <small>parçalar birbirine nasıl bağlanır</small>
+      <label class="onemli">Birleşim <small>parçalar birbirine nasıl bağlanır</small>
         <select id="p-joinMethod">
           <option value="percin" selected>Perçinli kulakçık (kaynaksız)</option>
           <option value="kaynak">Kaynak</option>
         </select>
       </label>
-      <label>Kulakçık derinliği (mm)
-        <input type="number" id="p-tabWidth" value="15" min="10" max="60" step="1">
-      </label>
-      <label>Perçin çapı (mm) <small>delik +0.1 mm açılır</small>
-        <input type="number" id="p-rivetDiameter" value="4" min="2.4" max="6.4" step="0.1">
-      </label>
-      <label>Perçin aralığı (mm) <small>en çok</small>
-        <input type="number" id="p-rivetPitch" value="80" min="30" max="300" step="5">
-      </label>
-      <label class="check">
-        <input type="checkbox" id="p-reliefHoles" checked> Köşe delikleri <small>(bükümlerin birleştiği noktalara)</small>
-      </label>
-      <label>Yaprak başına en çok faset <small>parça sayısı 0 iken geçerli</small>
-        <input type="number" id="p-maxFacetsPerPatch" value="24" min="1" max="200" step="1">
-      </label>
-      <label>Yaprak en büyük ölçüsü (mm) <small>taşıma/boya için · 0 = levha kadar</small>
+      <label class="onemli">Yaprak en büyük ölçüsü (mm) <small>taşıma/boya için · 0 = levha kadar</small>
         <input type="number" id="p-maxLeafSize" value="0" min="0" max="4000" step="50">
       </label>
-      <label>Büküm köprüsü
-        <select id="p-bridgeMode">
-          <option value="oto">Otomatik (kısa kenar tek, uzun dağıtık)</option>
-          <option value="tek">Tek köprü (ortada)</option>
-          <option value="dagitik">Dağıtık kertik</option>
-        </select>
+      <label class="check onemli">
+        <input type="checkbox" id="p-unfold" checked> Açınım <small>(kertikli büküm — önerilir)</small>
       </label>
-      <label>Tek köprü genişliği (mm)
-        <input type="number" id="p-bridgeWidth" value="25" min="5" max="120" step="5">
-      </label>
-      <label>Tek/dağıtık sınırı (mm)
-        <input type="number" id="p-autoLimit" value="250" min="50" max="1500" step="10">
-      </label>
-      <label>Dağıtık: kesim (mm)
-        <input type="number" id="p-dashCut" value="30" min="2" max="200" step="1">
-      </label>
-      <label>Dağıtık: köprü (mm)
-        <input type="number" id="p-dashGap" value="8" min="0.5" max="60" step="0.5">
-      </label>
+      <details class="gelismis">
+        <summary>Gelişmiş ayarlar <small>onarım, perçin ölçüleri, kertik, faset filtresi</small></summary>
+        <div class="grid">
+          <label>Model onarımı <small>delikli/bozuk modeli hacimden yeniden kurar</small>
+            <select id="p-remesh">
+              <option value="oto" selected>Otomatik (bozuksa onar)</option>
+              <option value="acik">Her zaman onar</option>
+              <option value="kapali">Kapalı</option>
+            </select>
+          </label>
+          <label>Kabartma poligon sayısı <small>görselden kabartmada, uzun kenar boyunca</small>
+            <input type="number" id="p-reliefCells" value="14" min="4" max="60" step="1">
+          </label>
+          <label>Kabartma derinliği (mm) <small>görselden kabartmada</small>
+            <input type="number" id="p-reliefDepth" value="60" min="5" max="400" step="5">
+          </label>
+          <label>Ölçü ekseni
+            <select id="p-sizeAxis">
+              <option value="max">En uzun kenar</option>
+              <option value="x">X (en)</option>
+              <option value="y">Y (derinlik)</option>
+              <option value="z">Z (yükseklik)</option>
+            </select>
+          </label>
+          <label>Yüzey birleştirme (°) <small>büyütmek parça sayısını düşürür</small>
+            <input type="number" id="p-angleTol" value="1" min="0" max="40" step="0.5">
+          </label>
+          <label>En küçük faset (mm²)
+            <input type="number" id="p-facetMinArea" value="40" min="0" max="20000" step="50">
+          </label>
+          <label class="check">
+            <input type="checkbox" id="p-thicknessComp" checked> Kalınlık telafisi <small>(model dış yüzeyse)</small>
+          </label>
+          <label>Kulakçık derinliği (mm)
+            <input type="number" id="p-tabWidth" value="15" min="10" max="60" step="1">
+          </label>
+          <label>Perçin çapı (mm) <small>delik +0.1 mm açılır</small>
+            <input type="number" id="p-rivetDiameter" value="4" min="2.4" max="6.4" step="0.1">
+          </label>
+          <label>Perçin aralığı (mm) <small>en çok</small>
+            <input type="number" id="p-rivetPitch" value="80" min="30" max="300" step="5">
+          </label>
+          <label class="check">
+            <input type="checkbox" id="p-reliefHoles" checked> Köşe delikleri <small>(bükümlerin birleştiği noktalara)</small>
+          </label>
+          <label>Yaprak başına en çok faset <small>parça sayısı 0 iken geçerli</small>
+            <input type="number" id="p-maxFacetsPerPatch" value="24" min="1" max="200" step="1">
+          </label>
+          <label>Büküm köprüsü
+            <select id="p-bridgeMode">
+              <option value="oto">Otomatik (kısa kenar tek, uzun dağıtık)</option>
+              <option value="tek">Tek köprü (ortada)</option>
+              <option value="dagitik">Dağıtık kertik</option>
+            </select>
+          </label>
+          <label>Tek köprü genişliği (mm)
+            <input type="number" id="p-bridgeWidth" value="25" min="5" max="120" step="5">
+          </label>
+          <label>Tek/dağıtık sınırı (mm)
+            <input type="number" id="p-autoLimit" value="250" min="50" max="1500" step="10">
+          </label>
+          <label>Dağıtık: kesim (mm)
+            <input type="number" id="p-dashCut" value="30" min="2" max="200" step="1">
+          </label>
+          <label>Dağıtık: köprü (mm)
+            <input type="number" id="p-dashGap" value="8" min="0.5" max="60" step="0.5">
+          </label>
+        </div>
+      </details>
     </div>
 
     <div id="contour-params" class="grid" hidden>
@@ -474,7 +479,7 @@
   <section class="panel">
     <h2>3 · Levha ve kesim</h2>
     <div class="grid">
-      <label>Hazır levha ölçüsü
+      <label class="onemli">Hazır levha ölçüsü
         <select id="p-sheetPreset">
           <option value="2100x2800">MDF / Suntalam — 210 × 280 cm</option>
           <option value="2440x1220">Kontrplak — 244 × 122 cm</option>

@@ -417,3 +417,33 @@ footer {
   .stage { aspect-ratio: 16 / 9; }
   .uploads { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* ÖNEMLİ AYARLAR: her işte değiştirilen birkaç alan renkli kutuda durur;
+   20'den fazla aynı görünümlü alan arasında aranmasın. */
+label.onemli {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: var(--text);
+  font-weight: 600;
+}
+label.onemli small { font-weight: 400; }
+label.onemli input:not([type="checkbox"]),
+label.onemli select { border-color: rgba(245, 158, 11, 0.55); }
+label.check.onemli { padding-top: 8px; }
+
+/* Nadiren dokunulan ayarlar kapalı başlar. */
+details.gelismis {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  border-top: 1px dashed var(--line);
+  padding-top: 4px;
+}
+details.gelismis > summary small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  margin-left: 6px;
+}
+details.gelismis > .grid { margin-top: 8px; }

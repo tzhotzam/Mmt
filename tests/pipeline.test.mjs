@@ -1736,6 +1736,25 @@ test('istenen parça sayısı tutturulur, ulaşılamazsa söylenir', () => {
   assert.ok(/targetParts: Math\.round\(num\('p-targetParts'/.test(oku('js/main.js')), 'parça sayısı okunmuyor');
 });
 
+test('önemli ayarlar öne çıkar, ayrıntılar Gelişmiş altında', () => {
+  const html = oku('index.html');
+  const blok = html.slice(html.indexOf('id="facets-params"'), html.indexOf('id="contour-params"'));
+  const gelismis = blok.indexOf('class="gelismis"');
+  assert.ok(gelismis > 0, 'Gelişmiş bölümü yok');
+  for (const id of ['p-targetSize', 'p-targetFaces', 'p-targetParts', 'p-joinMethod']) {
+    const i = blok.indexOf(`id="${id}"`);
+    assert.ok(i > 0 && i < gelismis, `${id} önde değil`);
+    const lbl = blok.lastIndexOf('<label', i);
+    assert.ok(/onemli/.test(blok.slice(lbl, i)), `${id} vurgulanmamış`);
+  }
+  for (const id of ['p-dashCut', 'p-rivetPitch', 'p-facetMinArea']) {
+    assert.ok(blok.indexOf(`id="${id}"`) > gelismis, `${id} Gelişmiş altında değil`);
+  }
+  // 1,5 mm sac geçerli bir değer olmalı (alt sınır 3 mm idi).
+  const t = html.match(/id="p-thickness"[^>]*min="([\d.]+)"/);
+  assert.ok(t && parseFloat(t[1]) <= 1, 'sac kalınlığı alt sınırı ince sacı reddediyor');
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {

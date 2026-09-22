@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-l';
+const APP_VERSION = '2026-09-22-m';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -1316,6 +1316,11 @@ function setMode(mode, persist = true) {
     btn.classList.toggle('active', mode === m);
     btn.setAttribute('aria-selected', String(mode === m));
     els[`${m}-params`].hidden = mode !== m;
+  }
+  // Poligonal kabuk ve dilimde ölçüyü "Heykel boyu" belirler; panel eni/boyu
+  // orada hiçbir şeyi değiştirmiyordu ama en üstte durup kafa karıştırıyordu.
+  for (const el of document.querySelectorAll('.panel-olcu')) {
+    el.hidden = mode === 'facets' || mode === 'slices';
   }
   // Poligonal kabukta panel ölçüleri modelden gelir, "malzeme kalınlığı" sac kalınlığıdır.
   els['lbl-thickness'].firstChild.nodeValue =
