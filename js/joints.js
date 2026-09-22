@@ -126,7 +126,7 @@ export function applyRivetJoints(parts, seams, p) {
     }
   });
 
-  const kulak = new Map();       // pi -> [{ i, A2, B2, poly }]
+  const kulak = new Map();       // pi -> [{ i, ek, poly }] — ek: halkaya eklenecek noktalar
   const stat = { percin: 0, kaynak: 0, keskin: 0, rivets: 0, tabs: 0 };
 
   for (const seam of seams) {
@@ -155,11 +155,11 @@ export function applyRivetJoints(parts, seams, p) {
       continue;
     }
 
-    const { tk, dk, A2, B2, poly, delikler, yuvalar, A, B } = karar;
+    const { tk, dk, ek, poly, delikler, yuvalar, A, B } = karar;
     const tp = parts[tk.pi];
     const dp = parts[dk.pi];
     if (!kulak.has(tk.pi)) kulak.set(tk.pi, []);
-    kulak.get(tk.pi).push({ i: tk.i, A2, B2, poly });
+    kulak.get(tk.pi).push({ i: tk.i, ek, poly });
     for (const d of delikler) { dp.holes.push(d.ring); dp._circles.push(d); }
     for (const y of yuvalar) { tp.holes.push(y.ring); tp._circles.push(y); }
 
@@ -193,7 +193,7 @@ export function applyRivetJoints(parts, seams, p) {
     part.outline.forEach((pt, i) => {
       yeni.push(pt);
       const t = ek.get(i);
-      if (t) yeni.push(t.A2, t.B2);
+      if (t) yeni.push(...t.ek);
     });
     part.outline = yeni;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -247,32 +247,6 @@ export function applyRivetJoints(parts, seams, p) {
     const boy = (P) => (P[0] - M0[0]) * u[0] + (P[1] - M0[1]) * u[1];
     const en = (P) => (P[0] - M0[0]) * out[0] + (P[1] - M0[1]) * out[1];
 
-    // Kulakçık: tabanı telafili kenar, dış kenarı model çizgisinden h ötede,
-    // uçları pahlı (komşu kulakçıklarla köşede çakışmasın). Pah 45° olur;
-    // kısa kenarda dikleşir — sabit 45° ile 600 mm'lik heykelde 50 mm'den
-    // kısa her kenar kulakçıksız kalıyordu (dikişlerin yarısı).
-    const aA = boy(A), aB = boy(B);
-    const pahTam = h - Math.min(en(A), en(B));
-    const pah = Math.min(pahTam, (aB - aA - 4) / 2);
-    if (pah < pahTam * 0.25) return null;     // kenar kısa
-    const nokta = (s, d) => [M0[0] + u[0] * s + out[0] * d, M0[1] + u[1] * s + out[1] * d];
-    const A2 = nokta(aA + pah, h);
-    const B2 = nokta(aB - pah, h);
-    const poly = [A, A2, B2, B];
-
-    // Kendi parçasına ve önceki kulakçıklarına çarpmamalı. Taban teması
-    // çakışma sayılmasın diye sınama poligonu tabandan biraz dışarıda başlar.
-    const k = 0.3;
-    const sina = [nokta(aA + k, en(A) + k), nokta(aA + pah, h), nokta(aB - pah, h), nokta(aB - k, en(B) + k)];
-    if (polysOverlap(sina, ring)) return null;
-    for (const t of kulak.get(tk.pi) || []) if (polysOverlap(sina, t.poly)) return null;
-
-    // Perçin konumları: telafisiz kenar ortasından simetrik.
-    const adet = Math.max(1, Math.floor(L0 / p.rivetPitch));
-    const aralik = L0 / adet;
-    const konumlar = [];
-    for (let j = 0; j < adet; j++) konumlar.push((j + 0.5) * aralik - L0 / 2);
-
     // Delik tarafının telafisiz kenarı.
     const dn = dp.outline.length;
     const C0 = dp._ring0[dk.i], D0 = dp._ring0[(dk.i + 1) % dn];
@@ -280,22 +254,67 @@ export function applyRivetJoints(parts, seams, p) {
     const ud = [(D0[0] - C0[0]) / Ld, (D0[1] - C0[1]) / Ld];
     const ind = [-ud[1], ud[0]];                // içe bakan normal
     const Md = [(C0[0] + D0[0]) / 2, (C0[1] + D0[1]) / 2];
+    const nokta = (s, d) => [M0[0] + u[0] * s + out[0] * d, M0[1] + u[1] * s + out[1] * d];
 
-    const delikler = [], yuvalar = [];
-    for (const s of konumlar) {
-      const cd = [Md[0] + ud[0] * s + ind[0] * derinlik, Md[1] + ud[1] * s + ind[1] * derinlik];
-      const ct = nokta(s, derinlik);
-      if (!icerdeMi(cd, dp.outline, r + 1)) continue;
-      if (dp._circles.some((q) => Math.hypot(q.c[0] - cd[0], q.c[1] - cd[1]) < q.r + r + 1.5)) continue;
-      if (delikler.some((q) => Math.hypot(q.c[0] - cd[0], q.c[1] - cd[1]) < 2 * r + 1.5)) continue;
-      // Yuvanın iki ucu da kulakçığın içinde kalmalı.
-      const u1 = nokta(s, derinlik - uzama / 2), u2 = nokta(s, derinlik + uzama / 2);
-      if (!icerdeMi(u1, poly, r + 0.8) || !icerdeMi(u2, poly, r + 0.8)) continue;
-      delikler.push({ c: cd, r, ring: circle(cd, r) });
-      yuvalar.push({ c: ct, r: r + uzama / 2, ring: slot(ct, out, uzama, r) });
+    // Perçin konumları: telafisiz kenar ortasından simetrik. Tek perçinlik
+    // kenarda orta delik sığmazsa (dar faset) çeyreklerde iki perçin denenir.
+    const adet = Math.max(1, Math.floor(L0 / p.rivetPitch));
+    const aralik = L0 / adet;
+    const konumSetleri = [[]];
+    for (let j = 0; j < adet; j++) konumSetleri[0].push((j + 0.5) * aralik - L0 / 2);
+    if (adet === 1) konumSetleri.push([-L0 / 4, L0 / 4]);
+
+    const aA = boy(A), aB = boy(B);
+    const pahTam = h - Math.min(en(A), en(B));
+
+    // Kulakçık: tabanı telafili kenar, dış kenarı model çizgisinden h ötede,
+    // uçları pahlı (komşu kulakçıklarla köşede çakışmasın). Pah 45° olur;
+    // kısa kenarda dikleşir — sabit 45° ile 600 mm'lik heykelde 50 mm'den
+    // kısa her kenar kulakçıksız kalıyordu (dikişlerin yarısı).
+    //
+    // Tam boy kulakçık aynı yaprağın komşu fasetine çarpıyorsa (yaprağın
+    // içbükey girintisindeki kenar) uçlarından kısaltılmış kulakçık denenir:
+    // gerçek boy at modelinde 160 mm'den uzun kaynakta kalan dikişlerin
+    // yarısı buydu.
+    for (const kisalt of [0, 0.2, 0.35]) {
+      const ins = kisalt * (aB - aA);
+      const oran = (aB - aA) > 0 ? ins / (aB - aA) : 0;
+      const At = [A[0] + (B[0] - A[0]) * oran, A[1] + (B[1] - A[1]) * oran];
+      const Bt = [B[0] - (B[0] - A[0]) * oran, B[1] - (B[1] - A[1]) * oran];
+      const bA = aA + ins, bB = aB - ins;
+      const pah = Math.min(pahTam, (bB - bA - 4) / 2);
+      if (pah < pahTam * 0.25) break;          // kenar (ya da kalan kısım) kısa
+      const A2 = nokta(bA + pah, h);
+      const B2 = nokta(bB - pah, h);
+      const poly = [At, A2, B2, Bt];
+
+      // Kendi parçasına ve önceki kulakçıklarına çarpmamalı. Taban teması
+      // çakışma sayılmasın diye sınama poligonu tabandan biraz dışarıda başlar.
+      const k = 0.3;
+      const sina = [nokta(bA + k, en(At) + k), A2, B2, nokta(bB - k, en(Bt) + k)];
+      if (polysOverlap(sina, ring)) continue;
+      if ((kulak.get(tk.pi) || []).some((t) => polysOverlap(sina, t.poly))) continue;
+
+      for (const konumlar of konumSetleri) {
+        const delikler = [], yuvalar = [];
+        for (const s of konumlar) {
+          const cd = [Md[0] + ud[0] * s + ind[0] * derinlik, Md[1] + ud[1] * s + ind[1] * derinlik];
+          const ct = nokta(s, derinlik);
+          if (!icerdeMi(cd, dp.outline, r + 1)) continue;
+          if (dp._circles.some((q) => Math.hypot(q.c[0] - cd[0], q.c[1] - cd[1]) < q.r + r + 1.5)) continue;
+          if (delikler.some((q) => Math.hypot(q.c[0] - cd[0], q.c[1] - cd[1]) < 2 * r + 1.5)) continue;
+          // Yuvanın iki ucu da kulakçığın içinde kalmalı.
+          const u1 = nokta(s, derinlik - uzama / 2), u2 = nokta(s, derinlik + uzama / 2);
+          if (!icerdeMi(u1, poly, r + 0.8) || !icerdeMi(u2, poly, r + 0.8)) continue;
+          delikler.push({ c: cd, r, ring: circle(cd, r) });
+          yuvalar.push({ c: ct, r: r + uzama / 2, ring: slot(ct, out, uzama, r) });
+        }
+        if (!delikler.length) continue;
+        const ek = ins > 0 ? [At, A2, B2, Bt] : [A2, B2];
+        return { tk, dk, A: At, B: Bt, ek, poly, delikler, yuvalar };
+      }
     }
-    if (!delikler.length) return null;
-    return { tk, dk, A, B, A2, B2, poly, delikler, yuvalar };
+    return null;
   }
 }
 

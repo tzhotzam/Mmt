@@ -35,7 +35,7 @@ import { decimate } from '../js/decimate.js';
 import { voxelRemesh, meshHealth } from '../js/remesh.js';
 import { applyRivetJoints, reliefHoles, icerdeMi } from '../js/joints.js';
 import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
-import { buildMesh, groupCoplanar, dihedralAngle } from '../js/mesh.js';
+import { buildMesh, groupCoplanar, dihedralAngle, mergeSmallGroups } from '../js/mesh.js';
 import { dashLine, bridgeLine, bendDeduction, polysOverlap } from '../js/unfold.js';
 import {
   classifyCorners, dogbone, cornerRelief, filletConvex,
@@ -1682,6 +1682,27 @@ test('yaprak en büyük ölçüsü kulakçıklarla birlikte aşılmaz', () => {
   const html = oku('index.html');
   assert.ok(html.includes('id="p-maxLeafSize"'), 'arayüzde yaprak ölçüsü alanı yok');
   assert.ok(/num\('p-maxLeafSize'/.test(oku('js/main.js')), 'yaprak ölçüsü okunmuyor');
+});
+
+test('iğne faset atılmaz, düzlemine oturduğu komşusuna katılır', () => {
+  // Sadeleştirme iğne üçgenler bırakıyor; "en küçük faset" filtresi onları
+  // atınca heykelde DELİK kalıyordu (gerçek boy atta 186 eşsiz dikiş).
+  const kur = (z) => {
+    const A = [0, 0, 0], B = [100, 0, 0], C = [100, 100, 0], D = [0, 100, 0];
+    const E = [50, 50.4, z];                    // köşegene çok yakın
+    return buildMesh([[A, B, C], [A, C, E], [A, E, D], [E, C, D]]);
+  };
+  const m = kur(0.3);
+  const g = groupCoplanar(m, 1);
+  assert.equal(g.length, 3, 'iğne ayrı faset olmalı (test kurgusu)');
+  const r = mergeSmallGroups(m, g, 40, 0.5);
+  assert.equal(r.merged, 1);
+  assert.equal(r.groups.length, 2);
+  assert.equal(r.groups.reduce((t, q) => t + q.faces.length, 0), 4, 'üçgen kayboldu');
+  // Gerçekten eğik küçük faset (köşe 5 mm havada) düzleme yatırılmaz.
+  const m2 = kur(5);
+  const r2 = mergeSmallGroups(m2, groupCoplanar(m2, 1), 400, 0.5);
+  assert.equal(r2.merged, 0, 'belirgin eğik faset düzleme bastırıldı');
 });
 
 test('birleşim ayarları arayüzde', () => {

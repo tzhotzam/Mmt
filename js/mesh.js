@@ -145,6 +145,79 @@ export function groupCoplanar(mesh, angleTolDeg = 1) {
   return groups;
 }
 
+/**
+ * Alanı `minArea`'nın altında kalan fasetleri, düzlemine en iyi oturduğu
+ * komşu fasete katar.
+ *
+ * Neden: sadeleştirme hedef üçgen sayısına inerken iğne gibi ince ya da
+ * neredeyse sıfır alanlı üçgenler bırakabiliyor. Her biri ayrı bir faset
+ * olur ve iki kötü sonuçtan biri çıkar: "en küçük faset" filtresine takılıp
+ * heykelde DELİK bırakır, ya da 0 mm²'lik kesilemez bir parça olur.
+ * Ölçüldü — hacimden kurulan at modeli 1000 üçgende, 2,5 m'lik gerçek
+ * boyda bile 150 faset 40 mm²'nin altındaydı; 186 dikiş eşsiz kalıyordu.
+ * Sadeleştirmede temizlemek işe yaramadı (çökertmeler ters dönme ya da yeni
+ * iğne yüzünden reddediliyor).
+ *
+ * İğne üçgen çok ince olduğu için komşu düzleme yatırılınca köşeleri
+ * milimetrenin altında oynar. Katma yalnızca en uzak köşenin hedef düzleme
+ * uzaklığı `maxDev`'i aşmıyorsa yapılır; aşıyorsa faset olduğu gibi kalır
+ * (eski davranış: filtre eler).
+ *
+ * @returns {{groups: Array, merged: number}}
+ */
+export function mergeSmallGroups(mesh, groups, minArea, maxDev) {
+  if (!(minArea > 0) || groups.length < 2) return { groups, merged: 0 };
+  const adj = buildAdjacency(mesh);
+  const sahip = new Int32Array(mesh.faces.length).fill(-1);
+  groups.forEach((g, gi) => { for (const fi of g.faces) sahip[fi] = gi; });
+  const alan = groups.map((g) => groupArea(mesh, g));
+  const merkez = groups.map((g) => centroidOf(mesh, g));
+  const canli = new Uint8Array(groups.length).fill(1);
+
+  const sira = groups.map((_, i) => i).filter((i) => alan[i] < minArea).sort((a, b) => alan[a] - alan[b]);
+  let merged = 0;
+  for (const gi of sira) {
+    if (!canli[gi] || alan[gi] >= minArea) continue;
+    const g = groups[gi];
+    // Komşu gruplar ve ortak kenar uzunlukları.
+    const ortak = new Map();
+    for (const fi of g.faces) {
+      const f = mesh.faces[fi];
+      for (let i = 0; i < 3; i++) {
+        const a = f[i], b = f[(i + 1) % 3];
+        for (const nb of adj.get(edgeKey(a, b)) || []) {
+          const h = sahip[nb];
+          if (h === gi || h < 0 || !canli[h]) continue;
+          const va = mesh.vertices[a], vb = mesh.vertices[b];
+          ortak.set(h, (ortak.get(h) || 0) + Math.hypot(vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]));
+        }
+      }
+    }
+    let enIyi = -1, enIyiSapma = Infinity, enIyiKenar = 0;
+    for (const [h, kenar] of ortak) {
+      const n = groups[h].normal, c = merkez[h];
+      let sapma = 0;
+      for (const fi of g.faces) {
+        for (const vi of mesh.faces[fi]) {
+          const v = mesh.vertices[vi];
+          sapma = Math.max(sapma, Math.abs(n[0] * (v[0] - c[0]) + n[1] * (v[1] - c[1]) + n[2] * (v[2] - c[2])));
+        }
+      }
+      if (sapma > maxDev) continue;
+      if (sapma < enIyiSapma - 1e-9 || (Math.abs(sapma - enIyiSapma) <= 1e-9 && kenar > enIyiKenar)) {
+        enIyi = h; enIyiSapma = sapma; enIyiKenar = kenar;
+      }
+    }
+    if (enIyi < 0) continue;
+    const h = groups[enIyi];
+    for (const fi of g.faces) { h.faces.push(fi); sahip[fi] = enIyi; }
+    alan[enIyi] += alan[gi];
+    canli[gi] = 0;
+    merged++;
+  }
+  return { groups: groups.filter((_, i) => canli[i]), merged };
+}
+
 function normalize(v) {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];

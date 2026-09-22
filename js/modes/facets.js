@@ -13,7 +13,7 @@
 
 import {
   buildMesh, groupCoplanar, groupBoundary, planeBasis, projectToPlane,
-  dihedralAngle, centroidOf, groupArea, scaleTriangles,
+  dihedralAngle, centroidOf, groupArea, scaleTriangles, mergeSmallGroups,
 } from '../mesh.js';
 import { signedArea, bbox } from '../geom.js';
 import { unfoldPatches, patchOutline, bridgeLine, bendDeduction } from '../unfold.js';
@@ -97,9 +97,20 @@ export function generateFacets(rawTris, userParams = {}) {
   if (p.joinMethod === 'percin') {
     Object.assign(birlesim, applyRivetJoints(built.parts, a.seams, p));
     const parcalar = [];
-    if (birlesim.kaynak) {
-      parcalar.push(`${birlesim.kaynak} dikişe kulakçık ya da perçin deliği sığmadı ` +
-        '(kenar kısa, faset dar ya da kulakçık parçanın kendisine çarpıyor — ' +
+    // Çok kısa dikişler ayrı sayılır: iki yanındaki perçinli dikişler parçayı
+    // zaten tutar; "kaynak" diye tek sayıda toplanınca iş gözü korkutuyordu
+    // (gerçek boy atta kaynakta kalan 201 dikişin 141'i 40 mm'den kısaydı).
+    const KISA = 40;
+    const kisa = a.seams.filter((s) => s.join === 'kaynak' && s.length < KISA
+      && Math.abs(180 - s.angle) <= p.maxBend).length;
+    const uzun = birlesim.kaynak - kisa;
+    if (kisa) {
+      parcalar.push(`${kisa} dikiş ${KISA} mm'den kısa — komşu perçinler bunları ` +
+        'tutar; isterseniz birer punta ya da damla yapıştırıcı yeter');
+    }
+    if (uzun > 0) {
+      parcalar.push(`${uzun} dikişe kulakçık ya da perçin deliği sığmadı ` +
+        '(faset dar ya da kulakçık parçanın kendisine çarpıyor — ' +
         'heykeli büyütmek bu sayıyı düşürür)');
     }
     if (birlesim.keskin) {
@@ -107,7 +118,7 @@ export function generateFacets(rawTris, userParams = {}) {
     }
     if (parcalar.length) {
       warnings.push(
-        `${parcalar.join('; ')}. Bunlar kaynakla birleşir; montaj listesinde "kaynak" diye işaretli.`
+        `Perçinsiz kalan dikişler: ${parcalar.join('; ')}. Montaj listesinde "kaynak" diye işaretli.`
       );
     }
     birlesim.kaynak += birlesim.keskin;
@@ -170,7 +181,12 @@ export function generateFacets(rawTris, userParams = {}) {
  * grafiğini kurar. Hem gevşek hem açınım çıktısı buradan beslenir.
  */
 function analyze(mesh, p) {
-  const groups = groupCoplanar(mesh, p.angleTol);
+  // İğne/küçük fasetler atılmaz, komşusuna katılır (bkz. mergeSmallGroups).
+  // Sapma sınırı: sac kalınlığının yarısı, en az 0.5 mm — sac bu kadarını
+  // kaynak/perçin sırasında kendiliğinden alır.
+  const { groups, merged: katilan } = mergeSmallGroups(
+    mesh, groupCoplanar(mesh, p.angleTol), p.minArea, Math.max(0.5, p.thickness * 0.5)
+  );
   const centroids = groups.map((g) => centroidOf(mesh, g));
 
   const edgeOwners = new Map();
@@ -275,7 +291,7 @@ function analyze(mesh, p) {
     neighborOf.set(gi, list.filter((n) => facets[n.facet]));
   }
 
-  return { mesh, groups, centroids, facets, seams, seamIdByKey, neighborOf, openEdges, elenen };
+  return { mesh, groups, centroids, facets, seams, seamIdByKey, neighborOf, openEdges, elenen, katilan };
 }
 
 // ------------------------------------------------------------ GEVŞEK FASET

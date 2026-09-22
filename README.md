@@ -141,6 +141,16 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   kulakçıklar da hesaba katılır. Hedef yüzey sayısı biçimi de değiştirir
   (daha çok ve küçük faset); diğerleri biçime dokunmadan yalnızca kesim
   yerlerini artırır. Her ek kesim, bükümü bir perçinli dikişe çevirir.
+- **İğne fasetler komşusuna katılır.** Sadeleştirme iğne gibi ince
+  üçgenler bırakabilir; eskiden "en küçük faset" filtresi onları atıyor,
+  heykelde DELİK kalıyordu. Artık küçük faset, köşeleri en çok sac
+  kalınlığının yarısı kadar oynayacaksa düzlemine en iyi oturduğu komşu
+  fasete katılır. Gerçek boy atta (2,5 m, 1000 yüzey) eşsiz dikiş 186 → 7.
+- **Gerçek boy örneği — at.** Gövde genişliği gerçek bir atınki kadar
+  (~60 cm) olsun diye en uzun kenar 2500 mm: 585 × 2500 × 1986 mm. 1000
+  yüzey, 1,5 mm sac, 3000 × 1500 levha, yaprak en çok 1000 mm → 69 yaprak,
+  438 perçin, 5 levha, 6,1 m² (~72 kg çelik). Perçinsiz kalan dikişlerin
+  çoğu 40 mm'den kısadır; komşu perçinler onları tutar.
 - **Köşe delikleri.** Yaprağın içinde büküm hatlarının buluştuğu her noktaya
   küçük bir delik (iki sac kalınlığı, 3-8 mm) açılır; sac orada her yönden
   bükülmeye zorlandığı için yırtılır ya da kabarır, delik bunu önler.
