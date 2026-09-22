@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-f';
+const APP_VERSION = '2026-09-22-g';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -93,6 +93,9 @@ const state = {
   nestResult: null,
   cutList: null,
   sheetIndex: 0,
+  planFocus: -1,         // plan görünümünde tam ekran açılan parça (-1: ızgara)
+  planCells: [],
+  planView: { k: 1, px: 0, py: 0 },   // tek parça görünümünde yakınlaştırma
   reliefInfo: null,
   viewAxis: 'z',
   sourceKind: null,      // 'foto' | 'desen' | 'model' — otomatik yumuşatma buna bakar
@@ -393,6 +396,8 @@ async function loadStlFile(file) {
     );
   }
   state.tris = tris;
+  state.planFocus = -1;
+  state.planView = { k: 1, px: 0, py: 0 };
   state.meshInfo = { format, name: file.name, count: tris.length };
   const r = rebuildFromMesh();
   reportMesh(r);
@@ -791,7 +796,10 @@ function regenerateMesh() {
 function render() {
   if (state.view === '3d') preview3d?.update(state);
   else if (state.view === 'plan') {
-    if (state.mode === 'facets' || state.mode === 'slices') drawParts(els['view-plan'], state.parts);
+    if (state.mode === 'facets' || state.mode === 'slices') {
+      if (state.planFocus >= state.parts.length) state.planFocus = -1;
+      state.planCells = drawParts(els['view-plan'], state.parts, state.planFocus, state.planView);
+    }
     else drawPlan(els['view-plan'], state);
   }
   else if (state.view === 'nest') drawNest(els['view-nest'], state.nestResult, state.sheetIndex);
@@ -1341,6 +1349,112 @@ els['mode-slices'].onclick = () => setMode('slices');
 for (const tab of document.querySelectorAll('.tab')) {
   tab.onclick = () => setView(tab.dataset.view);
 }
+
+// Plan: parçaya dokun → tam ekran. Tam ekranda iki parmak (ya da fare
+// tekerleği) yakınlaştırır, tek parmak kaydırır. Sol/sağ kenara dokunmak
+// önceki/sonraki parça, ortaya dokunmak: yakınsa sığdır, değilse ızgara.
+// Yakınlaştırma yokken 4 mm'lik perçin deliği telefonda 1-2 piksele
+// düşüyor, etiketler okunmuyordu.
+const planDokunma = { noktalar: new Map(), surukledi: false, bas: null };
+
+function planCiz() {
+  state.planCells = drawParts(els['view-plan'], state.parts, state.planFocus, state.planView);
+  // Tam ekranda sayfa kaydırma/yakınlaştırma yerine tuval hareketi.
+  els['view-plan'].style.touchAction = state.planFocus >= 0 ? 'none' : '';
+}
+
+function planGorunumSifirla() { state.planView = { k: 1, px: 0, py: 0 }; }
+
+/** (sx, sy) tuval noktası sabit kalacak şekilde k'ya yakınlaştır. */
+function planYakinlas(sx, sy, yeniK) {
+  const v = state.planView;
+  const cv = els['view-plan'];
+  const dpr = cv.width / (cv.getBoundingClientRect().width || 1);
+  const k2 = Math.max(1, Math.min(20, yeniK));
+  // Parça merkezi C = (w/2 + px, orta + py); S - C oranla ölçeklenir.
+  const cx = cv.width / 2, cy = cv.height / 2;
+  const X = sx * dpr, Y = sy * dpr;
+  v.px = X - cx - (X - cx - v.px) * (k2 / v.k);
+  v.py = Y - cy - (Y - cy - v.py) * (k2 / v.k);
+  v.k = k2;
+  if (k2 === 1) { v.px = 0; v.py = 0; }
+}
+
+const planNokta = (e) => {
+  const r = els['view-plan'].getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+};
+
+els['view-plan'].addEventListener('pointerdown', (e) => {
+  if (state.planFocus < 0) return;
+  els['view-plan'].setPointerCapture?.(e.pointerId);
+  planDokunma.noktalar.set(e.pointerId, planNokta(e));
+  if (planDokunma.noktalar.size === 1) planDokunma.surukledi = false;
+  if (planDokunma.noktalar.size === 2) {
+    const [a, b] = [...planDokunma.noktalar.values()];
+    planDokunma.bas = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, k: state.planView.k };
+  }
+});
+
+els['view-plan'].addEventListener('pointermove', (e) => {
+  const onceki = planDokunma.noktalar.get(e.pointerId);
+  if (!onceki || state.planFocus < 0) return;
+  const p = planNokta(e);
+  planDokunma.noktalar.set(e.pointerId, p);
+  const cv = els['view-plan'];
+  const dpr = cv.width / (cv.getBoundingClientRect().width || 1);
+  if (planDokunma.noktalar.size >= 2 && planDokunma.bas) {
+    const [a, b] = [...planDokunma.noktalar.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    planYakinlas((a.x + b.x) / 2, (a.y + b.y) / 2, planDokunma.bas.k * (d / planDokunma.bas.d));
+    planDokunma.surukledi = true;
+  } else {
+    const dx = p.x - onceki.x, dy = p.y - onceki.y;
+    if (Math.abs(dx) + Math.abs(dy) > 0 && state.planView.k > 1) {
+      state.planView.px += dx * dpr;
+      state.planView.py += dy * dpr;
+    }
+    if (Math.hypot(dx, dy) > 3) planDokunma.surukledi = true;
+  }
+  planCiz();
+});
+
+const planBirak = (e) => {
+  planDokunma.noktalar.delete(e.pointerId);
+  if (planDokunma.noktalar.size < 2) planDokunma.bas = null;
+};
+els['view-plan'].addEventListener('pointerup', planBirak);
+els['view-plan'].addEventListener('pointercancel', planBirak);
+
+els['view-plan'].addEventListener('wheel', (e) => {
+  if (state.planFocus < 0) return;
+  e.preventDefault();
+  const p = planNokta(e);
+  planYakinlas(p.x, p.y, state.planView.k * Math.exp(-e.deltaY * 0.0015));
+  planCiz();
+}, { passive: false });
+
+els['view-plan'].onclick = (e) => {
+  if (state.mode !== 'facets' && state.mode !== 'slices') return;
+  const n = state.parts?.length || 0;
+  if (!n) return;
+  // Sürükleme ya da iki parmak hareketinin sonundaki tıklama dokunma sayılmaz.
+  if (planDokunma.surukledi) { planDokunma.surukledi = false; return; }
+  const r = els['view-plan'].getBoundingClientRect();
+  const { x, y } = planNokta(e);
+  if (state.planFocus >= 0) {
+    if (x < r.width * 0.2) { state.planFocus = (state.planFocus - 1 + n) % n; planGorunumSifirla(); }
+    else if (x > r.width * 0.8) { state.planFocus = (state.planFocus + 1) % n; planGorunumSifirla(); }
+    else if (state.planView.k > 1.01) planGorunumSifirla();
+    else state.planFocus = -1;
+  } else {
+    const i = state.planCells.findIndex((c) => x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h);
+    if (i < 0) return;
+    state.planFocus = i;
+    planGorunumSifirla();
+  }
+  planCiz();
+};
 
 els['view-nest'].onclick = () => {
   if (!state.nestResult?.sheets.length) return;

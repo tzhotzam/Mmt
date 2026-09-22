@@ -191,49 +191,124 @@ export function drawSource(canvas, grid) {
 // ---------------------------------------------------------- PARÇA KATALOĞU
 
 /**
- * Poligonal kabuk modunda parçaları ızgara hâlinde, numaralarıyla gösterir.
- * Kaynakçının hangi parçanın nasıl göründüğünü görmesi için.
+ * Poligonal kabuk / dilim modunda parçaları gösterir.
+ *
+ *  - Izgara: bütün parçalar, numaralarıyla. Bir parçaya dokununca o parça
+ *    tam ekran açılır (focus).
+ *  - Tek parça: kesim çizgileri, kertikler, büküm izleri, delikler ve
+ *    etiketler okunacak büyüklükte. Sol kenara dokun: önceki, sağ kenar:
+ *    sonraki, orta: ızgaraya dön.
+ *
+ * Eskiden yalnızca dış hat ve delikler çiziliyordu; kertikler, büküm
+ * çizgileri ve numaralar hiç görünmüyordu, parçalar da küçücük kalıyordu.
+ * Kullanıcı perçin kulakçıklarını ve köşe deliklerini programda göremedi.
+ *
+ * @returns {Array} hücreler [{x,y,w,h}] — dokunma eşlemesi için (ızgarada)
  */
-export function drawParts(canvas, parts) {
-  const { ctx, w, h } = setup(canvas);
-  if (!parts?.length) return;
+export function drawParts(canvas, parts, focus = -1, view = null) {
+  const { ctx, w, h, dpr } = setup(canvas);
+  if (!parts?.length) return [];
+
+  if (focus >= 0 && focus < parts.length) {
+    const part = parts[focus];
+    const top = 34 * dpr, alt = 26 * dpr;
+    // view: { k, px, py } — yakınlaştırma ve kaydırma (tuval pikseli).
+    const k = view?.k || 1, px = view?.px || 0, py = view?.py || 0;
+    drawPartDetail(ctx, part, w / 2 + px, top + (h - top - alt) / 2 + py,
+      (w - 24 * dpr) * k, (h - top - alt - 12 * dpr) * k, true);
+    // Başlık ve ipucu, yakınlaştırılan parçanın üstünde okunur kalsın.
+    ctx.fillStyle = 'rgba(11,14,18,0.85)';
+    ctx.fillRect(0, 0, w, top);
+    ctx.fillRect(0, h - alt, w, alt);
+    ctx.fillStyle = '#e5e7eb';
+    ctx.font = `600 ${14 * dpr}px -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    const bb = bboxOf(part.outline);
+    ctx.fillText(`${part.id}  ·  ${Math.round(bb.w)} × ${Math.round(bb.h)} mm  ·  ${focus + 1}/${parts.length}`, w / 2, 22 * dpr);
+    ctx.fillStyle = '#9aa5b1';
+    ctx.font = `${11 * dpr}px -apple-system, sans-serif`;
+    ctx.fillText(k > 1.01
+      ? `×${k.toFixed(1)} · sürükle: kaydır · ortaya dokun: sığdır`
+      : '◀ önceki · iki parmak/tekerlek: yakınlaştır · orta: tümü · sonraki ▶', w / 2, h - 9 * dpr);
+    ctx.textAlign = 'start';
+    return [];
+  }
 
   const cols = Math.ceil(Math.sqrt(parts.length * (w / h)));
   const rows = Math.ceil(parts.length / cols);
   const cellW = w / cols;
   const cellH = h / rows;
   const pad = Math.min(cellW, cellH) * 0.12;
+  const cells = [];
 
   parts.forEach((part, i) => {
-    const b = bboxOf(part.outline);
-    const s = Math.min((cellW - pad * 2) / (b.w || 1), (cellH - pad * 2) / (b.h || 1));
     const cx = (i % cols) * cellW + cellW / 2;
     const cy = Math.floor(i / cols) * cellH + cellH / 2;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(s, -s);
-    ctx.translate(-(b.minX + b.maxX) / 2, -(b.minY + b.maxY) / 2);
-
-    // Dış halka ve delikler TEK yolda toplanır, çift-tek kuralıyla
-    // doldurulur: delikler böylece gerçekten boşluk olarak görünür.
-    // (Delikler eskiden hiç çizilmiyordu — faset modunda delik olmadığı
-    // için fark edilmemişti, ama dilim modunda mil deliği en kritik şey.)
-    ctx.beginPath();
-    tracePath(ctx, part.outline);
-    for (const hole of part.holes || []) tracePath(ctx, hole);
-    ctx.fillStyle = 'rgba(245,158,11,0.18)';
-    ctx.fill('evenodd');
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.4 / s;
-    ctx.stroke();
-    ctx.restore();
-
+    drawPartDetail(ctx, part, cx, cy - cellH * 0.04, cellW - pad * 2, cellH - pad * 2.2, false);
     ctx.fillStyle = '#9aa5b1';
     ctx.font = `${Math.max(9, cellH * 0.11)}px -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText(part.id, cx, cy + cellH / 2 - 3);
+    cells.push({ x: (i % cols) * cellW / dpr, y: Math.floor(i / cols) * cellH / dpr, w: cellW / dpr, h: cellH / dpr });
   });
+  ctx.textAlign = 'start';
+  return cells;
+}
+
+/** Bir parçayı (cx,cy) merkezli, bw×bh kutuya sığdırıp çizer. */
+function drawPartDetail(ctx, part, cx, cy, bw, bh, detayli) {
+  const b = bboxOf(part.outline);
+  const s = Math.min(bw / (b.w || 1), bh / (b.h || 1));
+  const mx = (b.minX + b.maxX) / 2, my = (b.minY + b.maxY) / 2;
+  const X = (x) => cx + (x - mx) * s;
+  const Y = (y) => cy - (y - my) * s;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(s, -s);
+  ctx.translate(-mx, -my);
+
+  // Dış halka ve delikler TEK yolda, çift-tek kuralıyla: delikler gerçekten
+  // boşluk olarak görünür.
+  ctx.beginPath();
+  tracePath(ctx, part.outline);
+  for (const hole of part.holes || []) tracePath(ctx, hole);
+  ctx.fillStyle = '#e8583a';
+  ctx.fill('evenodd');
+  ctx.strokeStyle = '#ffd2c4';
+  ctx.lineWidth = 1 / s;
+  ctx.stroke();
+
+  for (const e of part.engrave || []) {
+    if (e.type !== 'polyline') continue;
+    ctx.beginPath();
+    tracePath(ctx, e.points, e.closed !== false);
+    if (e.layer === 'KESIM') {
+      // Kertik: tam kesim — koyu ve kalın.
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = (detayli ? 2.2 : 1.4) / s;
+    } else {
+      // Büküm izi / hizalama: yüzeysel gravür — ince ve açık.
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 0.8 / s;
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Yazılar ekran koordinatında çizilir (Y ekseni ters, metin ters dönmesin).
+  // Okunamayacak kadar küçükse hiç çizilmez; ızgarada kalabalık yapar.
+  ctx.fillStyle = '#1b1b1b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const e of part.engrave || []) {
+    if (e.type !== 'text') continue;
+    const px = e.size * s;
+    if (px < 7) continue;
+    ctx.font = `${px}px -apple-system, sans-serif`;
+    ctx.fillText(e.text, X(e.x), Y(e.y));
+  }
+  ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'start';
 }
 

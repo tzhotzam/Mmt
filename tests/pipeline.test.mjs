@@ -927,7 +927,8 @@ test('parça önizlemesi delikleri çiziyor', () => {
   // Delikler hiç çizilmiyordu; faset modunda delik olmadığı için fark
   // edilmemişti, ama dilim modunda mil deliği en kritik bilgi.
   const js = oku('js/preview2d.js');
-  const govde = js.match(/export function drawParts[\s\S]*?\n}/)?.[0] || '';
+  // Çizim drawPartDetail yardımcısına taşındı; ikisi birlikte aranır.
+  const govde = js.slice(js.indexOf('export function drawParts'), js.indexOf('function bboxOf'));
   assert.ok(/part\.holes/.test(govde), 'drawParts delikleri çizmiyor');
   assert.ok(/evenodd/.test(govde), 'delikler çift-tek kuralıyla boşaltılmalı');
 });
@@ -1619,6 +1620,20 @@ test('poligonal kabukta perçin seçilince kaynak dikişi düşer', () => {
   const g = assemblyGuide(percin.info, percin.seams, percin.folds);
   assert.ok(g.includes('PERÇİNLİ BİRLEŞİM'), 'montaj kılavuzunda perçin bölümü yok');
   assert.match(g, /perçin ×\d+ \(kulakçık Y\d+\)/, 'dikiş listesinde perçin satırı yok');
+});
+
+test('plan görünümü kertik, büküm ve etiketleri çizer, parçaya dokununca büyütür', () => {
+  // Eskiden plan yalnızca dış hat + delik çiziyordu: kullanıcı perçin
+  // kulakçıklarını, kertikleri ve numaraları programda göremiyordu.
+  const src = oku('js/preview2d.js');
+  const fn = src.slice(src.indexOf('export function drawParts'), src.indexOf('function bboxOf'));
+  assert.ok(/e\.layer === 'KESIM'/.test(fn), 'kertikler çizilmiyor');
+  assert.ok(/e\.type !== 'text'/.test(fn) && /fillText\(e\.text/.test(fn), 'etiketler çizilmiyor');
+  assert.ok(/focus/.test(fn), 'tek parça büyütme yok');
+  const js = oku('js/main.js');
+  assert.ok(/els\['view-plan'\]\.onclick/.test(js), 'plana dokunma bağlı değil');
+  assert.ok(/drawParts\(els\['view-plan'\], state\.parts, state\.planFocus, state\.planView\)/.test(js));
+  assert.ok(/addEventListener\('wheel'/.test(js) && /pointermove/.test(js), 'yakınlaştırma yok');
 });
 
 test('birleşim ayarları arayüzde', () => {
