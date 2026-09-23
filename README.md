@@ -158,6 +158,19 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   yüzey, 1,5 mm sac, 3000 × 1500 levha, yaprak en çok 1000 mm → 69 yaprak,
   438 perçin, 5 levha, 6,1 m² (~72 kg çelik). Perçinsiz kalan dikişlerin
   çoğu 40 mm'den kısadır; komşu perçinler onları tutar.
+- **Küçük aralıklı dilim heykeller (ör. 1/10 araba).** Dilim modunda ince sac
+  + boşluk (ör. 2 mm sac, 2 mm aralık) ile kanatlı heykel: model genişlik
+  ekseninde (X) dilimlenir, her kanat o genişlikteki yan profildir. Aralıklı
+  dizilişte milsiz parça komşuya yapıştırılamaz, havada kalır; bu yüzden
+  mil yerleşimi her parçanın bir mil zinciriyle ANA GÖVDEYE bağlanmasını
+  arar (açgözlü kapsama + bağlılık), mil heykelin dışına çıktığı yerde
+  bölünür ve kılavuz her mil parçasını "D004–D053: 220 mm" diye listeler.
+  Gövdeden ayrı duran bölgeler kendi milleriyle alt grup (G1, G2) olur.
+  Bozuk model dilimde de onarılır; kesitler 1/5000 toleransla sadeleşir
+  (konsept arabada 12 s → 3,9 s). Örnek (Khronos CarConcept, CC-BY 4.0,
+  tekerleksiz gövde): 450 mm, 2+2 mm, en küçük ada 400 mm², Ø4 mil otomatik
+  → 57 kanat / 78 parça, 7 mil, milsiz parça yok. Tekerlekler krom
+  torna/lazer halka olarak ayrı yapılır.
 - **Dik eksen.** Birçok program modeli "Y yukarı" kaydeder; bizim program Z'yi
   yukarı sayar ve böyle bir model önizlemede yan yatık görünür (şaha kalkmış
   at yerde yatıyordu). Gelişmiş ayarlarda "Dik eksen: Y yukarı" seçin.

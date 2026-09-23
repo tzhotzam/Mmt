@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-09-22-p';
+const APP_VERSION = '2026-09-23-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -181,7 +181,8 @@ function readParams() {
       minArea: num('p-sliceMinArea', 300),
       rodShape: els['p-rodShape'].value,
       rodDiameter: num('p-rodDiameter', 10),
-      rodCount: Math.round(num('p-rodCount', 2)),
+      rodCount: Math.round(num('p-rodCount', 0)),
+      upAxis: els['p-sliceUpAxis'].value,
       toolDiameter: common.toolDiameter,
     };
   }
@@ -749,9 +750,35 @@ function facetMeshSource() {
   return null;
 }
 
+/**
+ * Dilim modu için ağ: bozuk model (delikli, üst üste binen yüzeyler) önce
+ * hacimden yeniden kurulur. Ham hâliyle dilimlenen konsept araba modelinde
+ * 7293 kesit halkası kapanmıyor, 513 anlamsız parça çıkıyordu; onarılmış
+ * hâli 138 temiz parça verdi. Sadeleştirme yok — dilim her ayrıntıyı ister.
+ */
+function sliceMeshSource() {
+  if (!state.tris) return null;
+  if (state.remeshCache?.src !== state.tris) {
+    state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null };
+  }
+  const rc = state.remeshCache;
+  const secim = els['p-remesh']?.value || 'oto';
+  const onar = secim === 'acik' || (secim === 'oto' && rc.health.bozuk);
+  if (!onar) return { tris: state.tris, not: null };
+  if (!rc.tris) {
+    const r = voxelRemesh(state.tris, { resolution: REMESH_RES, smooth: 1 });
+    rc.tris = r.tris;
+    rc.info = r.info;
+  }
+  return {
+    tris: rc.tris,
+    not: `Model onarıldı (${rc.health.openEdges} delik kenarı vardı): kesitler artık kapanıyor.`,
+  };
+}
+
 function regenerateMesh() {
   state.seams = [];
-  const kaynak = state.mode === 'facets' ? facetMeshSource() : (state.tris ? { tris: state.tris, not: null } : null);
+  const kaynak = state.mode === 'facets' ? facetMeshSource() : sliceMeshSource();
   if (!kaynak || !kaynak.tris?.length) {
     state.parts = [];
     state.info = null;

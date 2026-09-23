@@ -918,7 +918,8 @@ test('dilim montaj kılavuzu mil boyunu ve yapıştırılacakları yazar', () =>
   const r = generateSlices(tris, { targetSize: 1200, thickness: 18, rodCount: 1 });
   const g = assemblyGuide(r.info);
   assert.match(g, /MİL/, 'mil bilgisi yok');
-  assert.match(g, /mm boyunda olmalı/, 'mil boyu yazılmıyor');
+  // Mil artık parça parça listelenir: hangi dilimden hangisine, kaç mm.
+  assert.match(g, /Mil 1: D\d{3}–D\d{3}: \d+ mm/, 'mil parçası boyu yazılmıyor');
   assert.match(g, /mil geçmiyor/, 'milsiz parçalar kılavuzda anılmıyor');
   assert.match(g, /TEK MİL/, 'tek milin dönme riski yazılmıyor');
 });
@@ -1780,6 +1781,30 @@ test('dik eksen Y seçilince model döner, ayna olmaz', () => {
   const v0 = checkClosed(kutu, 1e-6).volume, v1 = checkClosed(d, 1e-6).volume;
   assert.ok(v0 > 0 && v1 > 0 && Math.abs(v0 - v1) / v0 < 1e-6, 'dönme hacmi/yönü bozdu (ayna?)');
   assert.ok(oku('index.html').includes('id="p-upAxis"'), 'arayüzde dik eksen yok');
+});
+
+test('aralıklı dilimde her parça ana gövdeye mille bağlanır', () => {
+  // Eski yerleşim ikinci mili de gövdeye koyuyordu; ayrı bacaklar boşta
+  // kalıyordu. Aralıklı dizilişte milsiz parça havada kalır.
+  const tris = [
+    ...cylinderTris(0, 0, 0, 900, 120),         // gövde
+    ...cylinderTris(260, 0, 0, 600, 35),        // yanında kısa "bacak", gövdeye değmiyor ama
+    ...cylinderTris(130, 0, 400, 300, 170),     // üstte ikisini birleştiren köprü
+  ];
+  const oto = generateSlices(tris, { targetSize: 1200, thickness: 3, gap: 3, axis: 'z', minArea: 50, rodDiameter: 8, rodCount: 0 });
+  const eski = generateSlices(tris, { targetSize: 1200, thickness: 3, gap: 3, axis: 'z', minArea: 50, rodDiameter: 8, rodCount: 1 });
+  assert.ok(oto.info.rodPoints.length >= 2, 'otomatik yerleşim ikinci mili koymadı');
+  assert.ok(oto.info.rodlessParts < eski.info.rodlessParts, `milsiz ${oto.info.rodlessParts} (tek milde ${eski.info.rodlessParts})`);
+  // Mil parçaları: heykelin dışına çıkan yerde bölünür, en az iki dilim.
+  for (const g of oto.info.rodSegments) for (const x of g) assert.ok(x.to > x.from, 'tek dilimlik mil parçası');
+});
+
+test('dilim modunda onarım ve dik eksen', () => {
+  const js = oku('js/main.js');
+  assert.ok(/function sliceMeshSource/.test(js), 'dilim modu bozuk modeli onarmıyor');
+  assert.ok(/upAxis: els\['p-sliceUpAxis'\]\.value/.test(js), 'dilimde dik eksen okunmuyor');
+  const html = oku('index.html');
+  assert.ok(/id="p-rodCount" value="0"/.test(html), 'mil sayısı varsayılanı otomatik değil');
 });
 
 test('birleşim ayarları arayüzde', () => {

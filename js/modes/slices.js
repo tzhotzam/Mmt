@@ -16,20 +16,22 @@
 //     işaretlenir ve kullanıcıya "bunları yapıştıracaksın" denir.
 
 import { sliceMesh } from '../slice.js';
-import { classifyRings, signedArea, bbox, pointInRing, centroid } from '../geom.js';
+import { classifyRings, signedArea, bbox, pointInRing, centroid, simplify } from '../geom.js';
 import { scaleTriangles } from '../mesh.js';
+import { dikCevir } from './facets.js';
 import { cornerRelief } from '../corners.js';
 
 export const SLICE_DEFAULTS = {
   targetSize: 1200,     // heykelin en uzun kenarı (mm)
   sizeAxis: 'max',
+  upAxis: 'z',          // modelin dik ekseni (Y-yukarı dosyalar için 'y')
   axis: 'z',            // dilimlerin dizildiği eksen
   thickness: 18,
   gap: 0,               // dilimler arası (mm) — 0 = sıkı istif
   minArea: 300,         // bu alanın altındaki adalar elenir (mm²)
   rodShape: 'yuvarlak', // 'yuvarlak' (mil) | 'kare' (kazık)
   rodDiameter: 10,      // yuvarlakta ÇAP, karede KENAR (mm)
-  rodCount: 2,          // yuvarlak milde 2 tane dönmeyi engeller
+  rodCount: 0,          // 0 = otomatik: her parça tutulana kadar mil eklenir (en çok 12)
   rodInset: 0.35,       // iki mil, parçanın ana ekseninde bu oranda ayrılır
   toolDiameter: 6,      // kare kazık yuvasının köşe payı bu uca göre açılır
   labelSize: 8,
@@ -40,7 +42,7 @@ export function generateSlices(rawTris, userParams = {}) {
   const p = { ...SLICE_DEFAULTS, ...userParams };
   const warnings = [];
 
-  const scaled = scaleTriangles(rawTris, p.targetSize, p.sizeAxis);
+  const scaled = scaleTriangles(dikCevir(rawTris, p.upAxis), p.targetSize, p.sizeAxis);
   const pitch = p.thickness + p.gap;
   const sliced = sliceMesh(scaled.tris, {
     axis: p.axis, pitch, tol: Math.max(0.005, p.targetSize * 1e-5), maxLayers: p.maxLayers,
@@ -60,7 +62,14 @@ export function generateSlices(rawTris, userParams = {}) {
 
   const layers = sliced.layers.map((l) => {
     acikZincir += l.open;
-    const sinif = classifyRings(l.rings);
+    // Kesitleri sadeleştir: hacimden yeniden kurulmuş ya da taranmış
+    // modellerde bir kesit binlerce köşe taşıyor; mil araması ve kesim
+    // dosyası bunun altında eziliyordu (konsept arabada 12 saniye). Tolerans
+    // heykel boyunun 1/5000'i — 450 mm'de 0,09 mm, lazerin ışın payından az.
+    const tol = Math.max(0.02, p.targetSize * 2e-4);
+    const sinif = classifyRings(l.rings
+      .map((ring) => simplify(ring, tol, true))
+      .filter((ring) => ring.length >= 3));
     const disHalkalar = sinif.filter((s) => !s.hole);
     const delikler = sinif.filter((s) => s.hole);
 
@@ -98,18 +107,25 @@ export function generateSlices(rawTris, userParams = {}) {
   const milYaricap = kareMi
     ? (p.rodDiameter * Math.SQRT2) / 2 + ucYaricap
     : p.rodDiameter / 2;
-  const mil = chooseRods(layers, p, milYaricap);
+  const mil = planRods(layers, p, milYaricap);
 
   // ---- Parçaları kur -----------------------------------------------------
   const parts = [];
   let milsiz = 0;
-  layers.forEach((l) => {
+  let tekMil = 0;
+  let gruptaki = 0;
+  layers.forEach((l, li) => {
     const cokAda = l.adalar.length > 1;
     l.adalar.forEach((ada, ai) => {
       const id = `D${String(l.index + 1).padStart(3, '0')}${cokAda ? String.fromCharCode(97 + ai) : ''}`;
       const holes = ada.holes.slice();
 
-      const tutan = mil.points.filter((m) => icerdeMi(m, ada, milYaricap));
+      // Yalnızca bu adayı en az iki dilim boyunca geçen mil parçaları delik
+      // açar; tek dilimlik "parça" hiçbir şeyi hiçbir şeye bağlamaz.
+      const tutan = mil.points.filter((m, k) => mil.tutar[k][li] === ai);
+      if (tutan.length === 1 && !kareMi) tekMil++;
+      const grup = tutan.length ? mil.grup(li, ai) : 0;
+      if (grup) gruptaki++;
       for (const m of tutan) {
         holes.push(kareMi
           ? squareSlot(m, p.rodDiameter, (p.toolDiameter || 0) / 2)
@@ -124,12 +140,12 @@ export function generateSlices(rawTris, userParams = {}) {
         kind: 'dilim',
         outline: ada.outline,
         holes,
-        engrave: [{ type: 'text', text: id, x: c[0], y: c[1], size: p.labelSize }],
+        engrave: [{ type: 'text', text: grup ? `${id} G${grup}` : id, x: c[0], y: c[1], size: p.labelSize }],
         w: b.w,
         h: b.h,
         meta: {
           layer: l.index, coord: l.coord, island: ai,
-          area: ada.area, rods: tutan.length,
+          area: ada.area, rods: tutan.length, group: grup,
         },
       });
     });
@@ -139,7 +155,9 @@ export function generateSlices(rawTris, userParams = {}) {
   // Sınırı, milin geçtiği EN DAR kesit belirler. İstenen ölçü hiçbir kesite
   // sığmadıysa mil.points boş kalır; o durumda ölçüyü sıfır kabul edip
   // yeniden yer arıyoruz, yoksa kullanıcıya "en fazla kaç" diyemeyiz.
-  const olcum = mil.points.length ? mil : chooseRods(layers, p, 0);
+  // Ölçü tahmini eski tek-noktalı aramayla yapılır (mil planı yarıçap vermez).
+  let olcum = chooseRods(layers, p, milYaricap);
+  if (!olcum.points.length) olcum = chooseRods(layers, p, 0);
   // Yuvarlakta çap = 2r. Karede yukarıdaki bağıntının tersi:
   // r = kenar·√2/2 + ucYarıçapı  →  kenar = (r - ucYarıçapı)·2/√2.
   const enBuyuk = olcum.maxRadius > 0
@@ -157,8 +175,11 @@ export function generateSlices(rawTris, userParams = {}) {
       'eksik parça olarak çıkar.'
     );
   }
+  // Elenen kırıntılar bir BİLGİdir, sorun değil (ayrıntı için arayüzde gri
+  // "Bilgi" satırı). Tüm adalar elendiyse zaten yukarıda hata dönülüyor.
+  const notes = [];
   if (elenenAda > 0) {
-    warnings.push(
+    notes.push(
       `${elenenAda} küçük ada elendi (toplam ${Math.round(elenenAlan)} mm²). ` +
       `Bunlar parmak ucu, saç teli gibi ince uzantılardır; ${p.minArea} mm² ` +
       'sınırının altında kaldıkları için kesilmeye değmez. Gerekiyorsa ' +
@@ -166,13 +187,24 @@ export function generateSlices(rawTris, userParams = {}) {
     );
   }
   if (milsiz > 0) {
-    warnings.push(
-      `${milsiz} parçadan mil geçmiyor — bunlar kendi başına durmaz, ` +
-      'komşu dilime yapıştırılmalı. Montaj kılavuzunda işaretli. ' +
-      'Mil sayısını 2 yapmak ya da mil yerini değiştirmek bu sayıyı düşürür.'
+    warnings.push(p.gap > 0
+      ? `${milsiz} parçadan mil geçmiyor ve dilimler aralıklı olduğu için komşuya ` +
+        'yapıştırılamazlar — havada kalırlar. Genelde ayna, spoyler ucu gibi küçük ' +
+        'kopuk adalardır: "En küçük ada"yı büyütüp eleyin, mil çapını küçültün ya ' +
+        'da mil sayısını otomatik (0) bırakın.'
+      : `${milsiz} parçadan mil geçmiyor — bunlar kendi başına durmaz, ` +
+        'komşu dilime yapıştırılmalı. Montaj kılavuzunda işaretli.'
     );
   }
-  if (mil.points.length < p.rodCount) {
+  if (gruptaki > 0) {
+    warnings.push(
+      `${gruptaki} parça ana gövdeye düz mille bağlanamıyor (gövdeden ayrı duran ` +
+      `bölgeler); kendi milleriyle ${mil.grupSayisi} alt grup oluşturuyorlar. Her ` +
+      'grubu önce kendi milinde tarak gibi birleştirin, sonra gövdeye birkaç ' +
+      'noktadan yapıştırın. Parçalarda "G1", "G2" diye işaretli.'
+    );
+  }
+  if (p.rodCount > 0 && mil.points.length < p.rodCount) {
     warnings.push(
       `${p.rodCount} mil istendi ama ${mil.points.length} tanesi yerleştirilebildi. ` +
       'Kesitler tek milden fazlasını taşıyacak kadar geniş değil; tek milde ' +
@@ -213,6 +245,7 @@ export function generateSlices(rawTris, userParams = {}) {
 
   return {
     parts,
+    notes,
     info: {
       mode: 'slices',
       layerCount: sliced.count,
@@ -220,6 +253,10 @@ export function generateSlices(rawTris, userParams = {}) {
       pitch,
       axis: p.axis,
       rodPoints: mil.points,
+      rodSegments: mil.segments,
+      singleRodParts: tekMil,
+      groupedParts: gruptaki,
+      groupCount: mil.grupSayisi,
       rodShape: p.rodShape,
       rodDiameter: p.rodDiameter,
       maxRodSize: enBuyuk,
@@ -232,6 +269,194 @@ export function generateSlices(rawTris, userParams = {}) {
       params: p,
     },
     warnings,
+  };
+}
+
+/**
+ * MİL PLANI — her parçayı tutacak kadar mil, en azından.
+ *
+ * Eski yöntem bütün heykel için N nokta seçiyor, her birini "en çok parçayı
+ * delen" yere koyuyordu. İkinci mil de hep gövdeye düşüyordu (en kalabalık
+ * bölge orası); bacak, kafa, ayna gibi ayrı adalar boşta kalıyordu. Tam
+ * istifte onlar komşuya yapıştırılabiliyordu; aralıklı dizilişte (fotoğraftaki
+ * araba) havada kalırlar. Ölçüldü: konsept arabada 138 parçanın 80'i milsizdi.
+ *
+ * Şimdi:
+ *  - Mil düz bir çizgidir ama heykelin DIŞINA çıktığı dilimlerde görünür
+ *    olurdu; bu yüzden milin içeride kaldığı ardışık dilim dizileri ayrı
+ *    MİL PARÇALARI sayılır. En az iki dilim geçen parça işe yarar.
+ *  - Açgözlü kapsama: her yeni mil, henüz tutulmayan parçaları en çok
+ *    kapsayan yere konur. Yuvarlak milde tek milli parçaya ikinci mil
+ *    (dönmeyi engeller) daha az puan getirir.
+ *  - rodCount 0 ise yeni parça tutulamayana kadar (en çok 12) mil eklenir.
+ *
+ * @returns {{points, segments, tutar}} tutar[k][katman] = milin o katmanda
+ *          tuttuğu ada indisi, yoksa -1
+ */
+function planRods(layers, p, r) {
+  const kare = p.rodShape === 'kare';
+  // Ada kutuları: nokta-içinde sınamasının çoğunu ucuzca eler (ilk sürüm
+  // bunsuz 13 saniye sürüyordu).
+  const kutular = layers.map((l) => l.adalar.map((ada) => bbox(ada.outline)));
+  const icinde = (c, li, ai) => {
+    const b = kutular[li][ai];
+    if (c[0] < b.minX + r || c[0] > b.maxX - r || c[1] < b.minY + r || c[1] > b.maxY - r) return false;
+    return icerdeMi(c, layers[li].adalar[ai], r);
+  };
+
+  const adaylar = [];
+  layers.forEach((l, li) => {
+    l.adalar.forEach((ada, ai) => {
+      const c = centroid(ada.outline);
+      if (icinde(c, li, ai)) adaylar.push(c);
+      const b = kutular[li][ai];
+      for (let iy = 1; iy <= 3; iy++) {
+        for (let ix = 1; ix <= 3; ix++) {
+          const q = [b.minX + (b.w * ix) / 4, b.minY + (b.h * iy) / 4];
+          if (icinde(q, li, ai)) adaylar.push(q);
+        }
+      }
+    });
+  });
+  const adim = Math.max(1, Math.floor(adaylar.length / 900));
+  const ornek = adaylar.filter((_, i) => i % adim === 0);
+
+  // Adalara sıra numarası: birleşim-bul (union-find) bunun üstünde çalışır.
+  const kimlik = [];
+  let toplam = 0;
+  const alanlar = [];
+  for (const l of layers) {
+    kimlik.push(l.adalar.map((ada) => { alanlar.push(ada.area); return toplam++; }));
+  }
+
+  // Her aday için katman katman tuttuğu ada; işe yarayan mil parçaları.
+  const iz = ornek.map((c) => {
+    const hit = layers.map((l, li) => {
+      for (let ai = 0; ai < l.adalar.length; ai++) if (icinde(c, li, ai)) return ai;
+      return -1;
+    });
+    const tutar = hit.slice().fill(-1);
+    const parcalar = [];
+    for (let i = 0; i < hit.length;) {
+      if (hit[i] < 0) { i++; continue; }
+      let j = i;
+      while (j + 1 < hit.length && hit[j + 1] >= 0) j++;
+      if (j > i) {
+        parcalar.push([i, j]);
+        for (let k = i; k <= j; k++) tutar[k] = hit[k];
+      }
+      i = j + 1;
+    }
+    return { c, tutar, parcalar };
+  });
+
+  // BAĞLANTI: mil parçası, geçtiği ardışık adaları birbirine bağlar. Bir ada
+  // ancak ANA GÖVDEYE (en büyük alanlı bağlı küme) bir zincirle bağlıysa
+  // tutulmuş sayılır — havada birbirine takılı iki kırıntı işe yaramaz.
+  const kok = (u, i) => { while (u[i] !== i) { u[i] = u[u[i]]; i = u[i]; } return i; };
+  const bagla = (u, z) => {
+    for (const [a, b2] of z.parcalar) {
+      for (let k = a; k < b2; k++) {
+        const x = kok(u, kimlik[k][z.tutar[k]]), y = kok(u, kimlik[k + 1][z.tutar[k + 1]]);
+        if (x !== y) u[x] = y;
+      }
+    }
+  };
+  // Puan: ana gövdeye bağlı her ada 1; ana gövdeye değmeyen ama en az üç
+  // adalık kendi mil grubunu (tarak) oluşturan her ada 0,5. Gövdeden ayrı
+  // duran bir tampon dudağı düz mille gövdeye bağlanamaz (konsept arabada
+  // 27 dilim boyunca 2 cm boşlukla ayrı); kendi miliyle tek parça tarak olur
+  // ve gövdeye birkaç noktadan yapıştırılır — 27 kanadı tek tek yapıştırmaktan
+  // çok daha iyi.
+  const kumeler = (u, delinen) => {
+    const alan = new Map(), adet = new Map();
+    for (let i = 0; i < toplam; i++) {
+      if (!delinen[i]) continue;
+      const k = kok(u, i);
+      alan.set(k, (alan.get(k) || 0) + alanlar[i]);
+      adet.set(k, (adet.get(k) || 0) + 1);
+    }
+    let ana = -1, enBuyuk = 0;
+    for (const [k, a2] of alan) if (a2 > enBuyuk) { enBuyuk = a2; ana = k; }
+    return { ana, adet };
+  };
+  const anaKumeSayisi = (u, delinen) => {
+    const { ana, adet } = kumeler(u, delinen);
+    let puan = 0;
+    for (const [k, n] of adet) {
+      if (k === ana) puan += n;
+      else if (n >= 3) puan += 0.5 * n;
+    }
+    return puan;
+  };
+
+  const uf = Int32Array.from({ length: toplam }, (_, i) => i);
+  const delinen = new Uint8Array(toplam);
+  const sayac = new Int32Array(toplam);
+  let mevcut = 0;
+  const enAzAra = Math.max(p.rodDiameter * 3, r * 4);
+  const hedef = p.rodCount > 0 ? p.rodCount : 12;
+  const secilen = [];
+  for (let k = 0; k < hedef; k++) {
+    let enIyi = null, enIyiG = 0;
+    for (const z of iz) {
+      if (!z.parcalar.length) continue;
+      if (secilen.some((q) => Math.hypot(q.c[0] - z.c[0], q.c[1] - z.c[1]) < enAzAra)) continue;
+      const u = Int32Array.from(uf);
+      const d = Uint8Array.from(delinen);
+      let donme = 0;
+      z.tutar.forEach((ai, li) => {
+        if (ai < 0) return;
+        const id = kimlik[li][ai];
+        d[id] = 1;
+        if (!kare && sayac[id] === 1) donme++;
+      });
+      bagla(u, z);
+      const g = anaKumeSayisi(u, d) - mevcut + 0.35 * donme;
+      if (g > enIyiG + 1e-9) { enIyiG = g; enIyi = z; }
+    }
+    // Otomatikte yeni mil en az bir parçayı ana gövdeye bağlamalı ya da üç
+    // parçanın dönmesini engellemeli; yoksa gereksiz delik açar.
+    if (!enIyi || (p.rodCount === 0 && enIyiG < 1)) break;
+    secilen.push(enIyi);
+    enIyi.tutar.forEach((ai, li) => {
+      if (ai < 0) return;
+      const id = kimlik[li][ai];
+      delinen[id] = 1;
+      sayac[id]++;
+    });
+    bagla(uf, enIyi);
+    mevcut = anaKumeSayisi(uf, delinen);
+  }
+
+  // Ana gövdeye bağlanamayan adalardaki delikler anlamsız; o mil parçaları
+  // yine de listede kalır (kullanıcı tutkalla birleştirebilir) ama ada
+  // "milsiz" sayılır.
+  const { ana: anaKok, adet: kumeAdet } = kumeler(uf, delinen);
+  // Ada ne durumda: 'ana' (gövdeye mille bağlı), 'grup' (kendi mil grubunda,
+  // gruba yapıştırılır), ya da tutulmuyor.
+  const durum = (li, ai) => {
+    if (ai < 0 || !delinen[kimlik[li][ai]]) return null;
+    const k2 = kok(uf, kimlik[li][ai]);
+    if (k2 === anaKok) return 'ana';
+    return (kumeAdet.get(k2) || 0) >= 3 ? 'grup' : null;
+  };
+  const gruplar = new Set();
+  for (let li = 0; li < layers.length; li++) {
+    for (let ai = 0; ai < layers[li].adalar.length; ai++) {
+      if (durum(li, ai) === 'grup') gruplar.add(kok(uf, kimlik[li][ai]));
+    }
+  }
+  const grupNo = new Map([...gruplar].map((k2, i) => [k2, i + 1]));
+
+  const mm = (a, b2) => (b2 - a + 1) * p.thickness + (b2 - a) * p.gap;
+  return {
+    points: secilen.map((z) => z.c),
+    tutar: secilen.map((z) => z.tutar.map((ai, li) => (durum(li, ai) ? ai : -1))),
+    segments: secilen.map((z) => z.parcalar.map(([a, b2]) => ({ from: a, to: b2, length: mm(a, b2) }))),
+    // Ada → grup numarası (yalnızca ana gövdeye bağlanamayan gruplar için).
+    grup: (li, ai) => (durum(li, ai) === 'grup' ? grupNo.get(kok(uf, kimlik[li][ai])) : 0),
+    grupSayisi: gruplar.size,
   };
 }
 
@@ -400,7 +625,7 @@ function squareSlot(c, side, toolRadius) {
 function emptyInfo(p, scaled, pitch) {
   return {
     mode: 'slices', layerCount: 0, partCount: 0, pitch, axis: p.axis,
-    rodPoints: [], rodShape: p.rodShape, rodDiameter: p.rodDiameter, maxRodSize: 0, rodlessParts: 0,
+    rodPoints: [], rodSegments: [], singleRodParts: 0, groupedParts: 0, groupCount: 0, rodShape: p.rodShape, rodDiameter: p.rodDiameter, maxRodSize: 0, rodlessParts: 0,
     modelSize: scaled.size, panelW: scaled.size.x, panelH: scaled.size.z || scaled.size.y,
     totalDepth: 0, totalHeight: 0, params: p,
   };

@@ -290,6 +290,35 @@ function round(v, digits = 0) {
  * milden geçmediği. İkincisi söylenmezse usta parçayı eline alıp nereye
  * oturacağını bulamaz.
  */
+/**
+ * Mil parça listesi. Mil heykelin dışına çıktığı dilimlerde görünür olurdu;
+ * bu yüzden içeride kaldığı her ardışık dilim dizisi ayrı bir mil parçasıdır.
+ */
+function milParcalari(info, milBoyu) {
+  const p = info.params;
+  const segs = info.rodSegments || [];
+  if (!segs.length || !segs.some((g) => g.length)) {
+    return [`  En az ${milBoyu} mm boyunda olmalı (yığın + 80 mm bağlantı payı).`];
+  }
+  // Aralıklı dizilişte uçlara somun/rondela payı; sıkı istifte mil gömülür.
+  const pay = p.gap > 0 ? 20 : 0;
+  const out = [];
+  let toplam = 0, adet = 0;
+  segs.forEach((g, k) => {
+    const parca = g.map((x) => `D${String(x.from + 1).padStart(3, '0')}–D${String(x.to + 1).padStart(3, '0')}: ` +
+      `${Math.ceil((x.length + pay) / 5) * 5} mm`);
+    g.forEach((x) => { toplam += x.length + pay; adet++; });
+    out.push(`  Mil ${k + 1}: ${parca.join(' · ')}`);
+  });
+  out.push(`  Toplam ${adet} mil parçası, ${Math.ceil(toplam / 10) * 10} mm çubuk` +
+    (pay ? ' (her parçaya iki uçta 10\'ar mm somun/rondela payı dahil).' : '.'));
+  if (p.gap > 0) {
+    out.push(`  Aralıklı dizilişte dişli çubuk (M${Math.round(p.rodDiameter)}) + her iki dilim arasına`);
+    out.push(`  ${p.gap} mm boyunda ara boru önerilir; uçlarda somunla sıkıştırılır.`);
+  }
+  return out;
+}
+
 function sliceGuide(info) {
   const p = info.params;
   const kare = p.rodShape === 'kare';
@@ -307,7 +336,7 @@ function sliceGuide(info) {
     kare
       ? `KAZIK: ${info.rodPoints.length} adet, ${p.rodDiameter}×${p.rodDiameter} mm kare kesit.`
       : `MİL: ${info.rodPoints.length} adet, Ø${p.rodDiameter} mm.`,
-    `  En az ${milBoyu} mm boyunda olmalı (yığın + 80 mm bağlantı payı).`,
+    ...milParcalari(info, milBoyu),
     kare
       ? '  Yuvanın köşelerinde kemik payı var: dönen uç keskin iç köşe kesemez,'
       : '  Delikler mil çapında açılır; sıkı geçme isteniyorsa 0,2 mm küçültün.',
@@ -329,6 +358,14 @@ function sliceGuide(info) {
   if (p.gap > 0) {
     satirlar.push(`  Dilimler arasına ${p.gap} mm kalınlığında ara pul gerekir` +
       (kare ? ' (kare kazıkta: aynı kesitte kısa takozlar).' : ' (boru/rondela).'));
+  }
+
+  if (info.groupedParts > 0) {
+    satirlar.push('');
+    satirlar.push(`ALT GRUPLAR: ${info.groupedParts} parça ${info.groupCount} grupta (G1, G2 ...).`);
+    satirlar.push('  Bu bölgeler gövdeden ayrı durduğu için düz mil gövdeye ulaşmaz.');
+    satirlar.push('  Her grubu önce kendi mil parçasında birleştirin, sonra gövdeye');
+    satirlar.push('  değdiği yerlerden yapıştırın (epoksi ya da siyanoakrilat).');
   }
 
   if (info.rodlessParts > 0) {
