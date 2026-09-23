@@ -380,7 +380,12 @@ function sliceGuide(info) {
   satirlar.push(
     '',
     'Montaj sırası:',
-    '  1. Omurgayı düz bir tabana dik sabitleyin (flanş ya da taban levhasına gömme).',
+    // Yatay dizilişte (X/Y ekseni: kanatlı araba gibi) mil yataydır; "tabana
+    // dik sabitleyin" talimatı yanlış oluyordu.
+    p.axis === 'z'
+      ? '  1. Omurgayı düz bir tabana dik sabitleyin (flanş ya da taban levhasına gömme).'
+      : '  1. Milleri yatay tutun (iki takoz üstünde). Heykeli tabana en alttaki birkaç\n' +
+        '     dilimden cıvatayla ya da tabandan çıkan iki pimle bağlayın.',
     '  2. D001\'den başlayarak dilimleri sırayla geçirin; gravür numarası hep aynı',
     '     yöne baksın, yoksa yığın burulur.',
     '  3. Her 8-10 dilimde bir gönye ve şakül kontrolü yapın.',
