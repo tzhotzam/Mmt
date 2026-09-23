@@ -1820,6 +1820,41 @@ test('çizgisi çıkmayan yaprak sessizce atılmaz', () => {
   assert.equal(r.seams.filter((x) => !x.aId || !x.bId).length, 0, 'kabartmada delik kaldı');
 });
 
+test('kızak kanatları alttan geçmeyle tutar', () => {
+  // Aralıklı kanat heykelde kanatları alttan tutan geçmeli kızak.
+  const kutu = [];
+  // Alt yüzü düz, üstü kavisli bir gövde: 200 (x) × 400 (y) × 100 (z)
+  const N = 24;
+  const z = (y) => 40 + 60 * Math.sin(Math.PI * y / 400);
+  for (let i = 0; i < N; i++) {
+    const y0 = (400 * i) / N, y1 = (400 * (i + 1)) / N;
+    const q = (x, y, ust) => [x, y, ust ? z(y) : 0];
+    const A = q(0, y0, 0), B = q(200, y0, 0), C = q(200, y1, 0), D = q(0, y1, 0);
+    const A2 = q(0, y0, 1), B2 = q(200, y0, 1), C2 = q(200, y1, 1), D2 = q(0, y1, 1);
+    // alt, üst ve iki yan (x=0, x=200); ön/arka kapak yalnızca uçlarda —
+    // şeritler arasına iç duvar koymak her kesiti parçalara bölerdi.
+    kutu.push([A, C, B], [A, D, C], [A2, B2, C2], [A2, C2, D2]);
+    kutu.push([A, A2, D2], [A, D2, D], [B, C, C2], [B, C2, B2]);
+    if (i === 0) kutu.push([A, B, B2], [A, B2, A2]);
+    if (i === N - 1) kutu.push([D, D2, C2], [D, C2, C]);
+  }
+  const r = generateSlices(kutu, { targetSize: 400, axis: 'x', thickness: 2, gap: 2, minArea: 20, support: 'kizak', railCount: 2 });
+  assert.equal(r.info.rails.length, 2, 'iki kızak bekleniyor');
+  const kizak = r.parts.filter((p) => p.kind === 'kizak');
+  assert.equal(kizak.length, 2);
+  const kanat = r.parts.filter((p) => p.kind === 'dilim');
+  for (const k of r.info.rails) assert.ok(k.fins >= kanat.length - 2, `${k.id} yalnız ${k.fins}/${kanat.length} kanattan geçiyor`);
+  // Kanatta çentik açılmış olmalı: dış hat köşe sayısı artar.
+  assert.ok(kanat.every((p) => p.outline.length >= 8), 'kanatlarda kızak çentiği yok');
+  assert.equal(r.info.rodlessParts, 0, 'kızaktan geçen kanat milsiz sayıldı');
+  assert.ok(signedArea(kizak[0].outline) > 0, 'kızak halkası ters');
+  const g = assemblyGuide(r.info);
+  assert.match(g, /KIZAK: 2 adet/);
+  assert.match(g, /ARA BORU, PUL GEREKMEZ/);
+  const html = oku('index.html');
+  for (const id of ['p-support', 'p-railCount', 'p-railEngage']) assert.ok(html.includes(`id="${id}"`), `${id} yok`);
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {

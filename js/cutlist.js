@@ -312,7 +312,12 @@ function milParcalari(info, milBoyu) {
   });
   out.push(`  Toplam ${adet} mil parçası, ${Math.ceil(toplam / 10) * 10} mm çubuk` +
     (pay ? ' (her parçaya iki uçta 10\'ar mm somun/rondela payı dahil).' : '.'));
-  if (p.gap > 0) {
+  if (p.gap > 0 && info.rails?.length) {
+    // Aralığı kızak yuvaları tutar; mil yalnız hizalar ve kızağa oturmayan
+    // kanatları taşır.
+    out.push('  Kanat aralığını kızak tutar: mil düz çubuk olabilir, dişli çubuk ve ara boru');
+    out.push('  gerekmez. Kızağa oturmayan birkaç kanadı mastarla hizalayıp mile yapıştırın.');
+  } else if (p.gap > 0) {
     out.push(`  Aralıklı dizilişte dişli çubuk (M${Math.round(p.rodDiameter)}) + her iki dilim arasına`);
     out.push(`  ${p.gap} mm boyunda ara boru önerilir; uçlarda somunla sıkıştırılır.`);
   }
@@ -355,9 +360,20 @@ function sliceGuide(info) {
     satirlar.push('  TEK MİL: parçalar mil etrafında dönebilir. Montajda her dilimi');
     satirlar.push('  gözle hizalayın ya da mil sayısını 2 yapıp yeniden üretin.');
   }
-  if (p.gap > 0) {
+  if (p.gap > 0 && !info.rails?.length) {
     satirlar.push(`  Dilimler arasına ${p.gap} mm kalınlığında ara pul gerekir` +
       (kare ? ' (kare kazıkta: aynı kesitte kısa takozlar).' : ' (boru/rondela).'));
+  }
+
+  if (info.rails?.length) {
+    const e = info.railEngage;
+    satirlar.push('');
+    satirlar.push(`KIZAK: ${info.rails.length} adet (${info.rails.map((r) => `${r.id}: ${r.fins} kanat`).join(', ')}).`);
+    satirlar.push(`  Kanatlarla aynı ${p.thickness} mm sacdan kesilir. Kızağın üstünde her kanat için`);
+    satirlar.push(`  bir yuva, kanadın altında kızak için bir çentik var; ikisi ${round(e / 2)} mm'şer`);
+    satirlar.push('  birbirine geçer. Aralığı yuvalar belirler — ARA BORU, PUL GEREKMEZ.');
+    satirlar.push('  Kızak üstündeki küçük sayılar (5, 10, 15 ...) o yuvaya giren kanadın numarasıdır.');
+    satirlar.push('  Geçme sıkıysa yuvayı eğeyle bir tık açın; gevşekse bir damla yapıştırıcı yeter.');
   }
 
   if (info.groupedParts > 0) {
@@ -377,22 +393,29 @@ function sliceGuide(info) {
     satirlar.push('  dilimin a, b, c parçaları yan yana gelir.');
   }
 
-  satirlar.push(
-    '',
-    'Montaj sırası:',
+  // Adımlar duruma göre: kopuk ada yoksa onu yapıştırma adımı, yatay
+  // dizilişte "üstte mili gizle" adımı anlamsızdı.
+  const adimlar = [
     // Yatay dizilişte (X/Y ekseni: kanatlı araba gibi) mil yataydır; "tabana
     // dik sabitleyin" talimatı yanlış oluyordu.
-    p.axis === 'z'
-      ? '  1. Omurgayı düz bir tabana dik sabitleyin (flanş ya da taban levhasına gömme).'
-      : '  1. Milleri yatay tutun (iki takoz üstünde). Heykeli tabana en alttaki birkaç\n' +
+    info.rails?.length
+      ? 'Kızakları tabana yatırın ya da taban levhasındaki kanallara oturtun.\n' +
+        '     Kanatları numara sırasıyla kızak yuvalarına üstten bastırarak takın;\n' +
+        '     millerden geçenleri o sırada mile de dizin.'
+      : p.axis === 'z'
+      ? 'Omurgayı düz bir tabana dik sabitleyin (flanş ya da taban levhasına gömme).'
+      : 'Milleri yatay tutun (iki takoz üstünde). Heykeli tabana en alttaki birkaç\n' +
         '     dilimden cıvatayla ya da tabandan çıkan iki pimle bağlayın.',
-    '  2. D001\'den başlayarak dilimleri sırayla geçirin; gravür numarası hep aynı',
-    '     yöne baksın, yoksa yığın burulur.',
-    '  3. Her 8-10 dilimde bir gönye ve şakül kontrolü yapın.',
-    '  4. Kopuk adaları (yukarıdaki uyarı) komşu dilimlere yapıştırın.',
-    '  5. Üstte mili gizlemek için son dilimi tutkalla kapatın.',
-    '  6. Zımpara: dilim kenarları istifte hafif basamak yapar; 120 kumla',
-    '     kenarları yuvarlatmak bu basamağı yumuşatır.'
-  );
+    'D001\'den başlayarak dilimleri sırayla geçirin; gravür numarası hep aynı\n' +
+      '     yöne baksın, yoksa yığın burulur.',
+    info.rails?.length
+      ? 'Bitince yandan bakın: kanat dipleri kızak boyunca tek çizgide olmalı.'
+      : 'Her 8-10 dilimde bir gönye ve şakül kontrolü yapın.',
+    ...(info.rodlessParts > 0 ? ['Mil geçmeyen adaları (yukarıda) komşu dilimlere yapıştırın.'] : []),
+    ...(p.axis === 'z' ? ['Üstte mili gizlemek için son dilimi tutkalla kapatın.'] : []),
+    'Zımpara: dilim kenarları istifte hafif basamak yapar; 120 kumla\n' +
+      '     kenarları yuvarlatmak bu basamağı yumuşatır.',
+  ];
+  satirlar.push('', 'Montaj sırası:', ...adimlar.map((a, i) => `  ${i + 1}. ${a}`));
   return satirlar.join('\n');
 }

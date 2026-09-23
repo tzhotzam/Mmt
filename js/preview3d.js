@@ -163,6 +163,18 @@ export async function createPreview3d(container) {
       const t = info.params.thickness;
       for (const part of parts) {
         const geo = extrude(part, t);
+        if (part.meta.rail) {
+          // Kızak: yerel (s = dilim ekseni, z = dikey), kalınlık yatay eksende,
+          // kanatlara DİK. X diliminde kalınlık model y'de, Y diliminde model x'te.
+          const h = part.meta.h;
+          const m2 = info.axis === 'x'
+            ? basis([1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, -(h + t / 2)])
+            : basis([0, 0, -1], [0, 1, 0], [1, 0, 0], [h - t / 2, 0, 0]);
+          geo.applyMatrix4(m2);
+          geo.computeVertexNormals();
+          group.add(new THREE.Mesh(geo, railMaterial));
+          continue;
+        }
         const c = (part.meta.coord ?? 0) - t / 2;   // levha, kesit düzlemine ortalanır
         let m;
         if (info.axis === 'x') {

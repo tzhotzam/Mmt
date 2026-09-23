@@ -171,6 +171,16 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   tekerleksiz gövde): 450 mm, 2+2 mm, en küçük ada 400 mm², Ø4 mil otomatik
   → 57 kanat / 78 parça, 7 mil, milsiz parça yok. Tekerlekler krom
   torna/lazer halka olarak ayrı yapılır.
+- **Kızak (alttan geçmeli taşıyıcı).** Aralıklı X/Y dilimde "Taşıyıcı:
+  Otomatik" kanatların altına, dilim yönüne dik iki kızak koyar: kızakta her
+  kanat için üstten yuva, kanatta alttan çentik (yarım geçme, 0,2 mm pay).
+  Aralığı yuvalar belirler, ara boru/pul gerekmez; kızaklar aynı sacdan
+  kesilir (K1, K2; her 5. yuvaya kanat numarası kazınır). Kızak yalnız alt
+  kenarı en alçak kanada yakın ARDIŞIK kanatlardan geçer — gövde yana doğru
+  yükseliyorsa kızak yandan görünen bir plakaya dönüşmesin, tekerlek
+  kemerine tırmanmasın. Kızağa ulaşmayan parçaları mil tutar. Konsept
+  arabada kızaklar iki aks arasına düşer: K1 56, K2 53 kanat, 80 parça.
+  Seçenekler: Otomatik / Kızak + mil / Yalnız kızak / Yalnız mil.
 - **Dik eksen.** Birçok program modeli "Y yukarı" kaydeder; bizim program Z'yi
   yukarı sayar ve böyle bir model önizlemede yan yatık görünür (şaha kalkmış
   at yerde yatıyordu). Gelişmiş ayarlarda "Dik eksen: Y yukarı" seçin.
@@ -492,6 +502,7 @@ js/
   modes/contour.js    katman üretimi
   modes/facets.js     poligonal kabuk: faset parçaları + kaynak dikişleri
   modes/slices.js     dilimli heykel: kesit parçaları + mil delikleri
+  rails.js            kızak: kanatları alttan tutan yarım geçmeli taşıyıcı
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
   remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)

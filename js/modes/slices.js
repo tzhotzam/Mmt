@@ -19,6 +19,7 @@ import { sliceMesh } from '../slice.js';
 import { classifyRings, signedArea, bbox, pointInRing, centroid, simplify } from '../geom.js';
 import { scaleTriangles } from '../mesh.js';
 import { dikCevir } from './facets.js';
+import { planRails, notchBottom, railPart, railAxes, railEngage, YUVA_PAYI } from '../rails.js';
 import { cornerRelief } from '../corners.js';
 
 export const SLICE_DEFAULTS = {
@@ -32,6 +33,11 @@ export const SLICE_DEFAULTS = {
   rodShape: 'yuvarlak', // 'yuvarlak' (mil) | 'kare' (kazık)
   rodDiameter: 10,      // yuvarlakta ÇAP, karede KENAR (mm)
   rodCount: 0,          // 0 = otomatik: her parça tutulana kadar mil eklenir (en çok 12)
+  // Taşıyıcı: 'mil' | 'kizak' | 'ikisi' | 'oto' (aralıklı dikey dilimde kızak+mil)
+  support: 'mil',
+  railCount: 2,
+  railEngage: 0,        // 0 → max(10, 5·kalınlık) mm geçme yüksekliği
+  railBelow: 0,         // kızağın heykelin altından sarkması (mm)
   rodInset: 0.35,       // iki mil, parçanın ana ekseninde bu oranda ayrılır
   toolDiameter: 6,      // kare kazık yuvasının köşe payı bu uca göre açılır
   labelSize: 8,
@@ -107,7 +113,24 @@ export function generateSlices(rawTris, userParams = {}) {
   const milYaricap = kareMi
     ? (p.rodDiameter * Math.SQRT2) / 2 + ucYaricap
     : p.rodDiameter / 2;
-  const mil = planRods(layers, p, milYaricap);
+  // ---- Kızak ------------------------------------------------------------
+  const destek = p.support === 'oto'
+    ? (p.gap > 0 && railAxes(p.axis) ? 'ikisi' : 'mil')
+    : p.support;
+  const kizaklar = destek === 'kizak' || destek === 'ikisi' ? planRails(layers, p) : [];
+  const ax = railAxes(p.axis);
+  for (const k of kizaklar) {
+    for (const f of k.fins) {
+      const ada = layers[f.li].adalar[f.ai];
+      const yeni = notchBottom(ada.outline, ax.hi, ax.vi, k.h, p.thickness + YUVA_PAYI, f.zb + railEngage(p) / 2);
+      if (yeni) ada.outline = yeni;
+    }
+  }
+
+  // Kızağın tuttuğu kanatlar mil planına "zaten bağlı" olarak girer; mil
+  // yalnızca kızağa ulaşmayan parçalar (ayna, spoyler) için aranır.
+  const mil = planRods(layers, { ...p, rodCount: destek === 'kizak' ? -1 : p.rodCount }, milYaricap,
+    kizaklar.map((k) => k.fins.map((f) => [f.li, f.ai])));
 
   // ---- Parçaları kur -----------------------------------------------------
   const parts = [];
@@ -131,7 +154,7 @@ export function generateSlices(rawTris, userParams = {}) {
           ? squareSlot(m, p.rodDiameter, (p.toolDiameter || 0) / 2)
           : circle(m, p.rodDiameter / 2));
       }
-      if (!tutan.length) milsiz++;
+      if (!mil.tutulan(li, ai)) milsiz++;
 
       const b = bbox(ada.outline);
       const c = centroid(ada.outline);
@@ -150,6 +173,13 @@ export function generateSlices(rawTris, userParams = {}) {
       });
     });
   });
+
+  kizaklar.forEach((k, i) => parts.push(railPart(k, layers, p, `K${i + 1}`)));
+  if ((destek === 'kizak' || destek === 'ikisi') && !kizaklar.length) {
+    warnings.push(railAxes(p.axis)
+      ? 'Kızak yerleştirilemedi: kanatların alt kenarı kızağın geçeceği kadar düz ve dolu değil. Mil kullanılıyor.'
+      : 'Kızak yalnızca dikey dilimlerde (X ya da Y ekseni) çalışır; yatay dilimde mil kullanılır.');
+  }
 
   // ---- Sığabilecek en büyük mil/kazık ------------------------------------
   // Sınırı, milin geçtiği EN DAR kesit belirler. İstenen ölçü hiçbir kesite
@@ -254,6 +284,9 @@ export function generateSlices(rawTris, userParams = {}) {
       axis: p.axis,
       rodPoints: mil.points,
       rodSegments: mil.segments,
+      support: destek,
+      rails: kizaklar.map((k, i) => ({ id: `K${i + 1}`, h: k.h, fins: k.fins.length })),
+      railEngage: railEngage(p),
       singleRodParts: tekMil,
       groupedParts: gruptaki,
       groupCount: mil.grupSayisi,
@@ -293,7 +326,7 @@ export function generateSlices(rawTris, userParams = {}) {
  * @returns {{points, segments, tutar}} tutar[k][katman] = milin o katmanda
  *          tuttuğu ada indisi, yoksa -1
  */
-function planRods(layers, p, r) {
+function planRods(layers, p, r, onceBagli = []) {
   const kare = p.rodShape === 'kare';
   // Ada kutuları: nokta-içinde sınamasının çoğunu ucuzca eler (ilk sürüm
   // bunsuz 13 saniye sürüyordu).
@@ -393,9 +426,20 @@ function planRods(layers, p, r) {
   const uf = Int32Array.from({ length: toplam }, (_, i) => i);
   const delinen = new Uint8Array(toplam);
   const sayac = new Int32Array(toplam);
-  let mevcut = 0;
+  // Kızağın geçtiği kanatlar birbirine bağlıdır (kızak bir "mil" gibi).
+  for (const grup of onceBagli) {
+    let ilk = -1;
+    for (const [li, ai] of grup) {
+      const id = kimlik[li][ai];
+      delinen[id] = 1;
+      sayac[id]++;
+      if (ilk < 0) ilk = id;
+      else { const x = kok(uf, id), y = kok(uf, ilk); if (x !== y) uf[x] = y; }
+    }
+  }
+  let mevcut = onceBagli.length ? anaKumeSayisi(uf, delinen) : 0;
   const enAzAra = Math.max(p.rodDiameter * 3, r * 4);
-  const hedef = p.rodCount > 0 ? p.rodCount : 12;
+  const hedef = p.rodCount > 0 ? p.rodCount : p.rodCount < 0 ? 0 : 12;
   const secilen = [];
   for (let k = 0; k < hedef; k++) {
     let enIyi = null, enIyiG = 0;
@@ -457,6 +501,7 @@ function planRods(layers, p, r) {
     // Ada → grup numarası (yalnızca ana gövdeye bağlanamayan gruplar için).
     grup: (li, ai) => (durum(li, ai) === 'grup' ? grupNo.get(kok(uf, kimlik[li][ai])) : 0),
     grupSayisi: gruplar.size,
+    tutulan: (li, ai) => durum(li, ai) !== null,
   };
 }
 
@@ -625,7 +670,7 @@ function squareSlot(c, side, toolRadius) {
 function emptyInfo(p, scaled, pitch) {
   return {
     mode: 'slices', layerCount: 0, partCount: 0, pitch, axis: p.axis,
-    rodPoints: [], rodSegments: [], singleRodParts: 0, groupedParts: 0, groupCount: 0, rodShape: p.rodShape, rodDiameter: p.rodDiameter, maxRodSize: 0, rodlessParts: 0,
+    rodPoints: [], rodSegments: [], rails: [], singleRodParts: 0, groupedParts: 0, groupCount: 0, rodShape: p.rodShape, rodDiameter: p.rodDiameter, maxRodSize: 0, rodlessParts: 0,
     modelSize: scaled.size, panelW: scaled.size.x, panelH: scaled.size.z || scaled.size.y,
     totalDepth: 0, totalHeight: 0, params: p,
   };
