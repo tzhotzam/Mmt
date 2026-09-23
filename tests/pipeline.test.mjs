@@ -1807,6 +1807,19 @@ test('dilim modunda onarım ve dik eksen', () => {
   assert.ok(/id="p-rodCount" value="0"/.test(html), 'mil sayısı varsayılanı otomatik değil');
 });
 
+test('çizgisi çıkmayan yaprak sessizce atılmaz', () => {
+  // patchOutline başarısız olunca yaprak atılıyordu: logodan kabartmada 58
+  // eşsiz dikiş (heykelde delik). Artık küçük yapraklara, olmazsa tek tek
+  // fasete düşülür.
+  const g = makeGrid(120, 60);
+  for (let y = 0; y < 60; y++) for (let x = 0; x < 120; x++) {
+    g.data[y * 120 + x] = ((Math.floor(x / 15) % 2 === 0) && y > 12 && y < 48) || (y > 26 && y < 34) ? 1 : 0;
+  }
+  const tris = meshFromHeightmap(g, { width: 600, height: 300, depth: 60, backThickness: 15, cells: 14 });
+  const r = generateFacets(tris, { targetSize: 600, unfold: true, thickness: 3, minArea: 40 });
+  assert.equal(r.seams.filter((x) => !x.aId || !x.bId).length, 0, 'kabartmada delik kaldı');
+});
+
 test('birleşim ayarları arayüzde', () => {
   const html = oku('index.html');
   for (const id of ['p-joinMethod', 'p-tabWidth', 'p-rivetDiameter', 'p-rivetPitch', 'p-reliefHoles']) {

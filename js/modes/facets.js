@@ -306,33 +306,46 @@ function buildLooseParts(a, p, warnings) {
   let telafiCoken = 0;
   a.facets.forEach((f) => {
     if (!f) return;
-    let ring = f.poly2d;
-    if (p.thicknessComp && p.thickness > 0) {
-      const dists = f.seamOfEdge.map((id) => (id ? seamInset(a.seams[id - 1].angle, p.thickness) : 0));
-      const moved = offsetPerEdge(ring, dists);
-      if (moved && !telafiCokerMi(ring, moved)) ring = moved;
-      else if (moved) telafiCoken++;
-    }
-    if (p.offset !== 0) {
-      const moved = offsetPerEdge(ring, ring.map(() => -p.offset));
-      if (moved) ring = moved;
-    }
-
-    const b = bbox(ring);
     const id = `P${String(parts.length + 1).padStart(2, '0')}`;
+    const { part, coktu } = gevsekParca(f, a, p, id);
+    if (coktu) telafiCoken++;
     groupToId.set(f.index, id);
+    parts.push(part);
+  });
 
-    const engrave = [centerLabel(id, b, p.labelSize)];
-    const seamEdges = [];
-    for (let i = 0; i < ring.length; i++) {
-      const sid = f.seamOfEdge[i];
-      if (!sid) continue;
-      const lbl = edgeLabel(ring, i, String(sid), p.seamLabelSize);
-      if (lbl) engrave.push(lbl);
-      seamEdges.push({ i, sid, label: lbl });
-    }
+  linkSeams(a.seams, groupToId, warnings, a.elenen);
+  if (telafiCoken) warnings.push(telafiUyarisi(telafiCoken, p.thickness));
+  return { parts };
+}
 
-    parts.push({
+/** Tek bir faseti ayrı parça olarak kurar (gevşek mod ve açınım yedeği). */
+function gevsekParca(f, a, p, id) {
+  let ring = f.poly2d;
+  let coktu = false;
+  if (p.thicknessComp && p.thickness > 0) {
+    const dists = f.seamOfEdge.map((sid) => (sid ? seamInset(a.seams[sid - 1].angle, p.thickness) : 0));
+    const moved = offsetPerEdge(ring, dists);
+    if (moved && !telafiCokerMi(ring, moved)) ring = moved;
+    else if (moved) coktu = true;
+  }
+  if (p.offset !== 0) {
+    const moved = offsetPerEdge(ring, ring.map(() => -p.offset));
+    if (moved) ring = moved;
+  }
+
+  const b = bbox(ring);
+  const engrave = [centerLabel(id, b, p.labelSize)];
+  const seamEdges = [];
+  for (let i = 0; i < ring.length; i++) {
+    const sid = f.seamOfEdge[i];
+    if (!sid) continue;
+    const lbl = edgeLabel(ring, i, String(sid), p.seamLabelSize);
+    if (lbl) engrave.push(lbl);
+    seamEdges.push({ i, sid, label: lbl });
+  }
+  return {
+    coktu,
+    part: {
       id, kind: 'faset', outline: ring, holes: [], engrave,
       w: b.w, h: b.h,
       meta: {
@@ -340,12 +353,8 @@ function buildLooseParts(a, p, warnings) {
         seams: f.seamOfEdge.filter(Boolean),
       },
       _ring0: f.poly2d, _seamEdges: seamEdges, _circles: [],
-    });
-  });
-
-  linkSeams(a.seams, groupToId, warnings, a.elenen);
-  if (telafiCoken) warnings.push(telafiUyarisi(telafiCoken, p.thickness));
-  return { parts };
+    },
+  };
 }
 
 // ----------------------------------------------------------------- AÇINIM
@@ -400,9 +409,16 @@ function buildPatchParts(a, p, warnings, notes = warnings) {
   const weldedKeys = new Set();
   const radius = p.bendRadius > 0 ? p.bendRadius : p.thickness;
 
-  patches.forEach((patch) => {
+  // Dış çizgisi çıkarılamayan yaprak (öbek kendi etrafında halka oluşturmuş,
+  // sınırı tek ve basit bir halka değil) eskiden SESSİZCE atılıyordu:
+  // heykelde delik kalıyor, dikişleri "karşı parçası yok" çıkıyordu (logodan
+  // kabartmada 58 dikiş). Artık o yaprağın fasetleri ayrı parça kesilir.
+  const yedekFasetler = [];
+  // Yaprağı parçaya çevirir; dış çizgi çıkmazsa false döner. `harita`, öbekteki
+  // faset indisini facetList indisine çevirir (yeniden açınımda alt küme).
+  const yaprakKur = (patch, harita = (fi) => fi) => {
     const traced = patchOutline(patch);
-    if (!traced) return;
+    if (!traced) return false;
 
     let ring = traced.ring;
     let edges = traced.edges;
@@ -430,7 +446,7 @@ function buildPatchParts(a, p, warnings, notes = warnings) {
 
     const b = bbox(ring);
     const id = `Y${String(parts.length + 1).padStart(2, '0')}`;
-    for (const [fi] of patch.placed) groupToId.set(denseToGroup[fi], id);
+    for (const [fi] of patch.placed) groupToId.set(denseToGroup[harita(fi)], id);
 
     const engrave = [centerLabel(id, b, p.labelSize)];
     const seamEdges = [];
@@ -488,7 +504,52 @@ function buildPatchParts(a, p, warnings, notes = warnings) {
       },
       _ring0: ring0, _seamEdges: seamEdges, _circles: kose.slice(),
     });
-  });
+    return true;
+  };
+
+  for (const patch of patches) {
+    if (!yaprakKur(patch)) for (const [fi] of patch.placed) yedekFasetler.push(fi);
+  }
+
+  // Çizgisi çıkmayan öbeğin fasetleri önce DAHA KÜÇÜK yapraklara açılır
+  // (bükümler korunsun); ancak hiç olmazsa tek tek faset olur.
+  let bekleyen = yedekFasetler.splice(0);
+  let sinir = Math.max(1, Math.floor(Math.round(p.maxFacetsPerPatch) / 2));
+  for (let tur = 0; tur < 6 && bekleyen.length && sinir > 1; tur++) {
+    const altYer = new Map(bekleyen.map((fi, i) => [fi, i]));
+    const altListe = bekleyen.map((fi) => facetList[fi]);
+    const altKomsu = new Map();
+    bekleyen.forEach((fi, i) => {
+      altKomsu.set(i, (neighborDense.get(fi) || [])
+        .filter((n) => altYer.has(n.facet))
+        .map((n) => ({ ...n, facet: altYer.get(n.facet) })));
+    });
+    const { patches: alt } = unfoldPatches(altListe, altKomsu, { ...acinimAyar, maxFacets: sinir });
+    const kalan = [];
+    for (const patch of alt) {
+      if (!yaprakKur(patch, (i) => bekleyen[i])) for (const [i] of patch.placed) kalan.push(bekleyen[i]);
+    }
+    bekleyen = kalan;
+    sinir = Math.max(1, Math.floor(sinir / 2));
+  }
+  yedekFasetler.push(...bekleyen);
+
+  for (const fi of yedekFasetler) {
+    const f = facetList[fi];
+    const id = `Y${String(parts.length + 1).padStart(2, '0')}`;
+    const { part, coktu } = gevsekParca(f, a, p, id);
+    if (coktu) yaprakTelafiCoken++;
+    part.kind = 'yaprak';
+    part.meta.facets = 1;
+    part.meta.folds = 0;
+    groupToId.set(f.index, id);
+    for (const k of f.edgeKeys) if (k) weldedKeys.add(k);
+    parts.push(part);
+  }
+  if (yedekFasetler.length) {
+    notes.push(`${yedekFasetler.length} faset açınıma sığmadı (yaprak kendi etrafında halka ` +
+      'oluşturuyordu); ayrı parça olarak kesilir.');
+  }
 
   if (yaprakTelafiCoken) warnings.push(telafiUyarisi(yaprakTelafiCoken, p.thickness));
 
