@@ -921,6 +921,33 @@ test('milsiz parça uyarısı işe yarayan mil ölçüsünü söyler', () => {
   assert.equal(r2.info.rodlessParts, 0, 'önerilen ölçüyle milsiz parça kalmamalı');
 });
 
+test('köprü: yakın iki adayı tek, CCW, alanı toplamdan büyük halka yapar', async () => {
+  const { kopruKur } = await import('../js/bridge.js');
+  const A = [[0, 0], [20, 0], [20, 20], [0, 20]];
+  const B = [[25, 5], [45, 5], [45, 15], [25, 15]];
+  const r = kopruKur(A, B, 4, 12);
+  assert.ok(r, 'köprü kurulamadı');
+  const alan = signedArea(r);
+  // Köprü en yakın noktaya oturur (burada B'nin köşesi): alan iki ada ile
+  // köprü şeridinin toplamı civarında, eksik olamaz.
+  assert.ok(alan > 600 + 10 && alan <= 600 + 5 * 4 + 1e-6, `alan ${alan}`);
+  assert.equal(kopruKur(A, B, 4, 3), null, 'uzun köprü reddedilmeli');
+});
+
+test('yalnız kızakta kızağa değmeyen yakın ada köprüyle tutulur, mil açılmaz', () => {
+  // Gövde kutusu ve önünde, 6 mm boşlukla ayrı, yerden yüksekte bir çıkıntı
+  // (tampon köşesi gibi): hiçbir kızağa oturmaz, aynı kanattaki gövdeye yakın.
+  const kutuAt = (x0, y0, z0, x1, y1, z1) => cubeTris(1).map((t) => t.map(([x, y, z]) =>
+    [x0 + x * (x1 - x0), y0 + y * (y1 - y0), z0 + z * (z1 - z0)]));
+  const tris = [...kutuAt(0, 0, 0, 200, 400, 60), ...kutuAt(60, -36, 20, 140, -6, 50)];
+  const r = generateSlices(tris, { targetSize: 436, axis: 'x', thickness: 2, gap: 2, minArea: 20, support: 'kizak' });
+  assert.ok(r.info.rails.length >= 1, 'kızak yok');
+  assert.equal(r.info.rodPoints.length, 0, 'yalnız kızakta mil açılmamalı');
+  assert.ok(r.info.bridges > 0, 'köprü kurulmadı');
+  assert.equal(r.info.rodlessParts, 0, 'havada parça kalmamalı');
+  assert.ok(r.notes.some((n) => n.includes('köprü')), 'köprü notu yok');
+});
+
 test('her ada elendiğinde boş çıktı değil, sebep döner', () => {
   const r = generateSlices(cubeTris(100), { targetSize: 200, minArea: 1e9 });
   assert.equal(r.parts.length, 0);
@@ -1871,7 +1898,7 @@ test('kızak kanatları alttan geçmeyle tutar', () => {
   assert.match(g, /KIZAK: 2 adet/);
   assert.match(g, /ARA BORU, PUL GEREKMEZ/);
   const html = oku('index.html');
-  for (const id of ['p-support', 'p-railCount', 'p-railEngage']) assert.ok(html.includes(`id="${id}"`), `${id} yok`);
+  for (const id of ['p-support', 'p-sliceRailCount', 'p-railEngage']) assert.ok(html.includes(`id="${id}"`), `${id} yok`);
 });
 
 test('birleşim ayarları arayüzde', () => {

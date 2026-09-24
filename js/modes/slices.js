@@ -20,6 +20,7 @@ import { classifyRings, signedArea, bbox, pointInRing, centroid, simplify } from
 import { scaleTriangles } from '../mesh.js';
 import { dikCevir } from './facets.js';
 import { planRails, notchBottom, railPart, railAxes, railEngage, YUVA_PAYI } from '../rails.js';
+import { kopruKur, enYakin } from '../bridge.js';
 import { cornerRelief } from '../corners.js';
 
 export const SLICE_DEFAULTS = {
@@ -35,7 +36,7 @@ export const SLICE_DEFAULTS = {
   rodCount: 0,          // 0 = otomatik: her parça tutulana kadar mil eklenir (en çok 12)
   // Taşıyıcı: 'mil' | 'kizak' | 'ikisi' | 'oto' (aralıklı dikey dilimde kızak+mil)
   support: 'mil',
-  railCount: 2,
+  railCount: 0,         // 0 = otomatik: tutulmayan parça kalmayana dek
   railEngage: 0,        // 0 → max(10, 5·kalınlık) mm geçme yüksekliği
   railBelow: 0,         // kızağın heykelin altından sarkması (mm)
   rodInset: 0.35,       // iki mil, parçanın ana ekseninde bu oranda ayrılır
@@ -127,10 +128,61 @@ export function generateSlices(rawTris, userParams = {}) {
     }
   }
 
+  // ---- Köprü -------------------------------------------------------------
+  // Aralıklı dizilişte ne kızağa ne mile ulaşan ada havada kalır. Aynı
+  // dilimde tutulan bir parçaya birkaç mm uzaksa ince bir köprüyle ona
+  // bağlanır: tek parça kesilir. Konsept arabada tampon köşeleri ana
+  // parçadan 4-10 mm uzaktı; yalnız kızakla 12 parça boşta kalıyordu.
+  // İlk tur mil planından ÖNCE, kızağın tuttuklarına: kızak + köprü her
+  // parçayı tutuyorsa hiç mil açılmaz.
+  const kopruYap = (tutuluyor) => {
+    if (!(p.gap > 0)) return 0;
+    const genislik = Math.max(3, 2 * p.thickness);
+    const enUzun = Math.max(12, 0.03 * p.targetSize);
+    let sayi = 0;
+    for (let tur = 0; tur < 3; tur++) {
+      let degisti = false;
+      layers.forEach((l, li) => {
+        l.adalar.forEach((ada, ai) => {
+          if (ada.birlesti || ada.kopruyle || tutuluyor(li, ai)) return;
+          const adaylar = l.adalar
+            .map((b, bi) => ({ b, bi }))
+            .filter(({ b, bi }) => bi !== ai && !b.birlesti && (b.kopruyle || tutuluyor(li, bi)))
+            .map((o) => ({ ...o, d: enYakin(ada.outline, o.b.outline).d }))
+            .filter((o) => o.d <= enUzun)
+            .sort((x, y) => x.d - y.d);
+          for (const { b } of adaylar) {
+            const yeni = kopruKur(b.outline, ada.outline, genislik, enUzun);
+            if (!yeni) continue;
+            b.outline = yeni;
+            b.holes = [...b.holes, ...ada.holes];
+            b.area += ada.area;
+            ada.birlesti = true;
+            b.kopruyle = true;
+            sayi++;
+            degisti = true;
+            break;
+          }
+        });
+      });
+      if (!degisti) break;
+    }
+    return sayi;
+  };
+  let kopruSayisi = 0;
+  if (kizaklar.length) {
+    const kizakta = new Set(kizaklar.flatMap((k) => k.fins.map((f) => `${f.li}:${f.ai}`)));
+    kopruSayisi += kopruYap((li, ai) => kizakta.has(`${li}:${ai}`));
+  }
+
   // Kızağın tuttuğu kanatlar mil planına "zaten bağlı" olarak girer; mil
   // yalnızca kızağa ulaşmayan parçalar (ayna, spoyler) için aranır.
   const mil = planRods(layers, { ...p, rodCount: destek === 'kizak' ? -1 : p.rodCount }, milYaricap,
     kizaklar.map((k) => k.fins.map((f) => [f.li, f.ai])));
+
+  // İkinci tur: kızağa da köprüye de bağlanamayıp mil planından sonra hâlâ
+  // boşta kalanlar, mille tutulan bir parçaya köprülenir.
+  kopruSayisi += kopruYap((li, ai) => mil.tutulan(li, ai));
 
   // ---- Parçaları kur -----------------------------------------------------
   const parts = [];
@@ -138,9 +190,13 @@ export function generateSlices(rawTris, userParams = {}) {
   let tekMil = 0;
   let gruptaki = 0;
   layers.forEach((l, li) => {
-    const cokAda = l.adalar.length > 1;
+    // Köprüyle birleşen ada kendi harfini bırakır; harfler boşluksuz kalsın.
+    const kalan = l.adalar.filter((a) => !a.birlesti);
+    const cokAda = kalan.length > 1;
     l.adalar.forEach((ada, ai) => {
-      const id = `D${String(l.index + 1).padStart(3, '0')}${cokAda ? String.fromCharCode(97 + ai) : ''}`;
+      if (ada.birlesti) return;
+      const harf = String.fromCharCode(97 + kalan.indexOf(ada));
+      const id = `D${String(l.index + 1).padStart(3, '0')}${cokAda ? harf : ''}`;
       const holes = ada.holes.slice();
 
       // Yalnızca bu adayı en az iki dilim boyunca geçen mil parçaları delik
@@ -154,7 +210,8 @@ export function generateSlices(rawTris, userParams = {}) {
           ? squareSlot(m, p.rodDiameter, (p.toolDiameter || 0) / 2)
           : circle(m, p.rodDiameter / 2));
       }
-      if (!mil.tutulan(li, ai)) milsiz++;
+      const tutuluyor = mil.tutulan(li, ai) || !!ada.kopruyle;
+      if (!tutuluyor) milsiz++;
 
       const b = bbox(ada.outline);
       const c = centroid(ada.outline);
@@ -168,7 +225,7 @@ export function generateSlices(rawTris, userParams = {}) {
         h: b.h,
         meta: {
           layer: l.index, coord: l.coord, island: ai,
-          area: ada.area, rods: tutan.length, group: grup,
+          area: ada.area, rods: tutan.length, group: grup, held: tutuluyor,
         },
       });
     });
@@ -219,7 +276,7 @@ export function generateSlices(rawTris, userParams = {}) {
   // Aralıklı dizilişte milsiz parça havada kalır. "Mil çapını küçültün"
   // demek yetmiyordu: hangi ölçüde düzeldiğini deneyip söyleriz.
   let oneri = null;
-  if (milsiz > 0 && p.gap > 0) {
+  if (milsiz > 0 && p.gap > 0 && destek !== 'kizak') {
     const rodCount = destek === 'kizak' ? -1 : p.rodCount;
     const onceBagli = kizaklar.map((k) => k.fins.map((f) => [f.li, f.ai]));
     const say = (pp, r) => {
@@ -244,7 +301,21 @@ export function generateSlices(rawTris, userParams = {}) {
     }
     if (oneri && oneri.n >= milsiz) oneri = null;
   }
-  if (milsiz > 0) {
+  if (kopruSayisi > 0) {
+    notes.push(
+      `${kopruSayisi} kopuk ada, aynı dilimdeki komşu parçaya ince bir köprüyle ` +
+      'bağlandı (tek parça kesilir). Kızağa ya da mile ulaşmayan tampon köşesi ' +
+      'gibi parçalar böylece havada kalmaz.'
+    );
+  }
+  if (milsiz > 0 && destek === 'kizak') {
+    warnings.push(
+      `${milsiz} parça ne kızağa oturuyor ne de köprüyle aynı dilimdeki bir parçaya ` +
+      'bağlanabiliyor — aralıklı dizilişte havada kalır. Bunlar ayna, spoyler ucu ' +
+      'gibi gövdeden uzak adalardır: "En küçük ada"yı büyütüp eleyin ya da ' +
+      '"Taşıyıcı"yı Otomatik yapın (yalnız bunlara mil açılır).'
+    );
+  } else if (milsiz > 0) {
     const ad = kareMi ? 'kazık' : 'mil';
     const kizakNotu = kizaklar.length ? ' (dönmeyi zaten kızak engeller)' : '';
     const oneriMetni = !oneri ? '"En küçük ada"yı büyütüp bu kopuk adaları eleyin.'
@@ -281,7 +352,7 @@ export function generateSlices(rawTris, userParams = {}) {
       'malzeme zayıflatır. "Mil sayısı"nı 1 yapabilirsiniz.'
     );
   }
-  if (kareMi && p.rodDiameter < (p.toolDiameter || 0) * 2) {
+  if (kareMi && mil.points.length && p.rodDiameter < (p.toolDiameter || 0) * 2) {
     warnings.push(
       `Kazık kenarı (${p.rodDiameter} mm) takım çapının (${p.toolDiameter} mm) ` +
       'iki katından küçük — bu yuva o freze ucuyla açılamaz. Lazer, plazma ya da ' +
@@ -322,6 +393,7 @@ export function generateSlices(rawTris, userParams = {}) {
       support: destek,
       rails: kizaklar.map((k, i) => ({ id: `K${i + 1}`, h: k.h, fins: k.fins.length })),
       railEngage: railEngage(p),
+      bridges: kopruSayisi,
       singleRodParts: tekMil,
       groupedParts: gruptaki,
       groupCount: mil.grupSayisi,
@@ -367,6 +439,7 @@ function planRods(layers, p, r, onceBagli = []) {
   // bunsuz 13 saniye sürüyordu).
   const kutular = layers.map((l) => l.adalar.map((ada) => bbox(ada.outline)));
   const icinde = (c, li, ai) => {
+    if (layers[li].adalar[ai].birlesti) return false;   // köprüyle komşusuna katıldı
     const b = kutular[li][ai];
     if (c[0] < b.minX + r || c[0] > b.maxX - r || c[1] < b.minY + r || c[1] > b.maxY - r) return false;
     return icerdeMi(c, layers[li].adalar[ai], r);
@@ -375,6 +448,7 @@ function planRods(layers, p, r, onceBagli = []) {
   const adaylar = [];
   layers.forEach((l, li) => {
     l.adalar.forEach((ada, ai) => {
+      if (ada.birlesti) return;
       const c = centroid(ada.outline);
       if (icinde(c, li, ai)) adaylar.push(c);
       const b = kutular[li][ai];
@@ -467,7 +541,7 @@ function planRods(layers, p, r, onceBagli = []) {
     for (const [li, ai] of grup) {
       const id = kimlik[li][ai];
       delinen[id] = 1;
-      sayac[id]++;
+      sayac[id] += 2;   // kızak geçmesi dönmeyi de engeller: ikinci mil gerekmez
       if (ilk < 0) ilk = id;
       else { const x = kok(uf, id), y = kok(uf, ilk); if (x !== y) uf[x] = y; }
     }

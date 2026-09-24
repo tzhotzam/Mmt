@@ -115,12 +115,13 @@ export function planRails(layers, p) {
   const aralik = hiMax - lo;
 
   // Aday konum: her katmanda en alttaki kanat, çentik için yeterli dolu
-  // aralık ve temiz bir alt kenar taşıyorsa geçerli. Kızak yalnız alt kenarı
-  // en alçak kanada yakın (tol içinde) olan ARDIŞIK kanatlardan geçer:
-  // gövde yanlara doğru kavisle yükseliyorsa dış kanatlarda kızak yüksek bir
-  // plaka olup yandan görünürdü; konsept arabada ikinci kızak arka tekerlek
-  // kemerine tırmanıyordu. Dışarıda kalan kanatları mil tutar.
-  const tol = 1.5 * e;
+  // aralık ve temiz bir alt kenar taşıyorsa geçerli. Kızak ARDIŞIK
+  // kanatlardan geçer ve komşu iki kanadın dibi arasında en çok `sicrama`
+  // fark olabilir. Kızağın alt kenarı kanat diplerini izlediği için gövdenin
+  // yavaşça kavislenen altını sorunsuz takip eder; tekerlek kemeri ise
+  // ani bir sıçramadır, kızak oraya tırmanmaz (konsept arabada ikinci kızak
+  // arka tekerleğin içine düşüyordu).
+  const sicrama = 2 * e;
   const degerlendir = (h) => {
     const girdi = layers.map((l) => {
       let enIyi = null;
@@ -133,16 +134,13 @@ export function planRails(layers, p) {
         notchBottom(l.adalar[enIyi.ai].outline, hi, vi, h, w, enIyi.zb + e / 2) !== null;
       return tamam ? enIyi : null;
     });
-    const zler = girdi.filter(Boolean).map((f) => f.zb);
-    if (zler.length < 2) return null;
-    const taban = Math.min(...zler);
-    // En uzun ardışık uygun dizi.
     let enUzun = [], dizi = [];
     girdi.forEach((f, li) => {
-      if (f && f.zb <= taban + tol) {
-        dizi.push({ li, ai: f.ai, zb: f.zb });
-        if (dizi.length > enUzun.length) enUzun = dizi;
-      } else dizi = [];
+      if (!f) { dizi = []; return; }
+      const onceki = dizi[dizi.length - 1];
+      if (onceki && Math.abs(f.zb - onceki.zb) > sicrama) dizi = [];
+      dizi.push({ li, ai: f.ai, zb: f.zb });
+      if (dizi.length > enUzun.length) enUzun = dizi;
     });
     if (enUzun.length < 2) return null;
     const zs = enUzun.map((f) => f.zb);
@@ -152,20 +150,50 @@ export function planRails(layers, p) {
   };
 
   const adaylar = [];
-  for (let i = 0; i <= 40; i++) {
-    const d = degerlendir(lo + aralik * (0.08 + 0.84 * (i / 40)));
+  // Uçlara yakın adaylar da denenir: tampon köşeleri gibi kısa parçalar
+  // yalnızca oradan geçen bir kızağa oturur.
+  for (let i = 0; i <= 80; i++) {
+    const d = degerlendir(lo + aralik * (0.03 + 0.94 * (i / 80)));
     if (d) adaylar.push(d);
   }
   adaylar.sort((a, b) => b.puan - a.puan);
   const secilen = [];
-  const adet = Math.max(1, Math.round(p.railCount || 2));
+  const sabit = p.railCount > 0;
+  const adet = sabit ? Math.round(p.railCount) : 2;
   for (const a of adaylar) {
     if (secilen.length >= adet) break;
     if (secilen.some((s) => Math.abs(s.h - a.h) < aralik * (adet > 2 ? 0.2 : 0.35))) continue;
     secilen.push(a);
   }
+
+  // Otomatikte kızak, kızağa ulaşmayan parça kalmayana dek eklenir. Dış
+  // kanatları tekerlek kemeri böler: ön ve arka parçalar aks arasındaki iki
+  // kızağa değmez, mile muhtaç kalıyordu. Ön ve arka çıkıntıya birer kızak
+  // daha girince onları da tutar. Yeni kızak en az bir TUTULAN parçadan
+  // geçmeli, yoksa kendi başına havada kalan bir öbek tutar.
+  if (!sabit && secilen.length) {
+    const anahtar = (f) => f.li * 4096 + f.ai;
+    const tutulan = new Set(secilen.flatMap((s) => s.fins.map(anahtar)));
+    const enAzAra = Math.max(2.5 * e, 20);
+    while (secilen.length < KIZAK_EN_COK) {
+      let enIyi = null, enIyiKazanc = 0;
+      for (const a of adaylar) {
+        if (secilen.some((s) => Math.abs(s.h - a.h) < enAzAra)) continue;
+        let kazanc = 0, bagli = false;
+        for (const f of a.fins) {
+          if (tutulan.has(anahtar(f))) bagli = true; else kazanc++;
+        }
+        if (bagli && kazanc > enIyiKazanc) { enIyi = a; enIyiKazanc = kazanc; }
+      }
+      if (!enIyi) break;
+      secilen.push(enIyi);
+      for (const f of enIyi.fins) tutulan.add(anahtar(f));
+    }
+  }
   return secilen.sort((a, b) => a.h - b.h);
 }
+
+const KIZAK_EN_COK = 6;
 
 export function railEngage(p) {
   return p.railEngage > 0 ? p.railEngage : Math.max(10, 5 * p.thickness);
@@ -179,12 +207,13 @@ export function railPart(rail, layers, p, id) {
   const e = railEngage(p);
   const t = p.thickness;
   const ys = t + YUVA_PAYI;
+  const alt = p.railBelow || 0;
   const fins = rail.fins.map((f) => ({ s: layers[f.li].coord, zb: f.zb, li: f.li }))
     .sort((a, b) => a.s - b.s);
   const ust = fins.map((f) => f.zb + e);
-  const zBot = Math.min(...fins.map((f) => f.zb)) - (p.railBelow || 0);
   const xs = fins[0].s - ys / 2 - 3, xe = fins[fins.length - 1].s + ys / 2 + 3;
 
+  // Üst kenar basamaklı: her kanadın altında kanat kalınlığında yuva.
   const tepe = [[xs, ust[0]]];
   fins.forEach((f, i) => {
     const sol = i === 0 ? ust[0] : Math.max(ust[i - 1], ust[i]);
@@ -193,13 +222,26 @@ export function railPart(rail, layers, p, id) {
     tepe.push([xl, sol], [xl, m], [xr, m], [xr, sag]);
   });
   tepe.push([xe, ust[ust.length - 1]]);
-  const outline = [[xs, zBot], [xe, zBot], ...tepe.reverse()];
+  // Alt kenar kanat diplerini izler: kızak, gövdenin altına yapışık sabit
+  // yükseklikte bir şerit olur. Düz alt kenarla gövde yana doğru
+  // yükseldiğinde dış kanatların altında yandan görünen bir plaka kalıyordu.
+  const dip = [[xs, fins[0].zb - alt], ...fins.map((f) => [f.s, f.zb - alt]),
+    [xe, fins[fins.length - 1].zb - alt]];
+  const outline = [...dip, ...tepe.reverse()];
 
-  // Her beşinci kanadın numarası yuvanın altına: montajda yer bulmak kolay.
-  const engrave = [{ type: 'text', text: id, x: (xs + xe) / 2, y: zBot + Math.min(e / 2, 6) / 2 + 1, size: Math.min(5, e / 3) }];
+  // Ad, ortadaki iki kanadın arasına; her beşinci kanadın numarası yuvanın
+  // altına: montajda yer bulmak kolay.
+  const k = Math.max(0, Math.floor(fins.length / 2) - 1);
+  const k2 = Math.min(fins.length - 1, k + 1);
+  const engrave = [{
+    type: 'text', text: id,
+    x: (fins[k].s + fins[k2].s) / 2,
+    y: Math.max(fins[k].zb, fins[k2].zb) - alt + 1.5,
+    size: Math.min(5, e / 3),
+  }];
   fins.forEach((f) => {
     const no = f.li + 1;
-    if (no % 5 === 0) engrave.push({ type: 'text', text: String(no), x: f.s, y: zBot + 1.8, size: 2.5 });
+    if (no % 5 === 0) engrave.push({ type: 'text', text: String(no), x: f.s, y: f.zb - alt + 1.8, size: 2.5 });
   });
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const [x, y] of outline) {

@@ -376,6 +376,12 @@ function sliceGuide(info) {
     satirlar.push('  Geçme sıkıysa yuvayı eğeyle bir tık açın; gevşekse bir damla yapıştırıcı yeter.');
   }
 
+  if (info.bridges > 0) {
+    satirlar.push('');
+    satirlar.push(`KÖPRÜ: ${info.bridges} kopuk ada aynı dilimdeki parçaya ince bir şeritle bağlı.`);
+    satirlar.push('  Tek parça kesilir; köprüyü kesip atmayın, o parçayı tutan odur.');
+  }
+
   if (info.groupedParts > 0) {
     satirlar.push('');
     satirlar.push(`ALT GRUPLAR: ${info.groupedParts} parça ${info.groupCount} grupta (G1, G2 ...).`);

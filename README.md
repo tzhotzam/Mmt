@@ -171,16 +171,28 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
   tekerleksiz gövde): 450 mm, 2+2 mm, en küçük ada 400 mm², Ø4 mil otomatik
   → 57 kanat / 78 parça, 7 mil, milsiz parça yok. Tekerlekler krom
   torna/lazer halka olarak ayrı yapılır.
-- **Kızak (alttan geçmeli taşıyıcı).** Aralıklı X/Y dilimde "Taşıyıcı:
-  Otomatik" kanatların altına, dilim yönüne dik iki kızak koyar: kızakta her
-  kanat için üstten yuva, kanatta alttan çentik (yarım geçme, 0,2 mm pay).
-  Aralığı yuvalar belirler, ara boru/pul gerekmez; kızaklar aynı sacdan
-  kesilir (K1, K2; her 5. yuvaya kanat numarası kazınır). Kızak yalnız alt
-  kenarı en alçak kanada yakın ARDIŞIK kanatlardan geçer — gövde yana doğru
-  yükseliyorsa kızak yandan görünen bir plakaya dönüşmesin, tekerlek
-  kemerine tırmanmasın. Kızağa ulaşmayan parçaları mil tutar. Konsept
-  arabada kızaklar iki aks arasına düşer: K1 56, K2 53 kanat, 80 parça.
-  Seçenekler: Otomatik / Kızak + mil / Yalnız kızak / Yalnız mil.
+- **Kızak (alttan geçmeli taşıyıcı) — milsiz kanat heykel.** Aralıklı X/Y
+  dilimde "Taşıyıcı: Otomatik" kanatların altına, dilim yönüne dik kızaklar
+  koyar: kızakta her kanat için üstten yuva, kanatta alttan çentik (yarım
+  geçme, 0,2 mm pay). Aralığı yuvalar belirler, ara boru/pul gerekmez;
+  kızaklar aynı sacdan kesilir (K1, K2 ...; her 5. yuvaya kanat numarası
+  kazınır).
+  - Kızağın alt kenarı kanat diplerini izler: gövdenin kavisli altına
+    yapışık sabit yükseklikte bir şerittir, yandan görünmez. Komşu iki kanat
+    dibi arasında 2 × geçme yüksekliğinden büyük sıçrama (tekerlek kemeri)
+    kızağı keser — kızak kemere tırmanmaz.
+  - "Kızak sayısı" 0 (otomatik): önce en çok kanadı tutan iki kızak, sonra
+    tutulmayan parça kaldıkça (en çok 6) tutulan bir kanattan da geçen yeni
+    kızak eklenir.
+  - Kızağa ulaşmayan kopuk ada, aynı dilimde tutulan bir parçaya en çok
+    max(12 mm, boyun %3'ü) uzaksa kanat kalınlığının iki katı genişlikte bir
+    **köprüyle** ona bağlanır; tek parça kesilir.
+  - Mil yalnızca bunlardan sonra hâlâ boşta parça varsa açılır. Kızak
+    geçmesi dönmeyi de engellediği için "ikinci mil" aranmaz.
+  Konsept araba (450 mm, 2+2 mm): 3 kızak (50, 57, 54 kanat), 8-12 köprü,
+  **0 mil**, 73 parça, uyarı yok. Seçenekler: Otomatik / Kızak + mil /
+  Yalnız kızak / Yalnız mil. Aralıklı dizilişte milsiz parça kalırsa uyarı,
+  hepsinin tutulduğu en büyük mil çapını deneyip yazar.
 - **Dik eksen.** Birçok program modeli "Y yukarı" kaydeder; bizim program Z'yi
   yukarı sayar ve böyle bir model önizlemede yan yatık görünür (şaha kalkmış
   at yerde yatıyordu). Gelişmiş ayarlarda "Dik eksen: Y yukarı" seçin.
@@ -503,6 +515,7 @@ js/
   modes/facets.js     poligonal kabuk: faset parçaları + kaynak dikişleri
   modes/slices.js     dilimli heykel: kesit parçaları + mil delikleri
   rails.js            kızak: kanatları alttan tutan yarım geçmeli taşıyıcı
+  bridge.js           köprü: aynı dilimde yakın iki adayı tek parça yapar
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
   remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)
