@@ -902,6 +902,25 @@ test('milden geçmeyen parça sessizce bırakılmaz', () => {
     'milsiz parçalar için uyarı yok');
 });
 
+test('milsiz parça uyarısı işe yarayan mil ölçüsünü söyler', () => {
+  // İnce ikinci kule: 30 mm kare kazık sığmaz. Uyarı "mil çapını küçültün"
+  // deyip bırakmıyordu; kaç mm'de hepsinin tutulduğunu deneyip yazmalı.
+  // Otomatikte ikinci kazık ayrı kuleyi tutmak için gelir: "gereksiz" değil.
+  const tris = [
+    ...cylinderTris(0, 0, 0, 900, 90),
+    ...cylinderTris(400, 0, 0, 900, 9),
+  ];
+  const p = { targetSize: 1200, thickness: 18, gap: 5, rodShape: 'kare', rodDiameter: 30, rodCount: 0, toolDiameter: 6 };
+  const r = generateSlices(tris, p);
+  assert.ok(r.info.rodlessParts > 0, 'ince kule kazıksız kalmalı');
+  const w = r.warnings.find((x) => x.includes('geçmiyor'));
+  const m = w && w.match(/Yuvarlak mil Ø(\d+) mm seçin.*hepsi tutulur/);
+  assert.ok(m, `ölçü önerisi yok: ${w}`);
+  assert.ok(!r.warnings.some((x) => x.includes('ikinci kazık')), 'otomatikte ikinci kazık uyarısı çıkmamalı');
+  const r2 = generateSlices(tris, { ...p, rodShape: 'yuvarlak', rodDiameter: Number(m[1]) });
+  assert.equal(r2.info.rodlessParts, 0, 'önerilen ölçüyle milsiz parça kalmamalı');
+});
+
 test('her ada elendiğinde boş çıktı değil, sebep döner', () => {
   const r = generateSlices(cubeTris(100), { targetSize: 200, minArea: 1e9 });
   assert.equal(r.parts.length, 0);

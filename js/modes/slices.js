@@ -216,12 +216,44 @@ export function generateSlices(rawTris, userParams = {}) {
       '"En küçük ada" değerini düşürün.'
     );
   }
+  // Aralıklı dizilişte milsiz parça havada kalır. "Mil çapını küçültün"
+  // demek yetmiyordu: hangi ölçüde düzeldiğini deneyip söyleriz.
+  let oneri = null;
+  if (milsiz > 0 && p.gap > 0) {
+    const rodCount = destek === 'kizak' ? -1 : p.rodCount;
+    const onceBagli = kizaklar.map((k) => k.fins.map((f) => [f.li, f.ai]));
+    const say = (pp, r) => {
+      const m = planRods(layers, { ...pp, rodCount }, r, onceBagli);
+      let n = 0;
+      layers.forEach((l, li) => l.adalar.forEach((_, ai) => { if (!m.tutulan(li, ai)) n++; }));
+      return n;
+    };
+    // Yuvarlak mil aynı ölçüde kare kazıktan dar kesite girer (köşe ve kemik
+    // payı yok). En büyük işe yarayan çapı ikili aramayla buluruz: her deneme
+    // bir mil planı demek (~1 s), sırayla denemek 5 s ekliyordu.
+    const yuv = { ...p, rodShape: 'yuvarlak' };
+    const adaylar = [3, 4, 5, 6, 8, 10, 12, 16, 20]
+      .filter((d) => (kareMi ? d <= p.rodDiameter : d < p.rodDiameter));
+    let lo = 0, hi = adaylar.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const d = adaylar[mid];
+      const n = say({ ...yuv, rodDiameter: d }, d / 2);
+      if (!oneri || n < oneri.n || (n === oneri.n && d > oneri.d)) oneri = { d, n };
+      if (n === 0) lo = mid + 1; else hi = mid - 1;
+    }
+    if (oneri && oneri.n >= milsiz) oneri = null;
+  }
   if (milsiz > 0) {
+    const ad = kareMi ? 'kazık' : 'mil';
+    const kizakNotu = kizaklar.length ? ' (dönmeyi zaten kızak engeller)' : '';
+    const oneriMetni = !oneri ? '"En küçük ada"yı büyütüp bu kopuk adaları eleyin.'
+      : `${kareMi ? 'Yuvarlak mil' : 'Mil çapı'} Ø${oneri.d} mm seçin${kareMi ? kizakNotu : ''}: ` +
+        (oneri.n ? `milsiz yalnız ${oneri.n} parça kalır; onları "En küçük ada"yla eleyin.` : 'hepsi tutulur.');
     warnings.push(p.gap > 0
-      ? `${milsiz} parçadan mil geçmiyor ve dilimler aralıklı olduğu için komşuya ` +
-        'yapıştırılamazlar — havada kalırlar. Genelde ayna, spoyler ucu gibi küçük ' +
-        'kopuk adalardır: "En küçük ada"yı büyütüp eleyin, mil çapını küçültün ya ' +
-        'da mil sayısını otomatik (0) bırakın.'
+      ? `${milsiz} parçadan ${ad} geçmiyor ve dilimler aralıklı olduğu için komşuya ` +
+        'yapıştırılamazlar — havada kalırlar. Bunlar ayna, çamurluk ucu gibi ince ' +
+        `kopuk adalardır; ${p.rodDiameter} mm ${ad} onlara sığmıyor. ${oneriMetni}`
       : `${milsiz} parçadan mil geçmiyor — bunlar kendi başına durmaz, ` +
         'komşu dilime yapıştırılmalı. Montaj kılavuzunda işaretli.'
     );
@@ -241,7 +273,9 @@ export function generateSlices(rawTris, userParams = {}) {
       'parçalar dönebilir, montajda hizayı gözle tutmanız gerekir.'
     );
   }
-  if (kareMi && mil.points.length > 1) {
+  // Yalnızca kullanıcı birden çok kazık İSTEDİYSE. Otomatikte ikinci kazık
+  // gövdeden ayrı bir bölgeyi (ayna, bacak) tutmak için gelir, gereksiz değildir.
+  if (kareMi && p.rodCount > 1 && mil.points.length > 1) {
     warnings.push(
       'Kare kazık tek başına dönmeyi engeller; ikinci kazık gereksiz yere ' +
       'malzeme zayıflatır. "Mil sayısı"nı 1 yapabilirsiniz.'
@@ -250,8 +284,9 @@ export function generateSlices(rawTris, userParams = {}) {
   if (kareMi && p.rodDiameter < (p.toolDiameter || 0) * 2) {
     warnings.push(
       `Kazık kenarı (${p.rodDiameter} mm) takım çapının (${p.toolDiameter} mm) ` +
-      'iki katından küçük — bu yuva o uçla açılamaz. Kazığı büyütün ya da ' +
-      'daha ince uç kullanın.'
+      'iki katından küçük — bu yuva o freze ucuyla açılamaz. Lazer, plazma ya da ' +
+      'su jetiyle kesiyorsanız "Takım çapı"nı 0,2 yapın, uyarı kalkar; frezede ' +
+      'kazığı büyütün ya da daha ince uç kullanın.'
     );
   }
   // Ölçü bilgisi yalnızca İŞE YARADIĞINDA uyarı olur: sığmıyorsa. Sığıyorken
