@@ -393,13 +393,16 @@ onnxruntime-web (MIT). İkisi depoda durur, ilk kullanımda bir kez iner
   çok çekirdeğe izin vermiyor).
 
 ### Parametrik yüz paneli (lamel + yapay zekâ)
-Duvardan dalgaların içinden çıkan yüz (parametric_art_wood tarzı):
+Duvardan dalgaların içinden çıkan yüz (parametric_art_wood tarzı). Kısayol:
+**⚡ Yüz paneli ayarlarını uygula** düğmesi aşağıdakilerin hepsini tek
+dokunuşta yapar (elle girildiğinde biri atlanıyor, dalga yüzü yutuyordu):
 
-1. Lamel modu, panel 1200 × 1200, kalınlık 12, boşluk 8, taban 60, kabartma
-   240 (duvardan 30 cm).
+1. Lamel modu, panel eni 1000, kalınlık 10, boşluk 5, taban 60, kabartma 240
+   (duvardan 30 cm), 3 kızak.
 2. Yüz fotoğrafı → **🤖 Yapay zekâ derinliği**.
 3. Hazır desenler → **Akış (yüz paneli)**, desen payı 0,5, **konu etrafında
-   boşluk** 0,3, ölçek 0,2.
+   boşluk** 0,15, ölçek 0,2. Fotoğraf baş ve boyuna kırpılmış, yüz 3/4 dönük
+   olursa en iyisi.
 
 - *Akış* deseni lamel boyunca 1-6 tam S dalgası çizer, komşu lamelde yavaşça
   kayar. (Dalga deseni tohumdan rastgele kurulduğu için bazı tohumlarda tek

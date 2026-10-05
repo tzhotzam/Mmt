@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-05-e';
+const APP_VERSION = '2026-10-05-f';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -831,6 +831,14 @@ function regenerate() {
   state.parts = result.parts;
   state.info = result.info;
   state.warnings = result.warnings;
+  // Bilgi (uyarı değil): kendisi "sorun değil" diyen bir notu kırmızı uyarı
+  // kutusunda göstermek kullanıcıyı boşuna korkutuyordu.
+  state.notes = [];
+  const tool = num('p-toolDiameter', 6);
+  if (state.mode === 'ribs' && num('p-gap', 6) > 0 && num('p-gap', 6) < tool) {
+    state.notes.push(`Lamel boşluğu (${num('p-gap', 6)} mm) takım çapından (${tool} mm) küçük — ` +
+      'lameller ayrı ayrı kesildiği için sorun değil; yalnızca montajda araya parmak girmez.');
+  }
 
   state.nestResult = nest(state.parts, readNestOpts());
   state.sheetIndex = Math.min(state.sheetIndex, Math.max(0, state.nestResult.sheets.length - 1));
@@ -1120,11 +1128,6 @@ function collectWarnings() {
     }
   }
   out.push(...cozunurlukUyarilari());
-  const tool = num('p-toolDiameter', 6);
-  if (state.mode === 'ribs' && num('p-gap', 6) > 0 && num('p-gap', 6) < tool) {
-    out.push(`Lamel boşluğu (${num('p-gap', 6)} mm) takım çapından (${tool} mm) küçük — ` +
-      'lameller ayrı ayrı kesildiği için sorun değil, ancak montajda parmak girmez.');
-  }
   return out;
 }
 
@@ -1175,7 +1178,7 @@ function showWarnings(list) {
 function showNotes() {
   const el = els.notes;
   if (!el) return;
-  const list = (state.mode === 'facets' || state.mode === 'slices') ? state.notes : [];
+  const list = state.notes || [];
   if (!list?.length) { el.hidden = true; el.innerHTML = ''; return; }
   const acik = el.querySelector('details')?.open || false;
   el.hidden = false;
@@ -1579,6 +1582,40 @@ function syncRangeOutputs() {
 els['dir-light'].onclick = () => { setInvert(false); saveSettings(); scheduleRegen(); };
 els['dir-dark'].onclick = () => { setInvert(true); saveSettings(); scheduleRegen(); };
 els['depth-luma'].onclick = () => { setDepthMode('luma'); saveSettings(); };
+
+/**
+ * YÜZ PANELİ HAZIR AYARI — parametrik yüz paneli için denenmiş değerler tek
+ * dokunuşta. Elle girildiğinde biri atlanıyordu (derinlik 100 mm kaldı,
+ * desen payı 0,85'e kaydı) ve dalga yüzü yutuyordu.
+ */
+const YUZ_PANELI = {
+  'p-panelW': 1000, 'p-thickness': 10, 'p-gap': 5, 'p-baseDepth': 60, 'p-maxDepth': 240,
+  'p-railCount': 3, 'p-orientation': 'vertical',
+  'p-pattern': 'akis', 'p-patMix': 0.5, 'p-subjectPad': 0.15,
+  'p-patScale': 0.2, 'p-patAngle': 0.1, 'p-patDetail': 0.5,
+};
+function yuzPaneliAyari() {
+  if (state.mode !== 'ribs') setMode('ribs');
+  for (const [id, v] of Object.entries(YUZ_PANELI)) if (els[id]) els[id].value = v;
+  if (els['p-lockAspect']) els['p-lockAspect'].checked = true;
+  els['pattern-block'].open = true;
+  syncRangeOutputs();
+  patternHint();
+  saveSettings();
+  if (state.uploadImage && state.depthMode !== 'ai') {
+    setDepthMode('ai');               // derinliği hesaplayınca kendisi yeniden üretir
+  } else {
+    if (state.depthMode !== 'ai') setDepthMode('ai', false);
+    if (state.uploadGrid) { composeSource(); resetPaint(); }
+    syncAspect();
+    scheduleRegen();
+  }
+  saveSettings();
+  setSourceStatus(state.uploadImage
+    ? 'Yüz paneli ayarları uygulandı.'
+    : 'Yüz paneli ayarları hazır — şimdi yüz fotoğrafını yükleyin.');
+}
+els['btn-face-preset'].onclick = yuzPaneliAyari;
 els['depth-ai'].onclick = () => { setDepthMode('ai'); saveSettings(); };
 
 els['mode-ribs'].onclick = () => setMode('ribs');

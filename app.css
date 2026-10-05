@@ -447,3 +447,13 @@ details.gelismis > summary small {
   margin-left: 6px;
 }
 details.gelismis > .grid { margin-top: 8px; }
+
+/* Tek dokunuşla hazır ayar (yüz paneli) */
+.preset-btn {
+  width: 100%; margin-top: 10px; padding: 12px 14px;
+  border-radius: 12px; border: 1px solid var(--accent, #f59e0b);
+  background: rgba(245, 158, 11, 0.12); color: inherit;
+  font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.preset-btn small { font-weight: 400; opacity: 0.75; }
+.preset-btn:active { transform: translateY(1px); }
