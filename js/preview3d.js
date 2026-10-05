@@ -163,6 +163,14 @@ export async function createPreview3d(container) {
       const t = info.params.thickness;
       for (const part of parts) {
         const geo = extrude(part, t);
+        if (part.meta.pano) {
+          // Arka pano: yerel (x, z) düzlemi, kalınlık model +y yönünde
+          // (katmanların arkası). Sahne (x, z, -y) → Z ∈ [-t, 0].
+          geo.translate(0, 0, -t);
+          geo.computeVertexNormals();
+          group.add(new THREE.Mesh(geo, railMaterial));
+          continue;
+        }
         if (part.meta.rail) {
           // Kızak: yerel (s = dilim ekseni, z = dikey), kalınlık yatay eksende,
           // kanatlara DİK. X diliminde kalınlık model y'de, Y diliminde model x'te.

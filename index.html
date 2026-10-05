@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-10-05-b">
+<meta name="app-version" content="2026-10-05-c">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-10-05-b';
+  var V = '2026-10-05-c';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -176,6 +176,7 @@
                açılışta bu listeyi patterns.js'e göre yeniden kurar. -->
           <select id="p-pattern">
             <option value="dalga">Dalga</option>
+            <option value="akis">Akış (yüz paneli)</option>
             <option value="halka">Su halkaları</option>
             <option value="topografya">Topografya</option>
             <option value="kumul">Kumul</option>
@@ -188,6 +189,10 @@
         <label>Desen payı <small>görselin altına taşıyıcı dalga — 0,2–0,35 iyi</small>
           <input type="range" id="p-patMix" min="0" max="1" step="0.05" value="0">
           <output for="p-patMix"></output>
+        </label>
+        <label>Konu etrafında boşluk <small>yüz ortada küçülür, etrafında desen akar — 0,25–0,4</small>
+          <input type="range" id="p-subjectPad" min="0" max="0.6" step="0.05" value="0">
+          <output for="p-subjectPad"></output>
         </label>
         <label>Ölçek
           <input type="range" id="p-patScale" min="0" max="1" step="0.02" value="0.5">
@@ -370,6 +375,12 @@
       </label>
       <label>En küçük ada (mm²) <small>parmak ucu gibi kırıntıları eler</small>
         <input type="number" id="p-sliceMinArea" value="300" min="0" max="20000" step="50">
+      </label>
+      <label>Görselden derinlik (mm) <small>fotoğraftan maske; 0 = boyun %40'ı</small>
+        <input type="number" id="p-sliceReliefDepth" value="0" min="0" max="1000" step="10">
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-sliceBoard" checked> Görselden maskede arka pano <small>(hat + oluk gravürlü)</small>
       </label>
       <label>Taşıyıcı <small>kanatları ne tutar</small>
         <select id="p-support">

@@ -392,6 +392,28 @@ onnxruntime-web (MIT). İkisi depoda durur, ilk kullanımda bir kez iner
 - Süre: masaüstünde ~8 sn, telefonda 10-30 sn (tek çekirdek; GitHub Pages
   çok çekirdeğe izin vermiyor).
 
+### Parametrik yüz paneli (lamel + yapay zekâ)
+Duvardan dalgaların içinden çıkan yüz (parametric_art_wood tarzı):
+
+1. Lamel modu, panel 1200 × 1200, kalınlık 12, boşluk 8, taban 60, kabartma
+   240 (duvardan 30 cm).
+2. Yüz fotoğrafı → **🤖 Yapay zekâ derinliği**.
+3. Hazır desenler → **Akış (yüz paneli)**, desen payı 0,5, **konu etrafında
+   boşluk** 0,3, ölçek 0,2.
+
+- *Akış* deseni lamel boyunca 1-6 tam S dalgası çizer, komşu lamelde yavaşça
+  kayar. (Dalga deseni tohumdan rastgele kurulduğu için bazı tohumlarda tek
+  bir tümsek veriyordu.)
+- Yapay zekâ kaynağında desen yüzün ALTINDA kalır: `max(yüz, desen·k)`, yüz
+  dalga ortasının üstünden başlar. Doğrusal karışımda dalga yüzün ortasından
+  geçip burnu dudağı eğiyordu.
+- *Konu etrafında boşluk* görseli zeminle büyütür, yüz ortada küçülür;
+  görsel kenarına değen boyun/saç orada uçurumla kesilmesin diye kenara
+  doğru zemine söner.
+- Dilim / Heykel modu da görselden çalışır: yükseklik haritası doğrudan
+  katmanlara bölünür (yatay katmanlı yüz maskesi + hat ve oluk kazınmış arka
+  pano). Serbest duran heykel için yine 3B model gerekir.
+
 ### Fotoğrafta olmayan derinliği vermek
 Düz bir fotoğrafta derinlik bilgisi yoktur — parlaklık, ışığın nereye
 vurduğunu anlatır, neyin önde olduğunu değil. Bu yüzden fotoğraflar çoğu
@@ -544,6 +566,7 @@ js/
   bridge.js           köprü: aynı dilimde yakın iki adayı tek parça yapar
   strokefont.js       tek çizgili yazı: gravür numaralarını çizgiye çevirir
   depth.js            yapay zekâ derinliği: fotoğraftan yükseklik haritası (models/, vendor/ort/)
+  heightslice.js      görselden dilim: yükseklik haritasından katman + arka pano
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
   remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)

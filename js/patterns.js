@@ -169,6 +169,32 @@ export const PATTERNS = {
     },
   },
 
+  akis: {
+    label: 'Akış (yüz paneli)',
+    hint: 'Lamel boyunca S şeklinde kıvrılan, komşu lamelde yavaşça kayan dalgalar — '
+      + 'parametrik yüz panellerinin zemini. Yapay zekâ derinliğiyle okunan bir yüzün '
+      + 'altına koyun (desen payı 0,4–0,6, konu etrafında boşluk 0,3).',
+    /**
+     * Dalga deseni tohumdan rastgele kurulur; bazı tohumlarda tek bir tümsek
+     * çıkıyor, yüzün etrafında akan dalga değil. Bu desen bilerek sade:
+     * dikey yönde 1-6 tam dalga (ölçek), tepe çizgileri hafif eğik (açı),
+     * faz enine yavaşça bükülür (yoğunluk) — dikey lamelde her lamelin önü S
+     * çizer, komşusu biraz kaymış S çizer.
+     */
+    prepare: (p) => {
+      const r = rng32(p.seedInt || 1);
+      return { f1: r(), f2: r(), f3: r() };
+    },
+    fn: (u, v, p, st) => {
+      const dongu = 1 + p.scale * 5;
+      const egim = (p.angle / Math.PI - 0.1) * 1.5;
+      const bukum = (0.25 + p.detail * 0.6) * Math.sin(2 * Math.PI * (u * 0.8 + st.f1)) +
+        0.18 * p.detail * Math.sin(2 * Math.PI * (u * 2.3 + st.f2));
+      const faz = 2 * Math.PI * (dongu * (v + egim * u) + bukum + st.f3);
+      return 0.5 + 0.5 * Math.sin(faz);
+    },
+  },
+
   halka: {
     label: 'Su halkaları',
     hint: 'Bir noktaya taş atılmış gibi. Birden fazla merkez birbiriyle girişir.',

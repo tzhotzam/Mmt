@@ -6,7 +6,7 @@
 // APP_VERSION ile AYNI olmalı. Üçü ayrışırsa tarayıcı yeni HTML'i eski
 // JavaScript'le birleştirebilir; testler bu üçünü karşılaştırır.
 
-const VERSION = '2026-10-05-b';
+const VERSION = '2026-10-05-c';
 const CACHE = `cnc-panel-${VERSION}`;
 // Büyük ve değişmeyen dosyalar (yapay zekâ modeli ~26 MB, çalıştırıcı
 // ~14 MB) sürümden bağımsız, kalıcı bir önbellekte durur: her güncellemede
@@ -52,6 +52,7 @@ const ASSETS = [
   './js/bridge.js',
   './js/strokefont.js',
   './js/depth.js',
+  './js/heightslice.js',
   './js/relief3d.js',
   './js/export/dxf.js',
   './js/export/svg.js',

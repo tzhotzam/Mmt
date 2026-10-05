@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-05-b';
+const APP_VERSION = '2026-10-05-c';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -190,6 +190,8 @@ function readParams() {
       railCount: Math.round(num('p-sliceRailCount', 0)),
       railEngage: num('p-railEngage', 0),
       upAxis: els['p-sliceUpAxis'].value,
+      reliefDepth: num('p-sliceReliefDepth', 0),
+      board: bool('p-sliceBoard'),
       toolDiameter: common.toolDiameter,
     };
   }
@@ -327,8 +329,9 @@ function readNestOpts() {
  * karışımı bozmaz, yalnızca dalganın yönünü çevirir.
  */
 function composeSource() {
-  const yukleme = state.uploadGrid;
-  if (!yukleme) return false;
+  if (!state.uploadGrid) return false;
+  const yukleme = kenarPayi(state.uploadGrid, num('p-subjectPad', 0));
+  state.aspect = yukleme.w / yukleme.h;
 
   const k = Math.min(1, Math.max(0, num('p-patMix', 0)));
   if (k <= 0) {
@@ -337,8 +340,23 @@ function composeSource() {
     const key = els['p-pattern']?.value || PATTERN_KEYS[0];
     const desen = renderPattern(yukleme.w, yukleme.h, key, patternOpts());
     const out = makeGrid(yukleme.w, yukleme.h);
+    // Yapay zekâ derinliğinde konu zeminden ayrılmıştır (zemin 0): desen
+    // konunun ALTINDA kalır, yüzün üstünden geçip onu bozmaz; yüz kenarında
+    // dalga tepeleri yüzün yanına sokulur. Doğrusal karışımda dalga yüzün
+    // ortasından da geçiyor, burun ve dudak dalgayla birlikte eğiliyordu.
+    // Konu, dalga ortasının üstünden başlar (L): yoksa dalga tepeleri yüz
+    // kadar yükselip yüzü çukurda bırakıyordu. Kenarda (değer < 0,18, yani
+    // yapay zekânın yumuşak geçişi) yükseltme de yumuşakça söner.
+    const ust = state.uploadKind === 'ai';
+    const L = 0.6 * k;
     for (let i = 0; i < out.data.length; i++) {
-      out.data[i] = yukleme.data[i] * (1 - k) + desen.data[i] * k;
+      const f = yukleme.data[i];
+      if (ust) {
+        const m = Math.min(1, f / 0.18);
+        out.data[i] = Math.max(m * (L + (1 - L) * f), desen.data[i] * k);
+      } else {
+        out.data[i] = f * (1 - k) + desen.data[i] * k;
+      }
     }
     state.sourceGrid = out;
   }
@@ -347,6 +365,46 @@ function composeSource() {
   state.sourceKind = state.uploadKind;
   updateSourceStats();
   return true;
+}
+
+/**
+ * Konunun etrafına boşluk ekler: yüz panelin ortasında küçülür, etrafında
+ * desen akar (parametrik yüz panellerinin görünümü). Boşluk, görselin kenar
+ * piksellerinin ortancasıyla doldurulur — zemin neyse o; sıfırla doldurmak
+ * "koyu alanlar öne" seçiliyken çerçeveyi duvar gibi öne çıkarırdı.
+ * Izgara uzun kenarı yine GRID_MAX olacak şekilde yeniden örneklenir.
+ */
+function kenarPayi(grid, pay) {
+  if (!(pay > 0)) return grid;
+  const ek = pay * Math.max(grid.w, grid.h);
+  const W = grid.w + 2 * ek, H = grid.h + 2 * ek;
+  const [cols, rows] = gridDimsFor(W / H);
+  const kenar = [];
+  for (let x = 0; x < grid.w; x++) kenar.push(grid.data[x], grid.data[(grid.h - 1) * grid.w + x]);
+  for (let y = 0; y < grid.h; y++) kenar.push(grid.data[y * grid.w], grid.data[y * grid.w + grid.w - 1]);
+  kenar.sort((a, b) => a - b);
+  const zemin = kenar[kenar.length >> 1] ?? 0;
+  const out = makeGrid(cols, rows, zemin);
+  const sol = Math.max(2, 0.12 * Math.max(grid.w, grid.h));   // kenar sönümü (piksel)
+  for (let j = 0; j < rows; j++) {
+    const sy = ((j + 0.5) / rows) * H - ek - 0.5;
+    if (sy < 0 || sy > grid.h - 1) continue;
+    const y0 = Math.floor(sy), y1 = Math.min(grid.h - 1, y0 + 1), fy = sy - y0;
+    for (let i = 0; i < cols; i++) {
+      const sx = ((i + 0.5) / cols) * W - ek - 0.5;
+      if (sx < 0 || sx > grid.w - 1) continue;
+      const x0 = Math.floor(sx), x1 = Math.min(grid.w - 1, x0 + 1), fx = sx - x0;
+      const d = grid.data;
+      const v = (d[y0 * grid.w + x0] * (1 - fx) + d[y0 * grid.w + x1] * fx) * (1 - fy) +
+        (d[y1 * grid.w + x0] * (1 - fx) + d[y1 * grid.w + x1] * fx) * fy;
+      // Görselin kenarına değen konu (boyun, saç) orada uçurumla kesilmesin:
+      // eski kenara yaklaştıkça zemine yumuşakça iner.
+      const t = Math.min(1, Math.min(sx, sy, grid.w - 1 - sx, grid.h - 1 - sy) / sol);
+      const a = t * t * (3 - 2 * t);
+      out.data[j * cols + i] = zemin + (v - zemin) * a;
+    }
+  }
+  return out;
 }
 
 function gridDimsFor(aspect) {
@@ -866,7 +924,19 @@ function facetMeshSource() {
  * hâli 138 temiz parça verdi. Sadeleştirme yok — dilim her ayrıntıyı ister.
  */
 function sliceMeshSource() {
-  if (!state.tris) return null;
+  if (!state.tris) {
+    // Görsel kaynağı (fotoğraf / yapay zekâ derinliği / desen): ağ kurulmaz,
+    // katmanlar doğrudan yükseklik haritasından okunur.
+    if (!state.sourceGrid) return null;
+    const g = applyFilters(state.sourceGrid, readFilters());
+    return {
+      tris: { heightmap: { grid: g, aspect: state.aspect || g.w / g.h } },
+      not: state.uploadKind === 'ai'
+        ? 'Fotoğraftan (yapay zekâ derinliği) yüz maskesi: arkası düz, duvar panosuna yapıştırılır.'
+        : 'Görselden kabartma katmanları (arkası düz). Yüz ya da nesne fotoğrafında ' +
+          '"Yapay zekâ derinliği"ni seçin; serbest duran heykel için 3B model yükleyin.',
+    };
+  }
   if (state.remeshCache?.src !== state.tris) {
     state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null };
   }
@@ -888,7 +958,7 @@ function sliceMeshSource() {
 function regenerateMesh() {
   state.seams = [];
   const kaynak = state.mode === 'facets' ? facetMeshSource() : sliceMeshSource();
-  if (!kaynak || !kaynak.tris?.length) {
+  if (!kaynak || !(kaynak.tris?.length || kaynak.tris?.heightmap)) {
     state.parts = [];
     state.info = null;
     state.cutList = null;
@@ -899,8 +969,8 @@ function regenerateMesh() {
     els['stage-hint'].textContent = state.mode === 'facets'
       ? 'Görsel ya da 3B model (STL/OBJ) yükleyin. Görselden duvar kabartması, ' +
         'modelden serbest duran heykel çıkar.'
-      : 'Bu mod için 3B model gerekir (görsel yeterli değil): STL veya OBJ yükleyin. ' +
-        'Denemek için "Hazır desen"e dokunun — gömülü bir model gelir.';
+      : 'Görsel ya da 3B model (STL/OBJ) yükleyin. Fotoğraftan duvara asılan yüz maskesi için ' +
+        '"Yapay zekâ derinliği"ni seçin; serbest duran heykel için 3B model gerekir.';
     els.summary.innerHTML = '';
     showWarnings([]);
     // Önizlemeler de TEMİZLENMELİ. Eskiden temizlenmiyordu: modele ihtiyaç
@@ -1634,6 +1704,9 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
     if (input.id === 'p-patternCode' || input.id === 'p-seedText') return;
     // Desen payı özel: yüklü görsel varken applyPattern() onu deseni ile
     // DEĞİŞTİRİRDİ. Pay sıfıra çekildiğinde de görsel kaybolurdu.
+    if (input.id === 'p-subjectPad' && state.uploadGrid) {
+      saveSettings(); composeSource(); resetPaint(); syncAspect(); scheduleRegen(); return;
+    }
     if (input.id === 'p-patMix' && state.uploadGrid) {
       saveSettings(); composeSource(); scheduleRegen(); return;
     }

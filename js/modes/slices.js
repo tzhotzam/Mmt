@@ -21,6 +21,7 @@ import { scaleTriangles } from '../mesh.js';
 import { dikCevir } from './facets.js';
 import { planRails, notchBottom, railPart, railAxes, railEngage, YUVA_PAYI } from '../rails.js';
 import { kopruKur, enYakin } from '../bridge.js';
+import { heightmapToSlices, arkaPano } from '../heightslice.js';
 import { cornerRelief } from '../corners.js';
 
 export const SLICE_DEFAULTS = {
@@ -43,17 +44,25 @@ export const SLICE_DEFAULTS = {
   toolDiameter: 6,      // kare kazık yuvasının köşe payı bu uca göre açılır
   labelSize: 8,
   maxLayers: 400,
+  reliefDepth: 0,        // görselden dilimde kabartma derinliği (mm); 0 = boyun %40'ı
+  board: true,           // görselden dilimde arka pano parçası
 };
 
 export function generateSlices(rawTris, userParams = {}) {
   const p = { ...SLICE_DEFAULTS, ...userParams };
   const warnings = [];
 
-  const scaled = scaleTriangles(dikCevir(rawTris, p.upAxis), p.targetSize, p.sizeAxis);
   const pitch = p.thickness + p.gap;
-  const sliced = sliceMesh(scaled.tris, {
-    axis: p.axis, pitch, tol: Math.max(0.005, p.targetSize * 1e-5), maxLayers: p.maxLayers,
-  });
+  let scaled, sliced;
+  if (rawTris && rawTris.heightmap) {
+    // Görselden (fotoğraf, yapay zekâ derinliği): ağ yok, kesit haritadan okunur.
+    ({ scaled, sliced } = gorseldenDilim(rawTris.heightmap, p, pitch, warnings));
+  } else {
+    scaled = scaleTriangles(dikCevir(rawTris, p.upAxis), p.targetSize, p.sizeAxis);
+    sliced = sliceMesh(scaled.tris, {
+      axis: p.axis, pitch, tol: Math.max(0.005, p.targetSize * 1e-5), maxLayers: p.maxLayers,
+    });
+  }
 
   if (!sliced.count) {
     return {
@@ -232,6 +241,12 @@ export function generateSlices(rawTris, userParams = {}) {
   });
 
   kizaklar.forEach((k, i) => parts.push(railPart(k, layers, p, `K${i + 1}`)));
+  // Görselden maske: arkasına yapıştırılacağı pano (hat + oluk gravürlü).
+  if (rawTris && rawTris.heightmap && p.board !== false) {
+    parts.push(arkaPano(rawTris.heightmap.grid, {
+      width: scaled.size.x, height: scaled.size.z, thickness: p.thickness,
+    }));
+  }
   if ((destek === 'kizak' || destek === 'ikisi') && !kizaklar.length) {
     warnings.push(railAxes(p.axis)
       ? 'Kızak yerleştirilemedi: kanatların alt kenarı kızağın geçeceği kadar düz ve dolu değil. Mil kullanılıyor.'
@@ -394,6 +409,7 @@ export function generateSlices(rawTris, userParams = {}) {
       rails: kizaklar.map((k, i) => ({ id: `K${i + 1}`, h: k.h, fins: k.fins.length })),
       railEngage: railEngage(p),
       bridges: kopruSayisi,
+      board: parts.some((q) => q.kind === 'pano'),
       singleRodParts: tekMil,
       groupedParts: gruptaki,
       groupCount: mil.grupSayisi,
@@ -433,6 +449,32 @@ export function generateSlices(rawTris, userParams = {}) {
  * @returns {{points, segments, tutar}} tutar[k][katman] = milin o katmanda
  *          tuttuğu ada indisi, yoksa -1
  */
+/**
+ * Görsel kaynağı için katmanlar. Boy, en uzun kenar (ya da seçilen eksen)
+ * heykel boyuna gelecek şekilde ölçeklenir; derinlik verilmediyse boyun
+ * %40'ı — yarım baş (maske) oranı. Yalnız yatay (Z) ve dikey (X) katman
+ * olur: Y ekseni duvara paralel katman demektir, o iş Katman/Rölyef modunun.
+ */
+function gorseldenDilim(hm, p, pitch, warnings) {
+  const a = hm.aspect || (hm.grid.w / hm.grid.h);
+  let width = a >= 1 ? 1 : a, height = a >= 1 ? 1 / a : 1;
+  const ref = p.sizeAxis === 'x' ? width : p.sizeAxis === 'z' ? height : Math.max(width, height);
+  width *= p.targetSize / ref;
+  height *= p.targetSize / ref;
+  const depth = p.reliefDepth > 0 ? p.reliefDepth : 0.4 * height;
+  if (p.axis === 'y') {
+    p.axis = 'z';   // sonraki her adım (önizleme, kızak, kılavuz) yatay katmanı bilsin
+    warnings.push('Görselden dilimde Y ekseni (duvara paralel katman) yok — yatay (Z) katman kullanıldı. ' +
+      'Duvara paralel katman için Katman / Rölyef modunu kullanın.');
+  }
+  return heightmapToSlices(hm.grid, {
+    width, height, depth,
+    back: Math.max(3, p.thickness * 0.5),
+    axis: p.axis,
+    pitch, maxLayers: p.maxLayers,
+  });
+}
+
 function planRods(layers, p, r, onceBagli = []) {
   const kare = p.rodShape === 'kare';
   // Ada kutuları: nokta-içinde sınamasının çoğunu ucuzca eler (ilk sürüm

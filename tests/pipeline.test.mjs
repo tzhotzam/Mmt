@@ -2645,6 +2645,44 @@ test('derinlik modeli ve çalıştırıcı depoda, lisanslarıyla', () => {
   for (const id of ['depth-luma', 'depth-ai']) assert.ok(html.includes(`id="${id}"`), `${id} yok`);
 });
 
+test('akış deseni lamel boyunca dalgalanır, komşu lamelde kayar', async () => {
+  const { renderPattern } = await import('../js/patterns.js');
+  const g = renderPattern(60, 120, 'akis', { scale: 0.2, angle: 0.1, detail: 0.5, seed: 0.3 });
+  // Dikey bir sütun boyunca en az bir tam dalga (0..1 aralığının çoğu).
+  let lo = 1, hi = 0;
+  for (let y = 0; y < 120; y++) { const v = g.data[y * 60 + 30]; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  assert.ok(hi - lo > 0.8, `sütunda dalga yok (${lo}..${hi})`);
+  // Komşu sütunlar benzer ama aynı değil: S çizgisi kayıyor.
+  let fark = 0;
+  for (let y = 0; y < 120; y++) fark += Math.abs(g.data[y * 60 + 30] - g.data[y * 60 + 40]);
+  assert.ok(fark / 120 > 0.01 && fark / 120 < 0.5, `komşu sütun farkı ${fark / 120}`);
+});
+
+test('görselden dilim: katmanın arka kenarı duvarda, ön kenarı yüzde', async () => {
+  const { heightmapToSlices, arkaPano } = await import('../js/heightslice.js');
+  const w = 50, h = 60, data = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const r = Math.hypot((i - 25) / 15, (j - 30) / 20);
+    data[j * w + i] = r < 1 ? 0.2 + 0.8 * Math.sqrt(1 - r * r) : 0;
+  }
+  const grid = { w, h, data };
+  const { sliced, scaled } = heightmapToSlices(grid, { width: 250, height: 300, depth: 100, back: 4, pitch: 6, axis: 'z' });
+  assert.equal(scaled.size.y, 104);
+  const orta = sliced.layers[Math.floor(sliced.count / 2)];
+  assert.equal(orta.rings.length, 1, 'ortadaki katman tek parça olmalı');
+  const r = orta.rings[0];
+  const ys = r.map((q) => q[1]);
+  assert.ok(Math.abs(Math.max(...ys)) < 1e-9, 'arka kenar duvarda (y=0) değil');
+  assert.ok(Math.min(...ys) < -90, `ön kenar yeterince önde değil (${Math.min(...ys)})`);
+  assert.ok(signedArea(r) > 0, 'halka CCW değil');
+  // Zemin satırı (konunun üstü) boş kalmalı.
+  assert.equal(sliced.layers[sliced.count - 1].rings.length, 0, 'zemin kesildi');
+  const pano = arkaPano(grid, { width: 250, height: 300, thickness: 6 });
+  assert.equal(pano.kind, 'pano');
+  assert.ok(pano.w > 250 && pano.h > 300, 'pano maskeden büyük olmalı');
+  assert.ok(pano.engrave.some((e) => e.type === 'polyline' && e.closed), 'maske hattı kazınmamış');
+});
+
 test('desen karışımı yüklenen görseli silmez', () => {
   const js = oku('js/main.js');
   const govde = js.match(/function composeSource[\s\S]*?\n}/)?.[0] || '';
