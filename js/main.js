@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-05-c';
+const APP_VERSION = '2026-10-05-d';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -385,7 +385,7 @@ function kenarPayi(grid, pay) {
   kenar.sort((a, b) => a - b);
   const zemin = kenar[kenar.length >> 1] ?? 0;
   const out = makeGrid(cols, rows, zemin);
-  const sol = Math.max(2, 0.12 * Math.max(grid.w, grid.h));   // kenar sönümü (piksel)
+  const sol = 0.22;   // kenar sönümü: kenardan içeri, yarı genişliğin bu oranı
   for (let j = 0; j < rows; j++) {
     const sy = ((j + 0.5) / rows) * H - ek - 0.5;
     if (sy < 0 || sy > grid.h - 1) continue;
@@ -398,8 +398,12 @@ function kenarPayi(grid, pay) {
       const v = (d[y0 * grid.w + x0] * (1 - fx) + d[y0 * grid.w + x1] * fx) * (1 - fy) +
         (d[y1 * grid.w + x0] * (1 - fx) + d[y1 * grid.w + x1] * fx) * fy;
       // Görselin kenarına değen konu (boyun, saç) orada uçurumla kesilmesin:
-      // eski kenara yaklaştıkça zemine yumuşakça iner.
-      const t = Math.min(1, Math.min(sx, sy, grid.w - 1 - sx, grid.h - 1 - sy) / sol);
+      // eski kenara yaklaştıkça zemine yumuşakça iner. Sönüm köşeleri
+      // yuvarlatılmış bir dikdörtgen (süperelips) boyunca: düz kenar
+      // sönümünde kadrajı dolduran saç, başı kutu gibi köşeli bırakıyordu.
+      const nx = Math.abs((sx / (grid.w - 1)) * 2 - 1), ny = Math.abs((sy / (grid.h - 1)) * 2 - 1);
+      const r = Math.pow(nx ** 2.5 + ny ** 2.5, 1 / 2.5);
+      const t = Math.min(1, Math.max(0, (1 - r) / sol));
       const a = t * t * (3 - 2 * t);
       out.data[j * cols + i] = zemin + (v - zemin) * a;
     }
@@ -500,6 +504,9 @@ async function aiDerinlik() {
     resetPaint();
     // Modelin çıktısında yakın = yüksek; ters çevirme konuyu gömerdi.
     setInvert(false);
+    // Netlik (keskinleştirme) fotoğraf grenine göre: yapay zekâ derinliğinde
+    // yüzün kenarına çukur, burnun çevresine taşma ekliyordu.
+    if (num('p-sharpen', 0) > 0) { els['p-sharpen'].value = 0; syncRangeOutputs(); saveSettings(); }
     syncAspect();
     scheduleRegen();
     setSourceStatus(

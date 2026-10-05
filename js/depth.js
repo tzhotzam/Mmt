@@ -88,10 +88,13 @@ function otsu(data) {
  * Geçiş yumuşaktır, kenarda uçurum değil kısa bir rampa olur.
  */
 export function sonIsle(cikti, cols, rows, opts = {}) {
-  const { arkaPlan = true, taban = 0.18, gecis = 0.04 } = opts;
+  const { arkaPlan = true, taban = 0.18, gecis = 0.04, vurgu = 1.6 } = opts;
   const n = BOY * BOY;
   const sirali = Float32Array.from(cikti.subarray ? cikti.subarray(0, n) : cikti.slice(0, n)).sort();
-  const lo = yuzdelik(sirali, 0.01), hi = yuzdelik(sirali, 0.995);
+  // Üst sınır kırpılmaz (yalnız tek tük aykırı piksel atılır): en yakın
+  // %0,5'i kırpmak portrede tam BURUN UCU demekti — 1341 piksel 1'e
+  // yapışıyor, burun düz kesilmiş gibi çıkıyordu.
+  const lo = yuzdelik(sirali, 0.01), hi = yuzdelik(sirali, 0.9998);
   const ara = hi - lo || 1;
   const norm = new Float32Array(n);
   for (let i = 0; i < n; i++) norm[i] = Math.min(1, Math.max(0, (cikti[i] - lo) / ara));
@@ -101,7 +104,12 @@ export function sonIsle(cikti, cols, rows, opts = {}) {
     for (let i = 0; i < n; i++) {
       const v = norm[i];
       const m = Math.min(1, Math.max(0, (v - (t - gecis)) / (2 * gecis)));
-      const konu = taban + (1 - taban) * Math.min(1, Math.max(0, (v - t) / (1 - t || 1)));
+      // Konu içinde vurgu eğrisi: yapay zekâ yüzü kafa yuvarlağı üstünde sığ
+      // bir kabartma olarak verir (yanak 0,8, burun ucu 1,07); doğrusal
+      // kalırsa yüz düz bir maske gibi durur. s^vurgu öndeki biçimleri
+      // (burun, dudak, çene) açar, kafanın genel kabarıklığını sıkıştırır.
+      const sKonu = Math.min(1, Math.max(0, (v - t) / (1 - t || 1)));
+      const konu = taban + (1 - taban) * Math.pow(sKonu, vurgu);
       norm[i] = m * m * (3 - 2 * m) * konu;   // yumuşak eşik
     }
   }
