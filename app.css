@@ -459,3 +459,5 @@ details.gelismis > .grid { margin-top: 8px; }
 .preset-btn:active { transform: translateY(1px); }
 .preset-btn.calisiyor { opacity: 0.7; }
 .preset-status { margin: 8px 2px 0; font-size: 14px; font-weight: 600; color: var(--accent-2, #fbbf24); }
+.yuz-detay { display: block; margin-top: 10px; }
+.yuz-detay input { width: 100%; }

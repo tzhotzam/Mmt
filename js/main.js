@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-06-a';
+const APP_VERSION = '2026-10-06-b';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -490,6 +490,7 @@ async function aiDerinlik() {
     const { derinlikTahmin } = await import('./depth.js');
     const t0 = performance.now();
     const g = await derinlikTahmin(img, cols, rows, {
+      detay: num('p-faceDetail', 1),
       onProgress: ({ asama, oran }) => {
         if (is !== state.aiIs) return;
         if (state.presetBekliyor) {
@@ -506,6 +507,7 @@ async function aiDerinlik() {
       },
     });
     if (is !== state.aiIs || state.depthMode !== 'ai') return;
+    state.aiHam = { ...g.ham, cols, rows };
     state.uploadGrid = Object.assign(makeGrid(g.w, g.h), { data: g.data });
     state.uploadKind = 'ai';
     composeSource();
@@ -537,6 +539,25 @@ async function aiDerinlik() {
   } finally {
     if (is === state.aiIs) els.busy.hidden = true;
   }
+}
+
+/**
+ * "Yüz detayı" değişti: model yeniden çalışmaz, saklanan ham çıktıdan
+ * yükseklik haritası yeniden kurulur (~0,2 sn).
+ */
+let detayZamanlayici = null;
+function yuzDetayiUygula() {
+  if (!state.aiHam || state.uploadKind !== 'ai') return;
+  clearTimeout(detayZamanlayici);
+  detayZamanlayici = setTimeout(async () => {
+    const { sonIsle } = await import('./depth.js');
+    const h = state.aiHam;
+    const g = sonIsle(h.cikti, h.cols, h.rows, { lum: h.lum, detay: num('p-faceDetail', 1) });
+    state.uploadGrid = Object.assign(makeGrid(g.w, g.h), { data: g.data });
+    composeSource();
+    resetPaint();
+    scheduleRegen();
+  }, 150);
 }
 
 /** Fotoğraf okuma biçimi: parlaklıktan ya da yapay zekâ derinliğiyle. */
@@ -1609,7 +1630,7 @@ const YUZ_PANELI = {
   'p-panelW': 1000, 'p-thickness': 10, 'p-gap': 5, 'p-baseDepth': 60, 'p-maxDepth': 240,
   'p-railCount': 3, 'p-orientation': 'vertical',
   'p-pattern': 'akis', 'p-patMix': 0.5, 'p-subjectPad': 0.15,
-  'p-patScale': 0.2, 'p-patAngle': 0.1, 'p-patDetail': 0.5,
+  'p-patScale': 0.2, 'p-patAngle': 0.1, 'p-patDetail': 0.5, 'p-faceDetail': 1,
 };
 /**
  * Düğmenin hemen altında görünen durum. İlk sürümde sonuç yalnızca sayfanın
@@ -1793,6 +1814,11 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
     if (input.id === 'p-patternCode' || input.id === 'p-seedText') return;
     // Desen payı özel: yüklü görsel varken applyPattern() onu deseni ile
     // DEĞİŞTİRİRDİ. Pay sıfıra çekildiğinde de görsel kaybolurdu.
+    if (input.id === 'p-faceDetail') {
+      saveSettings();
+      yuzDetayiUygula();
+      return;
+    }
     if (input.id === 'p-subjectPad' && state.uploadGrid) {
       saveSettings(); composeSource(); resetPaint(); syncAspect(); scheduleRegen(); return;
     }

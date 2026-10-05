@@ -123,18 +123,37 @@ function bulanik(a, r) {
  * (geniş bulanıklık, zeminden sızmasın diye maskeyle normalize edilir) ve
  * ayrıntı (fark) ayrılır: kaba×0,3 + ayrıntı×2,2, sonra konu içinde 0..1.
  */
-function kabartmaYap(sk, m) {
+function kabartmaYap(sk, m, lum = null, detay = 1) {
   const n = BOY * BOY;
-  const r = Math.round(0.06 * BOY);
-  const pay = new Float32Array(n), payda = Float32Array.from(m);
-  for (let i = 0; i < n; i++) pay[i] = sk[i] * m[i];
-  bulanik(pay, r);
-  bulanik(payda, r);
+  // Maskeyle normalize bulanıklık: zemin (0) konunun kenarına sızmasın.
+  const yumusat = (r, kaynak = sk) => {
+    const pay = new Float32Array(n), payda = Float32Array.from(m);
+    for (let i = 0; i < n; i++) pay[i] = kaynak[i] * m[i];
+    bulanik(pay, r);
+    bulanik(payda, r);
+    for (let i = 0; i < n; i++) pay[i] /= Math.max(payda[i], 1e-4);
+    return pay;
+  };
+  const kaba = yumusat(Math.round(0.06 * BOY));
+  const orta = yumusat(Math.round(0.015 * BOY));
+  // Fotoğraftaki ince çizgiler (göz kenarı, kaş, dudak arası) — bant geçiren:
+  // en ince gren ve saç teli atılır, geniş ışık-gölge atılır. Yapay zekâ
+  // derinliğinde göz ve dudak birkaç mm'lik farktı; lamelde okunmuyordu.
+  let cizgi = null;
+  if (lum && detay > 0) {
+    const a = yumusat(Math.max(1, Math.round(0.004 * BOY)), lum);
+    const b = yumusat(Math.round(0.02 * BOY), lum);
+    cizgi = new Float32Array(n);
+    for (let i = 0; i < n; i++) cizgi[i] = a[i] - b[i];
+  }
   const out = new Float32Array(n);
   const konu = [];
   for (let i = 0; i < n; i++) {
-    const kaba = pay[i] / Math.max(payda[i], 1e-4);
-    out[i] = 0.3 * kaba + 2.2 * (sk[i] - kaba);
+    // Üç bant: kaba biçim sıkışır, yüz ölçeği (burun, çene) büyür, İNCE
+    // ölçek (göz kapağı, dudak çizgisi, kaş) daha da büyür. Göz ve dudak
+    // derinlikte yalnız birkaç mm; tek bantta 30 cm'lik panelde kayboluyordu.
+    out[i] = 0.3 * kaba[i] + 2.2 * (orta[i] - kaba[i]) + 6 * detay * (sk[i] - orta[i]) +
+      (cizgi ? 1.2 * detay * cizgi[i] : 0);
     if (m[i] > 0.5) konu.push(out[i]);
   }
   if (konu.length < 16) return sk;
@@ -155,7 +174,7 @@ function kabartmaYap(sk, m) {
  * Geçiş yumuşaktır, kenarda uçurum değil kısa bir rampa olur.
  */
 export function sonIsle(cikti, cols, rows, opts = {}) {
-  const { arkaPlan = true, taban = 0.18, gecis = 0.04, kabartma = true } = opts;
+  const { arkaPlan = true, taban = 0.18, gecis = 0.04, kabartma = true, lum = null, detay = 1 } = opts;
   const n = BOY * BOY;
   const sirali = Float32Array.from(cikti.subarray ? cikti.subarray(0, n) : cikti.slice(0, n)).sort();
   // Üst sınır kırpılmaz (yalnız tek tük aykırı piksel atılır): en yakın
@@ -181,7 +200,7 @@ export function sonIsle(cikti, cols, rows, opts = {}) {
       m[i] = a * a * (3 - 2 * a);
       sk[i] = Math.min(1, Math.max(0, (v - t) / (1 - t || 1)));
     }
-    const out = kabartma ? kabartmaYap(sk, m) : sk;
+    const out = kabartma ? kabartmaYap(sk, m, lum, detay) : sk;
     for (let i = 0; i < n; i++) norm[i] = m[i] * (taban + (1 - taban) * out[i]);
   }
 
@@ -272,8 +291,25 @@ export async function derinlikTahmin(img, cols, rows, opts = {}) {
   opts.onProgress?.({ asama: 'hesap', oran: 0 });
   // Ekran bir kare çizebilsin diye hesaptan önce bir tur bekle.
   await new Promise((r) => setTimeout(r, 30));
-  const giris = new ort.Tensor('float32', onIsle(img.data, img.width, img.height), [1, 3, BOY, BOY]);
+  const veri = onIsle(img.data, img.width, img.height);
+  const lum = parlaklik(veri);
+  const giris = new ort.Tensor('float32', veri, [1, 3, BOY, BOY]);
   const sonuc = await oturum.run({ [oturum.inputNames[0]]: giris });
-  const cikti = sonuc[oturum.outputNames[0]].data;
-  return sonIsle(cikti, cols, rows, { arkaPlan: opts.arkaPlan !== false });
+  const cikti = Float32Array.from(sonuc[oturum.outputNames[0]].data);
+  const grid = sonIsle(cikti, cols, rows, { arkaPlan: opts.arkaPlan !== false, lum, detay: opts.detay ?? 1 });
+  // Ham çıktı saklanır: "Yüz detayı" değişince model yeniden çalışmasın.
+  grid.ham = { cikti, lum };
+  return grid;
+}
+
+/** Normalize model girişinden 0..1 parlaklık (518×518). */
+export function parlaklik(veri) {
+  const n = BOY * BOY, lum = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = veri[i] * ORT_STD[0] + ORT_MEAN[0];
+    const g = veri[n + i] * ORT_STD[1] + ORT_MEAN[1];
+    const b = veri[2 * n + i] * ORT_STD[2] + ORT_MEAN[2];
+    lum[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+  return lum;
 }

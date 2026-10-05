@@ -2626,6 +2626,26 @@ test('yapay zekâ derinliği: giriş normalizasyonu ve zemin ayırma', async () 
   assert.ok(g2.data[59 * 100] > g2.data[0] + 0.02, 'duvar eğimi kayboldu');
 });
 
+test('yüz detayı: fotoğraftaki ince çizgi konuya eklenir, 0 iken eklenmez', async () => {
+  const { sonIsle } = await import('../js/depth.js');
+  const N = 518, cikti = new Float32Array(N * N), lum = new Float32Array(N * N).fill(0.6);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const r = Math.hypot(i - N / 2, j - N / 2) / (N * 0.35);
+    cikti[j * N + i] = r < 1 ? 5 + 3 * Math.sqrt(1 - r * r) : 1;
+  }
+  // Konunun ortasında koyu, ince yatay bir çizgi (dudak arası gibi).
+  for (let j = 255; j < 259; j++) for (let i = 200; i < 320; i++) lum[j * N + i] = 0.1;
+  const sat = (g) => g.data[Math.round(0.4975 * 200) * 200 + 100];
+  const kapali = sonIsle(cikti, 200, 200, { lum, detay: 0 });
+  const acik = sonIsle(cikti, 200, 200, { lum, detay: 1.5 });
+  const komsu = (g) => g.data[Math.round(0.44 * 200) * 200 + 100];
+  const fark0 = komsu(kapali) - sat(kapali), fark1 = komsu(acik) - sat(acik);
+  assert.ok(fark1 > fark0 + 0.02, `çizgi kabartmaya geçmedi (${fark0} → ${fark1})`);
+  const html = oku('index.html');
+  assert.ok(html.includes('id="p-faceDetail"'), 'Yüz detayı kaydırıcısı yok');
+  assert.match(oku('js/main.js'), /'p-faceDetail': 1/, 'hazır ayar yüz detayını kurmuyor');
+});
+
 test('derinlik modeli ve çalıştırıcı depoda, lisanslarıyla', () => {
   const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
   const model = path.join(kok, 'models', 'derinlik-v2-kucuk-w8.onnx');
