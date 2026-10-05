@@ -372,6 +372,26 @@ gerçek ayak izi üzerindeki ortalaması):
 | 3 mm sabit | 0,41 mm | 2191 |
 | **adım/3 (seçilen)** | **0,28 mm** | **929** |
 
+### Yüz ve hayvan fotoğrafı: yapay zekâ derinliği
+"Fotoğraf nasıl okunsun?" → **🤖 Yapay zekâ derinliği**. Parlaklık derinlik
+değildir: yüz fotoğrafında saç koyu, gölge koyu, ışık alan yanak parlak
+çıkar; lamel paneli yüzü değil ışığı keser. Bu seçenek fotoğraftan göreli
+derinliği tahmin eden bir sinir ağı çalıştırır — burun öne, göz çukuru
+geriye gelir. Model: **Depth Anything V2 Small** (Apache-2.0), ağırlıkları
+8 bit saklanmış (99 → 25,6 MB, çıktı farkı %0,3); çalıştırıcı
+onnxruntime-web (MIT). İkisi depoda durur, ilk kullanımda bir kez iner
+(~40 MB), sonra internetsiz çalışır. **Fotoğraf cihazdan çıkmaz.**
+
+- Konu zeminden kendiliğinden ayrılır (Otsu eşiği, yumuşak geçiş): duvar,
+  oda derinliği panele eğim olarak girmez. "Hazır desenler"den dalga seçince
+  yüz dalganın üstünde kabartma olur (desen payı 0,3 kendiliğinden açılır;
+  saf desene yalnız "Hazır desen" düğmesi geçer).
+- Ölçüm (taranmış insan başı, gerçek derinlik haritasıyla; ölçek+kaydırma
+  uydurulmuş ortalama hata / derinlik aralığı): önden parlaklık %13,3 →
+  yapay zekâ %9,3; 30° yandan %16,3 → %8,6.
+- Süre: masaüstünde ~8 sn, telefonda 10-30 sn (tek çekirdek; GitHub Pages
+  çok çekirdeğe izin vermiyor).
+
 ### Fotoğrafta olmayan derinliği vermek
 Düz bir fotoğrafta derinlik bilgisi yoktur — parlaklık, ışığın nereye
 vurduğunu anlatır, neyin önde olduğunu değil. Bu yüzden fotoğraflar çoğu
@@ -523,6 +543,7 @@ js/
   rails.js            kızak: kanatları alttan tutan yarım geçmeli taşıyıcı
   bridge.js           köprü: aynı dilimde yakın iki adayı tek parça yapar
   strokefont.js       tek çizgili yazı: gravür numaralarını çizgiye çevirir
+  depth.js            yapay zekâ derinliği: fotoğraftan yükseklik haritası (models/, vendor/ort/)
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
   remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)

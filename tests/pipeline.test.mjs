@@ -2599,6 +2599,52 @@ test('otomatik yumuşatma lamel adımına bağlı', () => {
     'kaynak türü işaretlenmiyor');
 });
 
+test('yapay zekâ derinliği: giriş normalizasyonu ve zemin ayırma', async () => {
+  const { onIsle, sonIsle } = await import('../js/depth.js');
+  // Düz gri görüntü: her kanal (0.5 - ortalama) / sapma olmalı.
+  const w = 20, h = 10, rgba = new Uint8ClampedArray(w * h * 4).fill(128);
+  const x = onIsle(rgba, w, h);
+  assert.equal(x.length, 3 * 518 * 518);
+  assert.ok(Math.abs(x[0] - (128 / 255 - 0.485) / 0.229) < 1e-5, 'R kanalı yanlış');
+  assert.ok(Math.abs(x[518 * 518] - (128 / 255 - 0.456) / 0.224) < 1e-5, 'G kanalı yanlış');
+  // Sahte model çıktısı: ortada yakın bir kubbe (konu), çevrede uzak eğimli
+  // bir duvar. Zemin 0'a inmeli, konu tabandan yükselmeli, en yakın nokta 1.
+  const N = 518, cikti = new Float32Array(N * N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const r = Math.hypot(i - N / 2, j - N / 2) / (N * 0.3);
+    cikti[j * N + i] = r < 1 ? 5 + 5 * Math.sqrt(1 - r * r) : 1 + j / N;
+  }
+  const g = sonIsle(cikti, 100, 60);
+  assert.equal(g.w, 100); assert.equal(g.h, 60); assert.equal(g.data.length, 6000);
+  assert.ok(g.data[0] < 0.02 && g.data[59 * 100] < 0.02, 'zemin silinmedi');
+  const orta = g.data[30 * 100 + 50];
+  assert.ok(orta > 0.95, `konunun tepesi ${orta}`);
+  const kenar = g.data[30 * 100 + 50 + 16];   // konunun içinde, kenara yakın
+  assert.ok(kenar > 0.15 && kenar < orta, `konu kenarı ${kenar}`);
+  // Zemin ayırma kapalıyken duvar eğimi korunur.
+  const g2 = sonIsle(cikti, 100, 60, { arkaPlan: false });
+  assert.ok(g2.data[59 * 100] > g2.data[0] + 0.02, 'duvar eğimi kayboldu');
+});
+
+test('derinlik modeli ve çalıştırıcı depoda, lisanslarıyla', () => {
+  const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const model = path.join(kok, 'models', 'derinlik-v2-kucuk-w8.onnx');
+  assert.ok(fs.existsSync(model), 'model yok');
+  const boy = fs.statSync(model).size;
+  assert.ok(boy > 20e6 && boy < 40e6, `model boyu ${boy}`);
+  assert.match(oku('js/depth.js'), new RegExp(`MODEL_BOYUT = ${boy}`), 'MODEL_BOYUT dosyayla uyuşmuyor');
+  for (const f of ['ort.wasm.min.mjs', 'ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm', 'LICENSE']) {
+    assert.ok(fs.existsSync(path.join(kok, 'vendor', 'ort', f)), `vendor/ort/${f} yok`);
+  }
+  assert.match(oku('models/README.md'), /Apache/, 'model lisansı yazılmamış');
+  // Büyük dosyalar kurulumda önbelleğe alınmaz, kalıcı önbellekte durur.
+  const sw = oku('sw.js');
+  assert.ok(!/models\/derinlik/.test(sw.match(/const ASSETS = \[[\s\S]*?\];/)[0]), 'model kurulumda iniyor');
+  assert.match(sw, /KALICI_YOLLAR/, 'kalıcı önbellek yok');
+  const html = oku('index.html');
+  for (const id of ['depth-luma', 'depth-ai']) assert.ok(html.includes(`id="${id}"`), `${id} yok`);
+});
+
 test('desen karışımı yüklenen görseli silmez', () => {
   const js = oku('js/main.js');
   const govde = js.match(/function composeSource[\s\S]*?\n}/)?.[0] || '';
@@ -2611,8 +2657,10 @@ test('desen karışımı yüklenen görseli silmez', () => {
   // Pay sıfıra çekilince görsel geri gelmeli, desen onu yutmamalı.
   assert.ok(/state\.sourceGrid = yukleme/.test(govde), 'pay 0 iken görsele dönülmüyor');
   // applyPattern yüklü görsel varken onu değiştirmemeli.
-  assert.ok(/state\.uploadGrid && num\('p-patMix', 0\) > 0/.test(js),
-    'applyPattern karışım durumunu gözetmiyor');
+  // Pay sıfırken desen seçmek de görseli silmemeli: pay önerilen değere
+  // açılır; saf desene yalnız "Hazır desen" düğmesi geçer.
+  assert.ok(/state\.uploadGrid && !saf/.test(js), 'applyPattern yüklü görseli gözetmiyor');
+  assert.ok(/applyPattern\(\{ saf: true \}\)/.test(js), 'Hazır desen düğmesi saf desene geçmiyor');
   // Kaydırıcı özel ele alınmalı; yoksa applyPattern görseli deseni ile değiştirir.
   assert.ok(/input\.id === 'p-patMix' && state\.uploadGrid/.test(js),
     'desen payı kaydırıcısı özel ele alınmıyor');

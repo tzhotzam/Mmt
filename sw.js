@@ -6,8 +6,14 @@
 // APP_VERSION ile AYNI olmalı. Üçü ayrışırsa tarayıcı yeni HTML'i eski
 // JavaScript'le birleştirebilir; testler bu üçünü karşılaştırır.
 
-const VERSION = '2026-10-05-a';
+const VERSION = '2026-10-05-b';
 const CACHE = `cnc-panel-${VERSION}`;
+// Büyük ve değişmeyen dosyalar (yapay zekâ modeli ~26 MB, çalıştırıcı
+// ~14 MB) sürümden bağımsız, kalıcı bir önbellekte durur: her güncellemede
+// yeniden inmesin. Kurulumda değil, ilk kullanımda inerler. Model değişirse
+// dosya adı değişir.
+const KALICI = 'cnc-panel-model-1';
+const KALICI_YOLLAR = ['/models/', '/vendor/ort/'];
 
 const ASSETS = [
   './',
@@ -45,6 +51,7 @@ const ASSETS = [
   './js/rails.js',
   './js/bridge.js',
   './js/strokefont.js',
+  './js/depth.js',
   './js/relief3d.js',
   './js/export/dxf.js',
   './js/export/svg.js',
@@ -65,7 +72,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== KALICI).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -73,6 +80,17 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+
+  if (KALICI_YOLLAR.some((y) => url.pathname.includes(y))) {
+    // Önbellek öncelikli: varsa ağa hiç gidilmez.
+    e.respondWith(
+      caches.open(KALICI).then((c) => c.match(e.request).then((r) => r || fetch(e.request).then((res) => {
+        if (res && res.ok) c.put(e.request, res.clone()).catch(() => {});
+        return res;
+      })))
+    );
+    return;
+  }
 
   // Ağ öncelikli. `cache: 'no-cache'` kritik: aksi hâlde istek tarayıcının
   // KENDİ HTTP önbelleğinden karşılanabiliyor. GitHub Pages dosyalara birkaç

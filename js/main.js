@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-05-a';
+const APP_VERSION = '2026-10-05-b';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -102,7 +102,11 @@ const state = {
   sourceKind: null,      // 'foto' | 'desen' | 'model' — otomatik yumuşatma buna bakar
   sourceStats: null,     // kaynak teşhisi (ton yoğunluğu)
   uploadGrid: null,      // YÜKLENEN içerik (görsel/model) — desen değil
-  uploadKind: null,      // 'foto' | 'model'
+  uploadKind: null,      // 'foto' | 'model' | 'ai'
+  uploadImage: null,     // son yüklenen görsel (ImageData, en çok 2048 px) — derinlik yeniden okunabilsin
+  uploadName: '',
+  depthMode: 'luma',     // 'luma' (parlaklıktan) | 'ai' (yapay zekâ derinliği)
+  aiIs: 0,               // yarış koruması: eski hesabın sonucu yenisini ezmesin
   decimateCache: null,   // sadeleştirilmiş ağ (model + hedef değişmedikçe)
   remeshCache: null,     // onarılmış (hacimden yeniden kurulmuş) ağ ve ağ sağlığı
   meshInfo: null,
@@ -370,6 +374,8 @@ async function loadImageFile(file) {
   const img = ctx.getImageData(0, 0, c.width, c.height);
   bitmap.close?.();
 
+  state.uploadImage = kucult(img, 2048);
+  state.uploadName = file.name;
   state.uploadGrid = gridFromImageData(img, cols, rows);
   state.uploadKind = 'foto';
   // Önceden yüklenmiş 3B model artık kaynak değil. Temizlenmezse poligonal
@@ -383,6 +389,93 @@ async function loadImageFile(file) {
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
   setInvert(suggestInvert(state.sourceGrid), true);
   syncAspect();
+  scheduleRegen();
+  if (state.depthMode === 'ai') await aiDerinlik();
+}
+
+/** Büyük fotoğrafı en uzun kenarı `enCok` piksel olacak şekilde küçültür. */
+function kucult(img, enCok) {
+  const k = enCok / Math.max(img.width, img.height);
+  if (k >= 1) return img;
+  const w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+  const a = document.createElement('canvas');
+  a.width = img.width; a.height = img.height;
+  a.getContext('2d').putImageData(img, 0, 0);
+  const b = document.createElement('canvas');
+  b.width = w; b.height = h;
+  const bx = b.getContext('2d', { willReadFrequently: true });
+  bx.imageSmoothingQuality = 'high';
+  bx.drawImage(a, 0, 0, w, h);
+  return bx.getImageData(0, 0, w, h);
+}
+
+/**
+ * Fotoğrafı yapay zekâyla derinliğe çevirir (js/depth.js). Parlaklık yüz
+ * değildir: saç koyu, gölge koyu, ışık alan yanak parlak çıkar ve lamel
+ * paneli yüzü değil ışığı keser. Model ilk seferde iner (~40 MB), sonra
+ * önbellekten çalışır.
+ */
+async function aiDerinlik() {
+  const img = state.uploadImage;
+  if (!img) return;
+  const is = ++state.aiIs;
+  const [cols, rows] = gridDimsFor(img.width / img.height);
+  els.busy.hidden = false;
+  try {
+    const { derinlikTahmin } = await import('./depth.js');
+    const t0 = performance.now();
+    const g = await derinlikTahmin(img, cols, rows, {
+      onProgress: ({ asama, oran }) => {
+        if (is !== state.aiIs) return;
+        setSourceStatus(
+          asama === 'indirme'
+            ? `Yapay zekâ modeli indiriliyor… %${Math.round(oran * 100)} (yalnız ilk sefer, ~40 MB)`
+            : asama === 'kurulum' ? 'Yapay zekâ modeli hazırlanıyor…'
+            : 'Derinlik hesaplanıyor… (telefonda 10–30 sn sürebilir)'
+        );
+      },
+    });
+    if (is !== state.aiIs || state.depthMode !== 'ai') return;
+    state.uploadGrid = Object.assign(makeGrid(g.w, g.h), { data: g.data });
+    state.uploadKind = 'ai';
+    composeSource();
+    resetPaint();
+    // Modelin çıktısında yakın = yüksek; ters çevirme konuyu gömerdi.
+    setInvert(false);
+    syncAspect();
+    scheduleRegen();
+    setSourceStatus(
+      `Yapay zekâ derinliği hazır: ${state.uploadName} — ${((performance.now() - t0) / 1000).toFixed(1)} sn`
+    );
+  } catch (err) {
+    console.error(err);
+    if (is !== state.aiIs) return;
+    setSourceStatus(`Yapay zekâ derinliği çalışmadı (${err.message}). Parlaklıkla devam ediliyor.`, true);
+    setDepthMode('luma', false);
+  } finally {
+    if (is === state.aiIs) els.busy.hidden = true;
+  }
+}
+
+/** Fotoğraf okuma biçimi: parlaklıktan ya da yapay zekâ derinliğiyle. */
+function setDepthMode(mode, yenidenOku = true) {
+  state.depthMode = mode === 'ai' ? 'ai' : 'luma';
+  const ai = state.depthMode === 'ai';
+  els['depth-ai'].classList.toggle('active', ai);
+  els['depth-luma'].classList.toggle('active', !ai);
+  els['depth-ai'].setAttribute('aria-checked', String(ai));
+  els['depth-luma'].setAttribute('aria-checked', String(!ai));
+  if (!yenidenOku || !state.uploadImage || state.tris) return;
+  if (ai) { aiDerinlik(); return; }
+  state.aiIs++;   // süren yapay zekâ hesabının sonucu artık istenmiyor
+  const img = state.uploadImage;
+  const [cols, rows] = gridDimsFor(img.width / img.height);
+  state.uploadGrid = gridFromImageData(img, cols, rows);
+  state.uploadKind = 'foto';
+  composeSource();
+  resetPaint();
+  setInvert(suggestInvert(state.sourceGrid), true);
+  setSourceStatus(`Parlaklıktan okunuyor: ${state.uploadName}`);
   scheduleRegen();
 }
 
@@ -410,6 +503,8 @@ async function loadStlFile(file) {
     );
   }
   state.tris = tris;
+  state.uploadImage = null;
+  state.aiIs++;
   state.planFocus = -1;
   state.planView = { k: 1, px: 0, py: 0 };
   state.meshInfo = { format, name: file.name, count: tris.length };
@@ -527,7 +622,9 @@ function syncPatternAvailability() {
     : (PATTERNS[els['p-pattern'].value]?.hint || '');
 }
 
-function applyPattern() {
+const DESEN_PAYI_ONERI = 0.3;
+
+function applyPattern({ saf = false } = {}) {
   if (state.mode === 'facets' || state.mode === 'slices') {
     // Bu modlar kapalı bir hacim ister; düz desen işe yaramaz.
     state.tris = demoMeshTris();
@@ -539,9 +636,16 @@ function applyPattern() {
   }
   const key = els['p-pattern'].value || PATTERN_KEYS[0];
 
-  // Yüklü bir görsel varsa ve desen payı açıksa desen onun YERİNE geçmez,
-  // altına taşıyıcı dalga olarak girer.
-  if (state.uploadGrid && num('p-patMix', 0) > 0) {
+  // Yüklü bir görsel varsa desen onun YERİNE geçmez, altına taşıyıcı dalga
+  // olarak girer. Pay sıfırken desen seçmek eskiden fotoğrafı siliyordu
+  // (yapay zekâyla okunmuş yüz, dalga seçilince kayboluyordu); şimdi pay
+  // önerilen değere açılır. Saf desene yalnız "Hazır desen" düğmesi geçer.
+  if (state.uploadGrid && !saf) {
+    if (!(num('p-patMix', 0) > 0)) {
+      els['p-patMix'].value = DESEN_PAYI_ONERI;
+      syncRangeOutputs();
+      saveSettings();
+    }
     composeSource();
     refreshPatternCode();
     patternHint();
@@ -558,6 +662,8 @@ function applyPattern() {
   state.sourceKind = 'desen';
   state.uploadGrid = null;      // artık saf desen kaynağındayız
   state.uploadKind = null;
+  state.uploadImage = null;
+  state.aiIs++;
   updateSourceStats();
   refreshPatternCode();
   state.tris = null;
@@ -1290,7 +1396,7 @@ const STORE_KEY = 'cnc-panel-ayarlar-v1';
  */
 function saveSettings() {
   try {
-    const data = { mode: state.mode, invert: state.invert, fields: {} };
+    const data = { mode: state.mode, invert: state.invert, depthMode: state.depthMode, fields: {} };
     for (const el of document.querySelectorAll('.panel input, .panel select')) {
       if (el.type === 'file' || !el.id) continue;
       data.fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
@@ -1313,6 +1419,7 @@ function restoreSettings() {
     else el.value = v;
   }
   setInvert(!!data.invert);
+  setDepthMode(data.depthMode, false);
   if (data.mode && data.mode !== 'ribs') setMode(data.mode);
   syncRangeOutputs();
   return true;
@@ -1394,6 +1501,8 @@ function syncRangeOutputs() {
 
 els['dir-light'].onclick = () => { setInvert(false); saveSettings(); scheduleRegen(); };
 els['dir-dark'].onclick = () => { setInvert(true); saveSettings(); scheduleRegen(); };
+els['depth-luma'].onclick = () => { setDepthMode('luma'); saveSettings(); };
+els['depth-ai'].onclick = () => { setDepthMode('ai'); saveSettings(); };
 
 els['mode-ribs'].onclick = () => setMode('ribs');
 els['mode-contour'].onclick = () => setMode('contour');
@@ -1570,7 +1679,7 @@ els['file-stl'].onchange = async (e) => {
 
 els['btn-demo'].onclick = () => {
   els['pattern-block'].open = true;
-  applyPattern();
+  applyPattern({ saf: true });
 };
 els['btn-pattern-random'].onclick = () => {
   els['p-seedText'].value = '';   // rastgele, kişiye özel tohumun yerini alır

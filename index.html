@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-10-05-a">
+<meta name="app-version" content="2026-10-05-b">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-10-05-a';
+  var V = '2026-10-05-b';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -147,6 +147,23 @@
       </div>
       <p id="dir-hint" class="seg-hint">
         Görsel yüklediğinizde otomatik seçilir. Konu panele gömülüyorsa diğerine geçin.
+      </p>
+    </div>
+
+    <div class="segmented" role="radiogroup" aria-label="Fotoğraf nasıl okunsun">
+      <span class="segmented-title">Fotoğraf nasıl okunsun?</span>
+      <div class="segmented-buttons">
+        <button type="button" id="depth-luma" class="seg active" role="radio" aria-checked="true">
+          Parlaklıktan
+        </button>
+        <button type="button" id="depth-ai" class="seg" role="radio" aria-checked="false">
+          🤖 Yapay zekâ derinliği
+        </button>
+      </div>
+      <p class="seg-hint">
+        Logo, yazı, desen: parlaklıktan. Yüz, hayvan, nesne fotoğrafı: yapay zekâ — burun öne,
+        göz geriye; gerçek derinliği tahmin eder. İlk seferde ~40 MB iner, sonra internetsiz
+        çalışır. Fotoğraf cihazdan çıkmaz.
       </p>
     </div>
 
