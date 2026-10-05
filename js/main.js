@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-05-f';
+const APP_VERSION = '2026-10-06-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -452,7 +452,10 @@ async function loadImageFile(file) {
   setInvert(suggestInvert(state.sourceGrid), true);
   syncAspect();
   scheduleRegen();
-  if (state.depthMode === 'ai') await aiDerinlik();
+  if (state.depthMode === 'ai') {
+    if (els['preset-status'] && !els['preset-status'].hidden) state.presetBekliyor = true;
+    await aiDerinlik();
+  }
 }
 
 /** Büyük fotoğrafı en uzun kenarı `enCok` piksel olacak şekilde küçültür. */
@@ -489,6 +492,11 @@ async function aiDerinlik() {
     const g = await derinlikTahmin(img, cols, rows, {
       onProgress: ({ asama, oran }) => {
         if (is !== state.aiIs) return;
+        if (state.presetBekliyor) {
+          presetDurum(asama === 'indirme'
+            ? `⏳ Yapay zekâ modeli iniyor… %${Math.round(oran * 100)} (yalnız ilk sefer)`
+            : '⏳ Yapay zekâ derinliği hesaplanıyor… (telefonda 10–30 sn)');
+        }
         setSourceStatus(
           asama === 'indirme'
             ? `Yapay zekâ modeli indiriliyor… %${Math.round(oran * 100)} (yalnız ilk sefer, ~40 MB)`
@@ -512,10 +520,19 @@ async function aiDerinlik() {
     setSourceStatus(
       `Yapay zekâ derinliği hazır: ${state.uploadName} — ${((performance.now() - t0) / 1000).toFixed(1)} sn`
     );
+    if (state.presetBekliyor) {
+      state.presetBekliyor = false;
+      presetDurum('✓ Yüz paneli hazır — önizlemeye bakın.', true);
+      setTimeout(onizlemeyeKay, 400);
+    }
   } catch (err) {
     console.error(err);
     if (is !== state.aiIs) return;
     setSourceStatus(`Yapay zekâ derinliği çalışmadı (${err.message}). Parlaklıkla devam ediliyor.`, true);
+    if (state.presetBekliyor) {
+      state.presetBekliyor = false;
+      presetDurum(`✗ Yapay zekâ çalışmadı: ${err.message}. İnternet bağlantısını kontrol edip tekrar basın.`, true);
+    }
     setDepthMode('luma', false);
   } finally {
     if (is === state.aiIs) els.busy.hidden = true;
@@ -1594,7 +1611,26 @@ const YUZ_PANELI = {
   'p-pattern': 'akis', 'p-patMix': 0.5, 'p-subjectPad': 0.15,
   'p-patScale': 0.2, 'p-patAngle': 0.1, 'p-patDetail': 0.5,
 };
+/**
+ * Düğmenin hemen altında görünen durum. İlk sürümde sonuç yalnızca sayfanın
+ * aşağısındaki kaynak satırına yazılıyordu: fotoğraf yüklü değilken (sayfa
+ * yenilenince silinir) düğmeye basınca ekranda hiçbir şey değişmiyor,
+ * kullanıcı "basılmıyor" sanıyordu.
+ */
+function presetDurum(metin, bitti = false) {
+  const el = els['preset-status'];
+  if (!el) return;
+  el.hidden = !metin;
+  el.textContent = metin || '';
+  els['btn-face-preset'].classList.toggle('calisiyor', !bitti && !!metin);
+}
+
+function onizlemeyeKay() {
+  document.querySelector('.preview-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function yuzPaneliAyari() {
+  presetDurum('⏳ Ayarlar uygulanıyor…');
   if (state.mode !== 'ribs') setMode('ribs');
   for (const [id, v] of Object.entries(YUZ_PANELI)) if (els[id]) els[id].value = v;
   if (els['p-lockAspect']) els['p-lockAspect'].checked = true;
@@ -1602,18 +1638,27 @@ function yuzPaneliAyari() {
   syncRangeOutputs();
   patternHint();
   saveSettings();
-  if (state.uploadImage && state.depthMode !== 'ai') {
+  saveSettings();
+  if (!state.uploadImage) {
+    if (state.depthMode !== 'ai') setDepthMode('ai', false);
+    saveSettings();
+    presetDurum('✓ Ayarlar hazır. Şimdi yukarıdan "🖼️ Görsel seç" ile yüz fotoğrafını yükleyin — ' +
+      'yapay zekâ kendiliğinden çalışır.', true);
+    setSourceStatus('Yüz paneli ayarları hazır — şimdi yüz fotoğrafını yükleyin.');
+    return;
+  }
+  if (state.depthMode !== 'ai') {
+    state.presetBekliyor = true;
+    presetDurum('⏳ Yapay zekâ derinliği hesaplanıyor… (telefonda 10–30 sn)');
     setDepthMode('ai');               // derinliği hesaplayınca kendisi yeniden üretir
   } else {
-    if (state.depthMode !== 'ai') setDepthMode('ai', false);
     if (state.uploadGrid) { composeSource(); resetPaint(); }
     syncAspect();
     scheduleRegen();
+    presetDurum('✓ Yüz paneli ayarları uygulandı.', true);
+    setTimeout(onizlemeyeKay, 400);
   }
   saveSettings();
-  setSourceStatus(state.uploadImage
-    ? 'Yüz paneli ayarları uygulandı.'
-    : 'Yüz paneli ayarları hazır — şimdi yüz fotoğrafını yükleyin.');
 }
 els['btn-face-preset'].onclick = yuzPaneliAyari;
 els['depth-ai'].onclick = () => { setDepthMode('ai'); saveSettings(); };
