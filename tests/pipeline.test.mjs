@@ -2160,6 +2160,32 @@ test('parçalar levha sınırları içinde ve üst üste binmiyor', () => {
   }
 });
 
+test('gravür yazısı DXF ve SVG\'ye TEXT değil tek çizgili harf olarak çıkar', async () => {
+  // CAM programlarının çoğu DXF TEXT'i takım yoluna çeviremiyor; lamel
+  // numaraları tezgâhtan numarasız çıkıyordu.
+  const { textToStrokes, eksikHarfler } = await import('../js/strokefont.js');
+  const sh = nr.sheets[0];
+  const applied = sh.placements.map(applyPlacement);
+  assert.ok(applied.some((a) => a.engrave.some((e) => e.type === 'text')), 'örnekte yazı yok');
+  const dxf = sheetToDxf(sh, applied);
+  assert.ok(!/\r\nTEXT\r\n/.test(dxf), 'DXF hâlâ TEXT içeriyor');
+  const svg = sheetToSvg(sh, applied);
+  assert.ok(!svg.includes('<text'), 'SVG hâlâ <text> içeriyor');
+  // Tüm modların yazdığı karakterler çizgiye çevrilebilmeli.
+  for (const t of ['L12', 'KIZAK 2', 'K1', 'D011a G2', 'D057b', '12·143°', '35°', 'Y12', 'ÇŞĞİÖÜ çşğıöü', '0123456789']) {
+    assert.deepEqual(eksikHarfler(t), [], `${t}: çizilemeyen harf`);
+  }
+  // Ortalı yazı: kutusu (x, y) etrafında, yüksekliği size kadar.
+  const c = textToStrokes('L12', 100, 50, 6).flat();
+  const xs = c.map((q) => q[0]), ys = c.map((q) => q[1]);
+  assert.ok(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - 100) < 0.01, 'yatayda ortalı değil');
+  assert.ok(Math.abs(Math.min(...ys) - 47) < 0.01 && Math.abs(Math.max(...ys) - 53) < 0.01, 'yükseklik yanlış');
+  // Döndürülmüş yazı da aynı boyda.
+  const r = textToStrokes('L12', 0, 0, 6, 90).flat();
+  const rx = r.map((q) => q[0]);
+  assert.ok(Math.abs(Math.max(...rx) - Math.min(...rx) - 6) < 0.01, '90° döndürmede boy değişti');
+});
+
 test('DXF yapısı geçerli', () => {
   const sh = nr.sheets[0];
   const dxf = sheetToDxf(sh, sh.placements.map(applyPlacement));

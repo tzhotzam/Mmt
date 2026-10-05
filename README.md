@@ -22,7 +22,9 @@ panel" diye satılan iş.
   kendi kendini taşır.
 - Kanal diplerine **köşe payı** açılır; freze ucunun bıraktığı et yüzünden
   geçmenin açık kalmasını engeller (aşağıda).
-- Her parça gravürle numaralanır (L1, L2, … / KIZAK 1).
+- Her parça gravürle numaralanır (L1, L2, … / KIZAK 1). Numaralar Plan
+  görünümünde her lamelin ucunda da yazar: hangi lamelin nereye geldiği
+  kesimden önce görülür.
 
 ### 2. Katman / Rölyef modu
 Görsel eş-yükselti eğrilerine bölünür, her seviye ayrı bir katman olarak
@@ -432,6 +434,10 @@ Safari'de sayfayı açın → Paylaş → **Ana Ekrana Ekle**. Tam ekran açıl�
 - Katmanlar:
   - `KESIM` — malzemeyi tam kesin (kalınlık + ~1 mm dalma).
   - `GRAVUR` — 1–2 mm yüzeysel dalma: parça numaraları ve hizalama çizgileri.
+    Numaralar DXF/SVG'ye yazı (TEXT) olarak değil, **tek çizgili harflerle**
+    çizgi olarak yazılır: CAM programlarının çoğu TEXT'i takım yoluna
+    çeviremez, parçalar numarasız çıkıyordu. Freze/lazer harfin üstünden
+    tek geçişte geçer (Türkçe harfler dâhil).
   - `BUKUM` — büküm izi. Kesmeyin, işlemeyin; nereden büküleceğini gösterir.
   - `LEVHA` — sadece referans çerçevesi, işlemeyin.
 - **Kerf telafisi**: Yazılım varsayılan olarak *nominal* konturu verir. CAM
@@ -516,6 +522,7 @@ js/
   modes/slices.js     dilimli heykel: kesit parçaları + mil delikleri
   rails.js            kızak: kanatları alttan tutan yarım geçmeli taşıyıcı
   bridge.js           köprü: aynı dilimde yakın iki adayı tek parça yapar
+  strokefont.js       tek çizgili yazı: gravür numaralarını çizgiye çevirir
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
   remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)

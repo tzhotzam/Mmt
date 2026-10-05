@@ -2,6 +2,8 @@
 // R12 bilinçli tercih: en eski CAM/CNC yazılımları bile sorunsuz okur.
 // Birimler milimetredir.
 
+import { textToStrokes } from '../strokefont.js';
+
 const LAYERS = [
   { name: 'KESIM', color: 1 },    // kırmızı — dış kontur ve delikler
   { name: 'GRAVUR', color: 3 },   // yeşil — kılavuz çizgi ve etiketler
@@ -66,6 +68,15 @@ class DxfBuilder {
   }
 }
 
+// Yazı TEXT varlığı olarak değil, tek çizgili harflerle yazılır: CAM
+// programlarının çoğu TEXT'i takım yoluna çeviremiyor, parçalar tezgâhtan
+// numarasız çıkıyordu.
+function yazi(b, e) {
+  for (const c of textToStrokes(e.text, e.x, e.y, e.size, e.rot || 0)) {
+    b.polyline(c, e.layer || 'GRAVUR', false);
+  }
+}
+
 function num(v) {
   return Number(v).toFixed(4);
 }
@@ -90,7 +101,7 @@ export function sheetToDxf(sheet, applied, opts = {}) {
     if (withEngrave) {
       for (const e of a.engrave) {
         if (e.type === 'polyline') b.polyline(e.points, e.layer || 'GRAVUR', e.closed !== false);
-        else b.text(e.text, e.x, e.y, e.size, e.layer || 'GRAVUR', e.rot || 0);
+        else yazi(b, e);
       }
     }
   }
@@ -108,7 +119,7 @@ export function partsToDxf(parts, opts = {}) {
     if (withEngrave) {
       for (const e of part.engrave) {
         if (e.type === 'polyline') b.polyline(e.points, e.layer || 'GRAVUR', e.closed !== false);
-        else b.text(e.text, e.x, e.y, e.size, e.layer || 'GRAVUR', 0);
+        else yazi(b, e);
       }
     }
   }

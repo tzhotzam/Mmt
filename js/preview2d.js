@@ -93,6 +93,48 @@ function drawRibsFront(ctx, state, s) {
     else { ctx.moveTo(e, 0); ctx.lineTo(e, info.panelH); }
   }
   ctx.stroke();
+  drawRibNumbers(ctx, state, s);
+}
+
+/**
+ * Lamel numaraları (L1, L2 ...) önden görünümün üstüne: hangi parçanın
+ * nereye geldiği burada görünmüyordu, numara yalnız kesim dosyasındaydı.
+ * Lamel ince olduğu için yazı lamel boyunca (dik) yazılır; çok sıkışıksa
+ * her k'inci lamel numaralanır.
+ */
+function drawRibNumbers(ctx, state, s) {
+  const { parts, info } = state;
+  const horizontal = info.params.orientation === 'horizontal';
+  const lameller = parts.filter((p) => p.kind === 'lamel');
+  if (!lameller.length) return;
+  const m = ctx.getTransform();
+  const ekran = (x, y) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f];
+  const aralikPx = (info.params.thickness + info.params.gap) * s;
+  const font = Math.max(9, Math.min(14, aralikPx * 0.8));
+  const adim = Math.max(1, Math.ceil((font * 1.15) / aralikPx));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = `600 ${font}px system-ui, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  lameller.forEach((part, i) => {
+    const no = part.meta.index + 1;
+    if (adim > 1 && no !== 1 && no !== lameller.length && no % adim !== 0) return;
+    const orta = part.meta.across + part.meta.thickness / 2;
+    // Dikey lamelde alt uç, yatayda sol uç.
+    const [X, Y] = horizontal ? ekran(0, orta) : ekran(orta, 0);
+    ctx.save();
+    ctx.translate(X, Y);
+    if (!horizontal) ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'left';
+    const yazi = `L${no}`;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(yazi, 4, 0);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillText(yazi, 4, 0);
+    ctx.restore();
+  });
+  ctx.setTransform(m);
 }
 
 function drawContourMap(ctx, state, s) {

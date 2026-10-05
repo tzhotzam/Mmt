@@ -1,6 +1,8 @@
 // SVG dışa aktarım. Birim = milimetre (viewBox mm cinsinden, width/height "mm").
 // Lazer/CNC yazılımlarının çoğu bu SVG'yi 1:1 ölçekte okur.
 
+import { textToStrokes } from '../strokefont.js';
+
 const CUT_STYLE = 'fill:none;stroke:#e11d48;stroke-width:0.15';
 const ENGRAVE_STYLE = 'fill:none;stroke:#0ea5e9;stroke-width:0.15';
 const BEND_STYLE = 'fill:none;stroke:#22c55e;stroke-width:0.2;stroke-dasharray:3,2';
@@ -41,12 +43,11 @@ export function sheetToSvg(sheet, applied, opts = {}) {
           const style = e.layer === 'KESIM' ? CUT_STYLE : e.layer === 'BUKUM' ? BEND_STYLE : ENGRAVE_STYLE;
           body.push(`<path d="${d(e.points, e.closed !== false)}" style="${style}"/>`);
         } else {
-          // Metin ters çevrilmiş grubun içinde okunur kalsın diye yeniden çevrilir.
-          body.push(
-            `<text x="0" y="0" transform="translate(${f(e.x)} ${f(e.y)}) scale(1,-1) rotate(${-(e.rot || 0)})" ` +
-            `text-anchor="middle" dominant-baseline="middle" ` +
-            `style="font-family:monospace;font-size:${f(e.size)}px;fill:#0ea5e9">${esc(e.text)}</text>`
-          );
+          // Tek çizgili harfler: lazer yazılımları SVG <text>'i çoğu zaman
+          // kesmez ya da kendi yazı tipiyle doldurur.
+          for (const c of textToStrokes(e.text, e.x, e.y, e.size, e.rot || 0)) {
+            body.push(`<path d="${d(c, false)}" style="${ENGRAVE_STYLE}"/>`);
+          }
         }
       }
     }
