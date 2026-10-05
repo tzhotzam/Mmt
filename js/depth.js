@@ -78,6 +78,73 @@ function otsu(data) {
   return (alt + ust + 1) / 2 / 255;
 }
 
+/** Zemin eşiği: zemin tepesinden (alt yarıdaki en yüksek kutu) sonra
+ *  yoğunluğun tepenin %8'ine düştüğü ilk kutu. */
+function vadi(data) {
+  const K = 128, hist = new Float64Array(K);
+  for (const v of data) hist[Math.min(K - 1, Math.floor(v * K))]++;
+  const yum = new Float64Array(K);
+  for (let i = 0; i < K; i++) {
+    let t = 0, c = 0;
+    for (let j = i - 2; j <= i + 2; j++) if (j >= 0 && j < K) { t += hist[j]; c++; }
+    yum[i] = t / c;
+  }
+  let p = 0;
+  for (let i = 1; i < K / 2; i++) if (yum[i] > yum[p]) p = i;
+  for (let i = p + 1; i < K; i++) if (yum[i] < 0.08 * yum[p]) return (i + 0.5) / K;
+  return 1;
+}
+
+/** Ayrılabilir kutu bulanıklığı, yerinde; 3 geçiş ≈ Gauss. */
+function bulanik(a, r) {
+  const tmp = new Float32Array(BOY);
+  for (let gecis = 0; gecis < 3; gecis++) {
+    for (const yatay of [true, false]) {
+      for (let k = 0; k < BOY; k++) {
+        let top = 0;
+        const at = (i) => a[yatay ? k * BOY + i : i * BOY + k];
+        for (let i = -r - 1; i < r; i++) top += at(Math.min(BOY - 1, Math.max(0, i)));
+        for (let i = 0; i < BOY; i++) {
+          top += at(Math.min(BOY - 1, i + r)) - at(Math.max(0, i - r - 1));
+          tmp[i] = top / (2 * r + 1);
+        }
+        for (let i = 0; i < BOY; i++) a[yatay ? k * BOY + i : i * BOY + k] = tmp[i];
+      }
+    }
+  }
+  return a;
+}
+
+/**
+ * KABARTMA SIKIŞTIRMASI — heykeltıraşın rölyef kuralı: büyük mesafe farkını
+ * sıkıştır, ayrıntıyı büyüt. Model gerçek derinliği verir; 3/4 portrede
+ * göğüs kameraya yüzden yakındır, doğrudan ölçeklenince yüz zemin
+ * seviyesine iniyor, dalga yüzün üstünden geçiyordu. Konu içinde kaba biçim
+ * (geniş bulanıklık, zeminden sızmasın diye maskeyle normalize edilir) ve
+ * ayrıntı (fark) ayrılır: kaba×0,3 + ayrıntı×2,2, sonra konu içinde 0..1.
+ */
+function kabartmaYap(sk, m) {
+  const n = BOY * BOY;
+  const r = Math.round(0.06 * BOY);
+  const pay = new Float32Array(n), payda = Float32Array.from(m);
+  for (let i = 0; i < n; i++) pay[i] = sk[i] * m[i];
+  bulanik(pay, r);
+  bulanik(payda, r);
+  const out = new Float32Array(n);
+  const konu = [];
+  for (let i = 0; i < n; i++) {
+    const kaba = pay[i] / Math.max(payda[i], 1e-4);
+    out[i] = 0.3 * kaba + 2.2 * (sk[i] - kaba);
+    if (m[i] > 0.5) konu.push(out[i]);
+  }
+  if (konu.length < 16) return sk;
+  const sirali = Float32Array.from(konu).sort();
+  const a = yuzdelik(sirali, 0.005), b = yuzdelik(sirali, 0.999);
+  const ara = b - a || 1;
+  for (let i = 0; i < n; i++) out[i] = Math.min(1, Math.max(0, (out[i] - a) / ara));
+  return out;
+}
+
 /**
  * Modelin 518×518 çıktısını (göreli ters derinlik: büyük = yakın) panel
  * ızgarasına çevirir: cols×rows, 0..1, yakın = 1.
@@ -88,7 +155,7 @@ function otsu(data) {
  * Geçiş yumuşaktır, kenarda uçurum değil kısa bir rampa olur.
  */
 export function sonIsle(cikti, cols, rows, opts = {}) {
-  const { arkaPlan = true, taban = 0.18, gecis = 0.04, vurgu = 1.6 } = opts;
+  const { arkaPlan = true, taban = 0.18, gecis = 0.04, kabartma = true } = opts;
   const n = BOY * BOY;
   const sirali = Float32Array.from(cikti.subarray ? cikti.subarray(0, n) : cikti.slice(0, n)).sort();
   // Üst sınır kırpılmaz (yalnız tek tük aykırı piksel atılır): en yakın
@@ -100,18 +167,22 @@ export function sonIsle(cikti, cols, rows, opts = {}) {
   for (let i = 0; i < n; i++) norm[i] = Math.min(1, Math.max(0, (cikti[i] - lo) / ara));
 
   if (arkaPlan) {
-    const t = otsu(norm);
+    // Zemin eşiği: histogramda zeminin tepesinden sonraki ilk vadi; Otsu'dan
+    // yüksek çıkarsa Otsu. Otsu tek başına üç kümede (zemin, baş, gövde)
+    // eşiği baş ile gövde arasına koyabiliyordu: 3/4 portrede boyun ve saç
+    // zemin sayılıp siliniyordu.
+    // Vadinin bir geçiş payı üstü: yumuşak eşik zeminin tepesine taşmasın.
+    const t = Math.min(vadi(norm) + gecis, otsu(norm));
+    const m = new Float32Array(n);
+    const sk = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const v = norm[i];
-      const m = Math.min(1, Math.max(0, (v - (t - gecis)) / (2 * gecis)));
-      // Konu içinde vurgu eğrisi: yapay zekâ yüzü kafa yuvarlağı üstünde sığ
-      // bir kabartma olarak verir (yanak 0,8, burun ucu 1,07); doğrusal
-      // kalırsa yüz düz bir maske gibi durur. s^vurgu öndeki biçimleri
-      // (burun, dudak, çene) açar, kafanın genel kabarıklığını sıkıştırır.
-      const sKonu = Math.min(1, Math.max(0, (v - t) / (1 - t || 1)));
-      const konu = taban + (1 - taban) * Math.pow(sKonu, vurgu);
-      norm[i] = m * m * (3 - 2 * m) * konu;   // yumuşak eşik
+      const a = Math.min(1, Math.max(0, (v - (t - gecis)) / (2 * gecis)));
+      m[i] = a * a * (3 - 2 * a);
+      sk[i] = Math.min(1, Math.max(0, (v - t) / (1 - t || 1)));
     }
+    const out = kabartma ? kabartmaYap(sk, m) : sk;
+    for (let i = 0; i < n; i++) norm[i] = m[i] * (taban + (1 - taban) * out[i]);
   }
 
   // 518×518 → cols×rows (alan ortalaması yerine çift doğrusal; ızgara zaten
