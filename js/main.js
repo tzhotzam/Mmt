@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-06-b';
+const APP_VERSION = '2026-10-06-c';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -1650,11 +1650,18 @@ function onizlemeyeKay() {
   document.querySelector('.preview-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+const YUZ_PANELI_TOHUM = 0.42;
+
 function yuzPaneliAyari() {
   presetDurum('⏳ Ayarlar uygulanıyor…');
   if (state.mode !== 'ribs') setMode('ribs');
   for (const [id, v] of Object.entries(YUZ_PANELI)) if (els[id]) els[id].value = v;
   if (els['p-lockAspect']) els['p-lockAspect'].checked = true;
+  // Dalga tohumu da sabit: "Rastgele"ye basılmış bir cihazda aynı ayarlar
+  // başka akışta dalga veriyordu. Desen kodu kutusu da güncellenir.
+  els['p-seedText'].value = '';
+  state.patternSeed = YUZ_PANELI_TOHUM;
+  refreshPatternCode();
   els['pattern-block'].open = true;
   syncRangeOutputs();
   patternHint();
