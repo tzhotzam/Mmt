@@ -2646,6 +2646,19 @@ test('yüz detayı: fotoğraftaki ince çizgi konuya eklenir, 0 iken eklenmez', 
   assert.match(oku('js/main.js'), /'p-faceDetail': 1/, 'hazır ayar yüz detayını kurmuyor');
 });
 
+test('ayar dosyası her alanı taşır, iOS\'ta seçilebilir', () => {
+  const js = oku('js/main.js'), html = oku('index.html');
+  // Dosya desen, yüz detayı, yapay zekâ ve tohum ayarlarını da yazmalı.
+  const kaydet = js.match(/els\['dl-json'\]\.onclick[\s\S]*?\n\};/)?.[0] || '';
+  for (const k of ['fields: alanlariTopla()', 'depthMode', 'patternSeed']) {
+    assert.ok(kaydet.includes(k), `ayar dosyasına ${k} yazılmıyor`);
+  }
+  assert.match(js, /if \(data\.fields\)/, 'yükleyici fields bölümünü okumuyor');
+  // accept filtresi iOS'ta .json'u soluk gösterip seçtirmiyordu.
+  const girdi = html.match(/<input type="file" id="load-json"[^>]*>/)?.[0] || '';
+  assert.ok(girdi && !/accept=/.test(girdi), `ayar yükleme girdisinde accept var: ${girdi}`);
+});
+
 test('derinlik modeli ve çalıştırıcı depoda, lisanslarıyla', () => {
   const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
   const model = path.join(kok, 'models', 'derinlik-v2-kucuk-w8.onnx');

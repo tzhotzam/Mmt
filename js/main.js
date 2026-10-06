@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-06-c';
+const APP_VERSION = '2026-10-06-d';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -1357,8 +1357,25 @@ els['dl-guide'].onclick = () => {
   download(`${baseName()}_montaj.txt`, text, 'text/plain');
 };
 
+/** Ekrandaki her alan (kimliğe göre) — ayar dosyası ve tarayıcı belleği için. */
+function alanlariTopla() {
+  const fields = {};
+  for (const el of document.querySelectorAll('.panel input, .panel select')) {
+    if (el.type === 'file' || !el.id) continue;
+    fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  }
+  return fields;
+}
+
 els['dl-json'].onclick = () => {
-  const data = { mode: state.mode, params: readParams(), filters: readFilters(), nest: readNestOpts() };
+  // 'fields' her şeyi taşır (desen, yüz detayı, konu boşluğu ...); eski
+  // dosyalarla uyum için params/filters/nest de yazılır. Eskiden yalnız
+  // bunlar yazılıyordu: desen ve yapay zekâ ayarları dosyaya girmiyordu.
+  const data = {
+    uygulama: 'cnc-panel', surum: APP_VERSION, mode: state.mode, invert: state.invert,
+    depthMode: state.depthMode, patternSeed: state.patternSeed, fields: alanlariTopla(),
+    params: readParams(), filters: readFilters(), nest: readNestOpts(),
+  };
   download('panel_ayarlari.json', JSON.stringify(data, null, 2), 'application/json');
 };
 
@@ -1369,14 +1386,44 @@ els['load-json'].onchange = async (e) => {
     const data = JSON.parse(await file.text());
     setMode(data.mode || 'ribs');
     applySettings(data);
-    scheduleRegen();
+    setSourceStatus(`Ayar dosyası yüklendi: ${file.name}`);
+    if (!state.uploadImage && !state.tris && data.depthMode === 'ai') {
+      presetDurum('✓ Ayarlar yüklendi. Şimdi yüz fotoğrafını yükleyin — yapay zekâ kendiliğinden çalışır.', true);
+    }
   } catch (err) {
-    alert(`Ayar dosyası okunamadı: ${err.message}`);
+    alert(`Ayar dosyası okunamadı: ${err.message}. Programın "Ayarları kaydet (JSON)" ile ` +
+      'verdiği dosyayı seçin (montaj kılavuzu ya da not dosyası değil).');
   }
   e.target.value = '';
 };
 
 function applySettings(data) {
+  if (data.fields) {
+    for (const [id, v] of Object.entries(data.fields)) {
+      const el = els[id];
+      if (!el || el.type === 'file') continue;
+      if (el.type === 'checkbox') el.checked = !!v;
+      else el.value = v;
+    }
+    if ('invert' in data) setInvert(!!data.invert);
+    if (Number.isFinite(data.patternSeed)) state.patternSeed = data.patternSeed;
+    syncRangeOutputs();
+    patternHint();
+    refreshPatternCode();
+    saveSettings();
+    const istenen = data.depthMode === 'ai' ? 'ai' : 'luma';
+    if (state.uploadImage && istenen !== state.depthMode) {
+      setDepthMode(istenen);          // derinlik yeniden okunur, sonra üretilir
+    } else {
+      setDepthMode(istenen, false);
+      if (state.uploadKind === 'ai') yuzDetayiUygula();
+      else if (state.uploadGrid) { composeSource(); resetPaint(); }
+      syncAspect();
+      scheduleRegen();
+    }
+    return;
+  }
+  // Eski biçim (yalnız params/filters/nest).
   const all = { ...(data.params || {}), ...(data.filters || {}), ...(data.nest || {}) };
   if ('invert' in all) setInvert(all.invert);
   for (const [k, v] of Object.entries(all)) {
@@ -1387,6 +1434,7 @@ function applySettings(data) {
     else el.value = v;
   }
   syncRangeOutputs();
+  scheduleRegen();
 }
 
 // ------------------------------------------------------------ derinlik çizimi
@@ -1514,11 +1562,7 @@ const STORE_KEY = 'cnc-panel-ayarlar-v1';
  */
 function saveSettings() {
   try {
-    const data = { mode: state.mode, invert: state.invert, depthMode: state.depthMode, fields: {} };
-    for (const el of document.querySelectorAll('.panel input, .panel select')) {
-      if (el.type === 'file' || !el.id) continue;
-      data.fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
-    }
+    const data = { mode: state.mode, invert: state.invert, depthMode: state.depthMode, fields: alanlariTopla() };
     localStorage.setItem(STORE_KEY, JSON.stringify(data));
   } catch { /* depolama yok — sorun değil */ }
 }
