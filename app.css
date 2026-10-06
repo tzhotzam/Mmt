@@ -461,3 +461,9 @@ details.gelismis > .grid { margin-top: 8px; }
 .preset-status { margin: 8px 2px 0; font-size: 14px; font-weight: 600; color: var(--accent-2, #fbbf24); }
 .yuz-detay { display: block; margin-top: 10px; }
 .yuz-detay input { width: 100%; }
+
+/* Meshy bölümü */
+.meshy-block { margin: 12px 0; }
+.meshy-block label { display: block; margin-top: 10px; }
+.meshy-block input, .meshy-block textarea, .meshy-block select { width: 100%; box-sizing: border-box; }
+.meshy-block textarea { font: inherit; padding: 8px; border-radius: 8px; resize: vertical; }

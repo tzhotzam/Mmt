@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-10-06-d">
+<meta name="app-version" content="2026-10-06-e">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-10-06-d';
+  var V = '2026-10-06-e';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -135,6 +135,36 @@
       </label>
       <button id="btn-demo" class="upload ghost"><span>✨ Hazır desen</span></button>
     </div>
+    <details id="meshy-block" class="meshy-block">
+      <summary>🤖 Yazıdan / fotoğraftan 3B model (Meshy)</summary>
+      <p class="seg-hint">
+        Serbest duran heykel (Dilim, Poligonal) için her yanı olan model gerekir. Meshy onu
+        yazıdan ya da fotoğraftan üretir, model bitince buraya kendiliğinden yüklenir.
+        Meshy hesabı ve API anahtarı gerekir; her model kredi harcar.
+      </p>
+      <label>Meshy API anahtarı <small>yalnız bu cihazda saklanır, ayar dosyasına girmez</small>
+        <input type="password" id="meshy-key" data-gizli autocomplete="off" spellcheck="false" placeholder="msy_…">
+      </label>
+      <div class="actions">
+        <button type="button" id="meshy-key-save">Anahtarı kaydet</button>
+        <button type="button" id="meshy-key-del" class="ghost">Anahtarı sil</button>
+      </div>
+      <label>Ne üretilsin? <small>İngilizce yazmak daha iyi sonuç verir</small>
+        <textarea id="meshy-prompt" data-gizli rows="2" placeholder="örn. roaring lion head, sculpture, solid base"></textarea>
+      </label>
+      <label>Tarz
+        <select id="meshy-style" data-gizli>
+          <option value="realistic">Gerçekçi</option>
+          <option value="sculpture">Heykel</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button type="button" id="meshy-text">✍️ Yazıdan üret</button>
+        <button type="button" id="meshy-image" class="ghost">🖼️ Yüklü fotoğraftan üret</button>
+      </div>
+      <p id="meshy-status" class="preset-status" hidden></p>
+    </details>
+
     <div class="segmented" role="radiogroup" aria-label="Kabartma yönü">
       <span class="segmented-title">Kabartma yönü — ne öne çıksın?</span>
       <div class="segmented-buttons">

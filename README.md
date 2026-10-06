@@ -417,6 +417,23 @@ dokunuşta yapar (elle girildiğinde biri atlanıyor, dalga yüzü yutuyordu):
   katmanlara bölünür (yatay katmanlı yüz maskesi + hat ve oluk kazınmış arka
   pano). Serbest duran heykel için yine 3B model gerekir.
 
+### Yazıdan / fotoğraftan 3B model (Meshy)
+Kaynak bölümündeki **🤖 Yazıdan / fotoğraftan 3B model (Meshy)**: yazı
+("roaring lion head, sculpture") ya da yüklü fotoğraf Meshy'ye gönderilir,
+her yanı olan bir model üretilir ve program onu doğrudan yükler (Dilim,
+Poligonal, Lamel — hepsi). Yapay zekâ derinliği yalnız kabartma verir;
+serbest duran heykel için bu yol gerekir.
+
+- Meshy hesabı ve API anahtarı gerekir (API Console). Anahtar yalnız
+  cihazda (localStorage) durur; ayar dosyasına ve ayar belleğine yazılmaz
+  (`data-gizli`), kodda yoktur.
+- Kredi tasarrufu: yazıdan üretimde yalnız *önizleme* (dokusuz ağ),
+  fotoğraftan üretimde doku kapalı — CNC'ye yalnız biçim gerekir.
+- Meshy modelleri Y-yukarı gelir; Dilim ve Poligonal'in dik ekseni
+  kendiliğinden Y'ye çekilir.
+- Tarayıcı Meshy'ye doğrudan bağlanamazsa (CORS) açık uyarı verilir; o
+  durumda model meshy.ai'den OBJ olarak indirilip "3B model" ile yüklenir.
+
 ### Fotoğrafta olmayan derinliği vermek
 Düz bir fotoğrafta derinlik bilgisi yoktur — parlaklık, ışığın nereye
 vurduğunu anlatır, neyin önde olduğunu değil. Bu yüzden fotoğraflar çoğu
@@ -570,6 +587,7 @@ js/
   strokefont.js       tek çizgili yazı: gravür numaralarını çizgiye çevirir
   depth.js            yapay zekâ derinliği: fotoğraftan yükseklik haritası (models/, vendor/ort/)
   heightslice.js      görselden dilim: yükseklik haritasından katman + arka pano
+  meshy.js            Meshy API: yazıdan / fotoğraftan 3B model (anahtar cihazda)
   slice.js            3B modeli düzlemlerle kesme, parçaları halkaya dikme
   decimate.js         ağ sadeleştirme: kenar çökertme + karesel hata ölçütü
   remesh.js           bozuk modeli hacimden yeniden kurma (voksel + marching tetrahedra)

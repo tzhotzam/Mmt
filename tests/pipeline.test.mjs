@@ -2659,6 +2659,48 @@ test('ayar dosyası her alanı taşır, iOS\'ta seçilebilir', () => {
   assert.ok(girdi && !/accept=/.test(girdi), `ayar yükleme girdisinde accept var: ${girdi}`);
 });
 
+test('Meshy: görev başlar, sorgulanır, OBJ iner; hatalar anlaşılır', async () => {
+  const { yazidanModel, gorseldenModel } = await import('../js/meshy.js');
+  const istekler = [];
+  let n = 0;
+  const sahte = (durumlar, yetki = 'Bearer k') => async (url, o = {}) => {
+    istekler.push({ url, o });
+    const yanit = (status, veri, metin) => ({
+      ok: status < 300, status, json: async () => veri, arrayBuffer: async () => new TextEncoder().encode(metin || '').buffer,
+    });
+    if (url.startsWith('https://assets')) return yanit(200, null, 'v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n');
+    if (o.headers?.Authorization !== yetki) return yanit(401, { message: 'bad key' });
+    if (o.method === 'POST') return yanit(202, { result: 'g1' });
+    return yanit(200, durumlar[Math.min(n++, durumlar.length - 1)]);
+  };
+  const bekle = async () => {};
+  const bitti = { status: 'SUCCEEDED', progress: 100, model_urls: { obj: 'https://assets.meshy.ai/g1.obj' } };
+  const asamalar = [];
+  const r = await yazidanModel('robot', {
+    anahtar: 'k', fetchFn: sahte([{ status: 'PENDING' }, { status: 'IN_PROGRESS', progress: 40 }, bitti]), bekle,
+    onProgress: (p) => asamalar.push(p.asama),
+  });
+  assert.ok(new TextDecoder().decode(r.buf).startsWith('v 0 0 0'), 'OBJ inmedi');
+  const post = istekler.find((x) => x.o.method === 'POST');
+  assert.equal(post.url, 'https://api.meshy.ai/openapi/v2/text-to-3d');
+  const govde = JSON.parse(post.o.body);
+  assert.equal(govde.mode, 'preview', 'CNC için yalnız dokusuz önizleme üretilmeli');
+  assert.ok(asamalar.includes('uretim') && asamalar.includes('indirme'), `aşamalar: ${asamalar}`);
+  // Fotoğraftan: doku kapalı.
+  n = 0; istekler.length = 0;
+  await gorseldenModel('data:image/jpeg;base64,AAAA', { anahtar: 'k', fetchFn: sahte([bitti]), bekle });
+  const g2 = JSON.parse(istekler.find((x) => x.o.method === 'POST').o.body);
+  assert.equal(g2.should_texture, false);
+  // Hatalar: yanlış anahtar, başarısız görev, boş metin.
+  await assert.rejects(yazidanModel('x', { anahtar: 'yanlis', fetchFn: sahte([bitti]), bekle }), /anahtarı geçersiz/);
+  n = 0;
+  await assert.rejects(yazidanModel('x', { anahtar: 'k', fetchFn: sahte([{ status: 'FAILED', task_error: { message: 'kötü istek' } }]), bekle }), /kötü istek/);
+  await assert.rejects(yazidanModel('  ', { anahtar: 'k', fetchFn: sahte([bitti]), bekle }), /yazın/);
+  // Anahtar kutusu ayar dosyasına ve belleğe girmemeli.
+  assert.match(oku('index.html'), /id="meshy-key" data-gizli/, 'anahtar kutusu gizli işaretli değil');
+  assert.match(oku('js/main.js'), /'gizli' in el\.dataset/, 'alanlariTopla gizli alanları atlamıyor');
+});
+
 test('derinlik modeli ve çalıştırıcı depoda, lisanslarıyla', () => {
   const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
   const model = path.join(kok, 'models', 'derinlik-v2-kucuk-w8.onnx');

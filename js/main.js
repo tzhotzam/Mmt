@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-06-d';
+const APP_VERSION = '2026-10-06-e';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -591,8 +591,12 @@ async function loadStlFile(file) {
       'Modeli Blender veya tarama uygulamasında sadeleştirip tekrar deneyin.'
     );
   }
-  const buf = await file.arrayBuffer();
-  const { tris, format, reason } = parseMesh(buf, file.name);
+  await loadMeshBuffer(await file.arrayBuffer(), file.name);
+}
+
+/** Ağ dosyasını (STL/OBJ) içerikten okuyup kaynak yapar — dosyadan ya da Meshy'den. */
+async function loadMeshBuffer(buf, ad) {
+  const { tris, format, reason } = parseMesh(buf, ad);
   if (!tris.length) {
     const aciklama = {
       'gecersiz-koordinat': 'Dosya 3B model gibi görünmüyor (koordinatlar okunamadı).',
@@ -610,7 +614,7 @@ async function loadStlFile(file) {
   state.aiIs++;
   state.planFocus = -1;
   state.planView = { k: 1, px: 0, py: 0 };
-  state.meshInfo = { format, name: file.name, count: tris.length };
+  state.meshInfo = { format, name: ad, count: tris.length };
   const r = rebuildFromMesh();
   reportMesh(r);
   setInvert(false);
@@ -1361,7 +1365,8 @@ els['dl-guide'].onclick = () => {
 function alanlariTopla() {
   const fields = {};
   for (const el of document.querySelectorAll('.panel input, .panel select')) {
-    if (el.type === 'file' || !el.id) continue;
+    // data-gizli: API anahtarı gibi alanlar ayar dosyasına ve belleğe yazılmaz.
+    if (el.type === 'file' || !el.id || 'gizli' in el.dataset) continue;
     fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
   }
   return fields;
@@ -1857,7 +1862,7 @@ els['view-nest'].onclick = () => {
 };
 
 for (const input of document.querySelectorAll('.panel input, .panel select')) {
-  if (input.type === 'file') continue;
+  if (input.type === 'file' || 'gizli' in input.dataset) continue;
   const evt = input.type === 'range' ? 'input' : 'change';
   input.addEventListener(evt, () => {
     syncRangeOutputs();
@@ -1915,6 +1920,93 @@ els['file-stl'].onchange = async (e) => {
   }
   e.target.value = '';
 };
+
+// ------------------------------------------------------------ Meshy
+
+function meshyDurum(metin, hata = false) {
+  const el = els['meshy-status'];
+  el.hidden = !metin;
+  el.textContent = metin || '';
+  el.style.color = hata ? 'var(--danger)' : '';
+}
+
+function meshyAnahtarGoster() {
+  import('./meshy.js').then(({ anahtarOku }) => {
+    const var_ = !!anahtarOku();
+    els['meshy-key'].value = '';
+    els['meshy-key'].placeholder = var_ ? 'kayıtlı ✓ (değiştirmek için yenisini yazın)' : 'msy_…';
+  });
+}
+meshyAnahtarGoster();
+
+els['meshy-key-save'].onclick = async () => {
+  const { anahtarYaz } = await import('./meshy.js');
+  const k = els['meshy-key'].value.trim();
+  if (!k) { meshyDurum('Önce anahtarı kutuya yapıştırın.', true); return; }
+  const tamam = anahtarYaz(k);
+  meshyDurum(tamam ? '✓ Anahtar bu cihaza kaydedildi.' : '✗ Bu tarayıcı anahtarı saklamaya izin vermiyor (gizli sekme?).', !tamam);
+  meshyAnahtarGoster();
+};
+els['meshy-key-del'].onclick = async () => {
+  const { anahtarYaz } = await import('./meshy.js');
+  anahtarYaz('');
+  meshyDurum('Anahtar bu cihazdan silindi.');
+  meshyAnahtarGoster();
+};
+
+/** Yüklü fotoğrafı Meshy'ye gönderilecek veri adresine çevirir (en çok 1024 px). */
+function fotoVeriUrl() {
+  const img = state.uploadImage;
+  if (!img) return null;
+  const k = Math.min(1, 1024 / Math.max(img.width, img.height));
+  const a = document.createElement('canvas');
+  a.width = img.width; a.height = img.height;
+  a.getContext('2d').putImageData(img, 0, 0);
+  const b = document.createElement('canvas');
+  b.width = Math.round(img.width * k); b.height = Math.round(img.height * k);
+  b.getContext('2d').drawImage(a, 0, 0, b.width, b.height);
+  return b.toDataURL('image/jpeg', 0.9);
+}
+
+let meshyCalisiyor = false;
+async function meshyUret(tur) {
+  if (meshyCalisiyor) return;
+  const m = await import('./meshy.js');
+  const anahtar = els['meshy-key'].value.trim() || m.anahtarOku();
+  if (!anahtar) { meshyDurum('Önce Meshy API anahtarını girip "Anahtarı kaydet"e basın.', true); return; }
+  if (tur === 'foto' && !state.uploadImage) { meshyDurum('Önce "Görsel seç" ile bir fotoğraf yükleyin.', true); return; }
+  meshyCalisiyor = true;
+  els['meshy-text'].disabled = els['meshy-image'].disabled = true;
+  meshyDurum('⏳ Meshy\'ye gönderiliyor…');
+  try {
+    const o = {
+      anahtar,
+      onProgress: ({ asama, oran }) => meshyDurum(
+        asama === 'sirada' ? '⏳ Meshy sırada bekliyor…'
+          : asama === 'indirme' ? '⏳ Model indiriliyor…'
+          : `⏳ Model üretiliyor… %${Math.round(oran * 100)} (1–5 dk)`),
+    };
+    const r = tur === 'foto'
+      ? await m.gorseldenModel(fotoVeriUrl(), o)
+      : await m.yazidanModel(els['meshy-prompt'].value, { sanat: els['meshy-style'].value, ...o });
+    // Meshy modelleri glTF kuralıyla Y-yukarı gelir; Z-yukarı varsayımda heykel
+    // yan yatıyordu. Dilim ve Poligonal'in dik ekseni Y'ye çekilir.
+    for (const id of ['p-sliceUpAxis', 'p-upAxis']) if (els[id]) els[id].value = 'y';
+    saveSettings();
+    await loadMeshBuffer(r.buf, r.ad);
+    meshyDurum(`✓ Model yüklendi (${state.meshInfo?.count?.toLocaleString('tr-TR')} üçgen). ` +
+      'Dilim / Heykel ya da Poligonal Kabuk sekmesinde heykel olarak işleyin.');
+    setTimeout(onizlemeyeKay, 400);
+  } catch (err) {
+    console.error(err);
+    meshyDurum(`✗ ${err.message}`, true);
+  } finally {
+    meshyCalisiyor = false;
+    els['meshy-text'].disabled = els['meshy-image'].disabled = false;
+  }
+}
+els['meshy-text'].onclick = () => meshyUret('yazi');
+els['meshy-image'].onclick = () => meshyUret('foto');
 
 els['btn-demo'].onclick = () => {
   els['pattern-block'].open = true;
