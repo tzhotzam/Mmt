@@ -74,7 +74,7 @@ export function assemblyGuide(info, seams = [], folds = []) {
         : 'Kızak kullanılmıyor — lamelleri arka panele doğrudan sabitleyin.',
       '',
       'PARÇALARI TANIMA:',
-      `  Her lamelin yüzüne numarası kazınır (L1 … L${info.count}). Numaranın solunda "${p.orientation === 'horizontal' ? 'SOL' : 'ALT'}" yazar.`,
+      `  Her lamelin yüzüne numarası kazınır (L1 … L${info.count}). Bir ucunda da "${p.orientation === 'horizontal' ? 'SOL' : 'ALT'}" yazar.`,
       '  Lameli numarası düz okunacak şekilde tutun:',
       `    - "${p.orientation === 'horizontal' ? 'SOL' : 'ALT'}" yazan uç panelin ${p.orientation === 'horizontal' ? 'SOL kenarına' : 'ALT kenarına'} gelir,`,
       '    - dalgalı (profilli) kenar öne, size bakar; kanallı düz kenar duvar tarafıdır.',
