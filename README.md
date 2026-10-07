@@ -417,6 +417,21 @@ dokunuşta yapar (elle girildiğinde biri atlanıyor, dalga yüzü yutuyordu):
   katmanlara bölünür (yatay katmanlı yüz maskesi + hat ve oluk kazınmış arka
   pano). Serbest duran heykel için yine 3B model gerekir.
 
+### Logo ile dalga: üstünde, yedirilmiş, oyulmuş
+Hazır desenler → **Logo / konu ile dalga**:
+
+- **Dalgaya yedirilmiş** (logoda otomatik): `dalga·k + (1−k)·logo` — logo
+  dalgayla birlikte kıvrılan bir kabartmadır; harfler dalganın tepesinde
+  yükselir, çukurunda iner. "Üstünde" kipinde logo düz bir blok gibi
+  duruyor, I harfinin bittiği yerde dalga birden başlıyordu.
+- **Dalganın üstünde** (yapay zekâ yüzünde otomatik): `max(konu, dalga·k)` —
+  konu düz ve en önde, dalga altında kalır.
+- **Dalgaya oyulmuş**: logo dalgalı yüzeye çukur olarak kazınır.
+
+Desen payı (k) dalganın, 1−k logonun yüksekliğidir: 0,6 → dalga 60 mm,
+logo kabartması 40 mm (kabartma derinliği 100 mm iken). "Koyu alanlar öne"
+seçiliyken bileşim ters uzayda yapılır, sonra geri çevrilir.
+
 ### Yazıdan / fotoğraftan 3B model (Meshy)
 Kaynak bölümündeki **🤖 Yazıdan / fotoğraftan 3B model (Meshy)**: yazı
 ("roaring lion head, sculpture") ya da yüklü fotoğraf Meshy'ye gönderilir,

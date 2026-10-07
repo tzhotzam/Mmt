@@ -2701,12 +2701,16 @@ test('Meshy: görev başlar, sorgulanır, OBJ iner; hatalar anlaşılır', async
   assert.match(oku('js/main.js'), /'gizli' in el\.dataset/, 'alanlariTopla gizli alanları atlamıyor');
 });
 
-test('logoda desen logonun altında kalır, ton yüklenen içerikte ölçülür', () => {
+test('logo dalgaya yedirilir (ya da üstte / oyulmuş), ton yüklenen içerikte ölçülür', () => {
   const js = oku('js/main.js');
   const govde = js.match(/function composeSource[\s\S]*?\n}/)?.[0] || '';
-  // Çizgi iş (logo) da üstte tutulan konudur; yön (koyu öne) hesaba katılır.
-  assert.match(govde, /const ust = state\.uploadKind === 'ai' \|\| cizgi/, 'logo desenle doğrusal karışıyor');
+  // Otomatikte: yapay zekâ yüzü üstte, logo dalgaya yedirilmiş.
+  assert.match(govde, /state\.uploadKind === 'ai' \? 'ust' : cizgi \? 'yedir' : 'karisim'/, 'otomatik kip yanlış');
+  assert.match(govde, /kip === 'yedir'\) \{\s*b = d \+ \(1 - k\) \* f;/, 'yedirme formülü yok');
+  assert.match(govde, /kip === 'oy'/, 'oyma kipi yok');
   assert.match(govde, /ters \? 1 - b : b/, 'koyu öne logoda bileşim geri çevrilmiyor');
+  const html = oku('index.html');
+  for (const v of ['oto', 'ust', 'yedir', 'oy']) assert.ok(html.includes(`<option value="${v}"`), `${v} seçeneği yok`);
   // Desen karışımı tonu düşürüp logoyu fotoğraf sandırmamalı.
   const stats = js.match(/function updateSourceStats[\s\S]*?\n}/)?.[0] || '';
   assert.match(stats, /state\.uploadGrid \|\| state\.sourceGrid/, 'ton karışımda ölçülüyor');

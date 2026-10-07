@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-07-c';
+const APP_VERSION = '2026-10-07-d';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -358,18 +358,36 @@ function composeSource() {
     // koyudur (koyu alanlar öne): bileşim "öne çıkan = büyük" uzayında yapılır,
     // ters çevirme filtre zincirinde sonra uygulandığı için geri çevrilir.
     const cizgi = state.uploadKind === 'foto' && toneConcentration(state.uploadGrid) >= CIZGI_ISI_ESIGI;
-    const ust = state.uploadKind === 'ai' || cizgi;
+    // Konu ile desen nasıl birleşir:
+    //  ust   — konu desenin ÜSTÜNDE, düz ve en önde (yüz paneli)
+    //  yedir — konu desene YEDİRİLİR: dalgayla birlikte kıvrılan kabartma.
+    //          Logoda "ust" iken harf düz bir blok gibi duruyor, I'nın
+    //          bittiği yerde dalga birden başlıyordu.
+    //  oy    — konu dalgalı yüzeye OYULUR (çukur)
+    // Otomatik: yapay zekâ derinliği ust, logo yedir, fotoğraf eski karışım.
+    const secim = els['p-subjectMode']?.value || 'oto';
+    const kip = secim !== 'oto' ? secim
+      : state.uploadKind === 'ai' ? 'ust' : cizgi ? 'yedir' : 'karisim';
+    // Logoda konu çoğu zaman koyudur (koyu alanlar öne): bileşim "öne çıkan =
+    // büyük" uzayında yapılır, ters çevirme filtre zincirinde sonra
+    // uygulandığı için geri çevrilir.
     const ters = cizgi && state.invert;
     const L = 0.6 * k;
     for (let i = 0; i < out.data.length; i++) {
       const f = ters ? 1 - yukleme.data[i] : yukleme.data[i];
-      if (ust) {
+      const d = desen.data[i] * k;
+      let b;
+      if (kip === 'ust') {
         const m = Math.min(1, f / 0.18);
-        const b = Math.max(m * (L + (1 - L) * f), desen.data[i] * k);
-        out.data[i] = ters ? 1 - b : b;
+        b = Math.max(m * (L + (1 - L) * f), d);
+      } else if (kip === 'yedir') {
+        b = d + (1 - k) * f;
+      } else if (kip === 'oy') {
+        b = d + (1 - k) * (1 - f);
       } else {
-        out.data[i] = f * (1 - k) + desen.data[i] * k;
+        b = f * (1 - k) + d;
       }
+      out.data[i] = ters ? 1 - b : b;
     }
     state.sourceGrid = out;
   }
@@ -1890,6 +1908,9 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
       saveSettings();
       yuzDetayiUygula();
       return;
+    }
+    if (input.id === 'p-subjectMode' && state.uploadGrid) {
+      saveSettings(); composeSource(); scheduleRegen(); return;
     }
     if (input.id === 'p-subjectPad' && state.uploadGrid) {
       saveSettings(); composeSource(); resetPaint(); syncAspect(); scheduleRegen(); return;
