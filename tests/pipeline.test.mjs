@@ -2716,6 +2716,30 @@ test('logo dalgaya yedirilir (ya da üstte / oyulmuş), ton yüklenen içerikte 
   assert.match(stats, /state\.uploadGrid \|\| state\.sourceGrid/, 'ton karışımda ölçülüyor');
 });
 
+test('lamel ve kızak gravürü: numara, uç işareti, yuva numaraları; hepsi parçanın içinde', async () => {
+  const { textToStrokes } = await import('../js/strokefont.js');
+  const w = 120, h = 60, data = new Float32Array(w * h);
+  for (let i = 0; i < data.length; i++) data[i] = 0.5 + 0.5 * Math.sin((i % w) / 9);
+  for (const orientation of ['vertical', 'horizontal']) {
+    const r = generateRibs({ w, h, data }, { panelW: 1500, panelH: 800, thickness: 8, gap: 5, maxDepth: 100, baseDepth: 40, railCount: 2, orientation });
+    const lamel = r.parts.find((p) => p.kind === 'lamel');
+    const yazilar = lamel.engrave.map((e) => e.text);
+    assert.ok(yazilar.includes('L1') && yazilar.includes(orientation === 'vertical' ? 'ALT' : 'SOL'), `lamel yazıları: ${yazilar}`);
+    const kizak = r.parts.find((p) => p.kind === 'kizak');
+    const ky = kizak.engrave.map((e) => e.text);
+    for (const n of ['1', '5', '10']) assert.ok(ky.includes(n), `kızakta ${n} numaralı yuva yazmıyor`);
+    for (const p of r.parts) for (const e of p.engrave) {
+      if (e.type !== 'text') continue;
+      for (const c of textToStrokes(e.text, e.x, e.y, e.size, 0)) for (const q of c) {
+        assert.ok(pointInRing(q, p.outline), `${p.id} "${e.text}" parçanın dışına taşıyor`);
+      }
+    }
+  }
+  const { assemblyGuide } = await import('../js/cutlist.js');
+  const r = generateRibs({ w, h, data }, { panelW: 1500, panelH: 800, thickness: 8, gap: 5, railCount: 2 });
+  assert.match(assemblyGuide(r.info), /PARÇALARI TANIMA/, 'kılavuz parçaları tanımayı anlatmıyor');
+});
+
 test('derinlik modeli ve çalıştırıcı depoda, lisanslarıyla', () => {
   const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
   const model = path.join(kok, 'models', 'derinlik-v2-kucuk-w8.onnx');

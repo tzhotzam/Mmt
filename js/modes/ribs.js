@@ -141,7 +141,13 @@ export function generateRibs(grid, userParams = {}) {
       kind: 'lamel',
       outline: ring,
       holes: [],
-      engrave: [{ type: 'text', text: `L${i + 1}`, x: ribLength / 2, y: railSlotDepth + 6, size: p.labelSize }],
+      // Numara + uç işareti: numara düz okunurken sol uç panelin ALTI (yatay
+      // lamelde SOLU), üstteki dalgalı kenar öne bakar. Kesimden sonra
+      // parçanın hangi ucunun nereye geldiği buradan anlaşılır.
+      engrave: [
+        { type: 'text', text: `L${i + 1}`, x: ribLength / 2, y: railSlotDepth + 6, size: p.labelSize },
+        { type: 'text', text: horizontal ? 'SOL' : 'ALT', x: 4 + p.labelSize * 1.4, y: railSlotDepth + 6, size: p.labelSize * 0.8 },
+      ],
       w: ribLength,
       h: maxD,
       meta: { index: i, across: a0, thickness: p.thickness, maxDepth: maxD, profile },
@@ -165,7 +171,26 @@ export function generateRibs(grid, userParams = {}) {
       kind: 'kizak',
       outline: ring,
       holes: [],
-      engrave: [{ type: 'text', text: `KIZAK ${r + 1}`, x: actualAcross / 2, y: p.railHeight / 4, size: p.labelSize }],
+      // Yuva numaraları: ilk yuva ve her beşincisi — hangi lamelin hangi
+      // yuvaya gireceği kızağın üstünde yazar (L1 kızağın bu ucunda).
+      engrave: [
+        { type: 'text', text: `KIZAK ${r + 1}`, x: actualAcross / 2, y: Math.min(p.railHeight / 4, (p.railHeight - railSlotDepth) * 0.28), size: p.labelSize },
+        ...slotCenters
+          .map((x, i) => ({ x, no: i + 1 }))
+          .filter(({ no }) => no === 1 || no % 5 === 0)
+          .map(({ x, no }) => {
+            const size = Math.min(5, (p.railHeight - railSlotDepth) * 0.25);
+            // Uçtaki yuvanın numarası kızağın dışına taşmasın (tek çizgili
+            // harf 5,5 birim ilerler, yükseklik 6 birim).
+            const yari = ((String(no).length * 5.5 - 1.5) * size) / 12 + 1;
+            return {
+              type: 'text', text: String(no),
+              x: Math.min(actualAcross - yari, Math.max(yari, x)),
+              y: (p.railHeight - railSlotDepth) * 0.68,
+              size,
+            };
+          }),
+      ],
       w: actualAcross,
       h: p.railHeight,
       meta: { index: r, position: railPositions[r] },
