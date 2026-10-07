@@ -64,6 +64,7 @@ export function buildCutList(parts, nestResult, info, opts = {}) {
 export function assemblyGuide(info, seams = [], folds = []) {
   if (info.mode === 'facets') return weldGuide(info, seams, folds);
   if (info.mode === 'slices') return sliceGuide(info);
+  if (info.mode === 'ribs' && info.joint === 'zivana') return zivanaGuide(info);
   if (info.mode === 'ribs') {
     const p = info.params;
     return [
@@ -102,6 +103,50 @@ export function assemblyGuide(info, seams = [], folds = []) {
     '  3. Gravür çizgisi, bir üst katmanın oturacağı sınırı gösterir.',
     '  4. Her katmandan sonra 10–15 dakika baskı uygulayın.',
     '  5. Kenarları zımparalayıp istenirse boya/vernik uygulayın.',
+  ].join('\n');
+}
+
+/** Zıvanalı arka çıtalı lamel panelin tarifi. */
+function zivanaGuide(info) {
+  const p = info.params;
+  const yatay = p.orientation === 'horizontal';
+  const n = info.railPositions.length;
+  const konumlar = info.railPositions.map((v) => round(v));
+  const aralik = n > 1 ? round(info.railPositions[1] - info.railPositions[0]) : 0;
+  const dilDerin = Math.max(1, p.thickness - 1);
+  return [
+    `Panel ölçüsü: ${round(info.panelW)} × ${round(info.panelH)} mm, toplam derinlik ${round(info.totalDepth)} mm`,
+    `  (lameller ${round(info.totalDepth - info.standoff)} mm + arkadaki çıta ${info.standoff} mm).`,
+    `${info.count} adet lamel, ${p.thickness} mm malzemeden, aralarında ${p.gap} mm boşluk.`,
+    `${n} adet zıvanalı çıta (C1 … C${n}), ${round(info.actualAcross)} × ${p.stripWidth} mm.`,
+    `  Çıta merkezleri lamel boyunca ${konumlar.join(' / ')} mm'de (${yatay ? 'soldan' : 'alttan'}).`,
+    '',
+    'NASIL TUTUNUYOR:',
+    '  Kızak lamellerin içinden geçmez. Çıtalar duvara yatık durur, her lamel için',
+    `  bir yuvası vardır. Lamelin arka kenarındaki ${info.tabLength} mm'lik dil (${dilDerin} mm derin) bu yuvaya girer.`,
+    '  Çıta tamamen lamellerin arkasında kalır: önden ve yandan görünmez, panel',
+    `  duvardan ${info.standoff} mm ayrık durur, arkasına ince bir gölge düşer.`,
+    '',
+    'PARÇALARI TANIMA:',
+    `  Her lamelin yüzüne numarası kazınır (L1 … L${info.count}). Bir ucunda da "${yatay ? 'SOL' : 'ALT'}" yazar.`,
+    `  "${yatay ? 'SOL' : 'ALT'}" yazan uç panelin ${yatay ? 'SOL' : 'ALT'} kenarına gelir; dilli düz kenar duvara, dalgalı kenar öne bakar.`,
+    `  L1 panelin ${yatay ? 'ALT' : 'SOL'} kenarındaki ilk lameldir (önden bakınca).`,
+    '  Çıtanın bir kenarında yuva numaraları yazar (1, 5, 10 …): o yuvaya o numaralı lamel girer.',
+    '  Çıtanın öbür kenarındaki küçük daireler vida yeridir.',
+    '',
+    'Montaj sırası (önerilen — çıtalar önce duvara):',
+    `  1. Çıtaları yere, numaralı kenarları ${yatay ? 'sağa' : 'aşağı'} bakacak şekilde yan yana koyun;`,
+    '     "1" yazan uçlar aynı tarafta olsun.',
+    `  2. L1 ve L${info.count}'i dilleriyle iki uçtaki yuvalara takın. Bu iki lamel çıtaları`,
+    `     doğru aralıkta (${aralik ? `merkezler arası ${aralik} mm` : 'kendiliğinden'}) ve paralel tutar — ölçü almaya gerek kalmaz.`,
+    '  3. Bu çerçeveyi duvara tutun, terazide hizalayın; vida işaretlerinden delip çıtaları',
+    '     havşa başlı vida + dübelle duvara sabitleyin. Vida başı çıtayla aynı yüzde kalmalı.',
+    '  4. Kalan lamelleri numara sırasıyla yuvalarına bastırın. Her dile bir damla',
+    '     ahşap tutkalı sürün (tutkalsız da durur ama öne çekilince çıkabilir).',
+    '  5. Geçme sıkıysa dili zımparayla inceltin; yuvayı genişletmeyin, et ince.',
+    '',
+    'Alternatif: panel küçükse yerde, çıtalar alta gelecek şekilde tümünü tutkalla',
+    'birleştirin, kuruyunca çıtalardan duvara vidalayın.',
   ].join('\n');
 }
 

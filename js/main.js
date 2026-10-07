@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-07-f';
+const APP_VERSION = '2026-10-07-g';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -202,8 +202,10 @@ function readParams() {
       maxDepth: num('p-maxDepth', 60),
       baseDepth: num('p-baseDepth', 30),
       orientation: els['p-orientation'].value,
+      joint: els['p-joint']?.value || 'gecme',
       railCount: Math.round(num('p-railCount', 2)),
       railHeight: num('p-railHeight', 60),
+      stripWidth: num('p-stripWidth', 80),
       fit: num('p-fit', 0.2),
       dogbone: bool('p-dogbone'),
       filletRadius: num('p-filletRadius', 0),
@@ -1707,6 +1709,11 @@ function syncRangeOutputs() {
   if (els['p-blur']) els['p-blur'].disabled = oto;
   const cikti = document.querySelector('output[for="p-blur"]');
   if (cikti && oto) cikti.textContent = `${effectiveBlurMm().toFixed(1)} (oto)`;
+  // Bağlantı tipine göre ilgili ölçü: yarım geçmede kızak yüksekliği,
+  // zıvanada çıta eni.
+  const zivana = els['p-joint']?.value === 'zivana';
+  if (els['lbl-railHeight']) els['lbl-railHeight'].hidden = zivana;
+  if (els['lbl-stripWidth']) els['lbl-stripWidth'].hidden = !zivana;
 }
 
 els['dir-light'].onclick = () => { setInvert(false); saveSettings(); scheduleRegen(); };

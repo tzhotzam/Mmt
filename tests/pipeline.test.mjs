@@ -604,6 +604,78 @@ test('lamel profili yükseklik haritasını takip ediyor', () => {
   }
 });
 
+test('zıvanalı çıta: lamel dilleri çıta yuvalarına oturuyor', () => {
+  const t = 18, gap = 4, fit = 0.2, tool = 6;
+  const z = generateRibs(applyFilters(testGrid(), {}), {
+    panelW: 1200, panelH: 800, thickness: t, gap, fit, maxDepth: 80, baseDepth: 30,
+    joint: 'zivana', railCount: 2, stripWidth: 80, toolDiameter: tool, dogbone: true,
+  });
+  assert.equal(z.info.joint, 'zivana');
+  assert.equal(z.info.standoff, t);
+  assert.equal(z.info.totalDepth, 30 + 80 + t, 'toplam derinliğe çıta eklenmeli');
+  assert.equal(z.parts.filter((p) => p.kind === 'kizak').length, 0, 'yarım geçme kızak üretilmemeli');
+  const citalar = z.parts.filter((p) => p.kind === 'cita');
+  assert.equal(citalar.length, 2);
+  const lameller = z.parts.filter((p) => p.kind === 'lamel');
+  const tab = z.info.tabLength;
+  assert.equal(tab, 40);
+  for (const l of lameller) {
+    const minY = Math.min(...l.outline.map((q) => q[1]));
+    assert.ok(Math.abs(minY + (t - 1)) < 1e-6, `${l.id} dil derinliği ${-minY}`);
+    // Lamelin arka kenarında kanal yok: y ∈ (0, taban) arasında nokta bulunmamalı.
+    assert.ok(!l.outline.some((q) => q[1] > 1e-6 && q[1] < 29), `${l.id} arkasında kanal kalmış`);
+    for (const pos of z.info.railPositions) {
+      const dil = l.outline.filter((q) => q[1] < -1 && Math.abs(q[0] - pos) <= tab / 2 + 1e-6);
+      assert.ok(dil.length >= 2, `${l.id} ${pos} konumunda dil yok`);
+    }
+  }
+  for (const c of citalar) {
+    assert.ok(signedArea(c.outline) > 0, 'çıta CCW olmalı');
+    assert.equal(c.holes.length, z.info.count - 2, 'uçtakiler dışında her lamele bir yuva');
+    const W = c.meta.width;
+    // Dil (çıta eninin ortasında, tab boyunda) yuvanın içinde, uzatma payıyla.
+    for (const [i, h] of c.holes.entries()) {
+      const xs = h.map((q) => q[0]), ys = h.map((q) => q[1]);
+      const a0 = (i + 1) * z.info.pitch;
+      assert.ok(Math.min(...xs) <= a0 && Math.max(...xs) >= a0 + t, `yuva ${i + 2} lameli almıyor`);
+      assert.ok(Math.min(...ys) <= W / 2 - tab / 2 - tool + 1e-6, 'yuva uzatması eksik (alt)');
+      assert.ok(Math.max(...ys) >= W / 2 + tab / 2 + tool - 1e-6, 'yuva uzatması eksik (üst)');
+      assert.ok(Math.min(...ys) > 8 && Math.max(...ys) < W - 8, 'yuva çıtanın kenarına çok yakın');
+    }
+    // Yuvalar arası et: boşluk − pay.
+    for (let i = 1; i < c.holes.length; i++) {
+      const et = Math.min(...c.holes[i].map((q) => q[0])) - Math.max(...c.holes[i - 1].map((q) => q[0]));
+      assert.ok(Math.abs(et - (gap - fit)) < 1e-6, `yuvalar arası et ${et}`);
+    }
+    // Uç çentikleri: çıta panelin yanından taşmaz.
+    const xs = c.outline.map((q) => q[0]);
+    assert.ok(Math.min(...xs) >= -1e-6 && Math.max(...xs) <= z.info.actualAcross + 1e-6);
+    assert.ok(c.engrave.some((e) => e.type === 'text' && e.text === `ÇITA ${c.meta.index + 1}`));
+    assert.ok(c.meta.screws >= 2, 'vida işareti yok');
+  }
+  const g = assemblyGuide(z.info);
+  assert.ok(g.includes('NASIL TUTUNUYOR') && g.includes('C1'), 'çıta tarifi yok');
+  assert.ok(!g.includes('Kızakların üstünde'), 'eski kızak tarifi karışmış');
+});
+
+test('zıvanalı çıta: boşluk çok darsa yarım geçmeye döner ve uyarır', () => {
+  const z = generateRibs(applyFilters(testGrid(), {}), {
+    panelW: 600, panelH: 400, thickness: 12, gap: 1, joint: 'zivana', railCount: 2,
+  });
+  assert.equal(z.info.joint, 'gecme');
+  assert.equal(z.parts.filter((p) => p.kind === 'kizak').length, 2);
+  assert.ok(z.warnings.some((w) => w.includes('zıvanalı çıta için çok dar')));
+});
+
+test('arayüz bağlantı seçimini okuyor, varsayılan zıvanalı çıta', () => {
+  const html = oku('index.html');
+  assert.ok(/<select id="p-joint">[\s\S]*?value="zivana" selected/.test(html), 'p-joint seçimi yok');
+  assert.ok(html.includes('id="p-stripWidth"'));
+  const js = oku('js/main.js');
+  assert.ok(/joint: els\['p-joint'\]/.test(js) && /stripWidth: num\('p-stripWidth'/.test(js));
+  assert.ok(oku('js/preview3d.js').includes("part.kind === 'cita'"), '3B görünüm çıtayı yerleştirmiyor');
+});
+
 console.log('katman modu');
 const cont = generateContours(applyFilters(testGrid(), {}), {
   panelW: 600, panelH: 450, thickness: 12, layerCount: 6, withBase: true,

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-10-07-f">
+<meta name="app-version" content="2026-10-07-g">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-10-07-f';
+  var V = '2026-10-07-g';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -372,11 +372,20 @@
           <option value="horizontal">Yatay</option>
         </select>
       </label>
-      <label>Kızak sayısı
+      <label>Bağlantı <small>lameller neyle tutulsun</small>
+        <select id="p-joint">
+          <option value="zivana" selected>Zıvanalı arka çıta (gizli)</option>
+          <option value="gecme">Yarım geçme kızak</option>
+        </select>
+      </label>
+      <label>Kızak / çıta sayısı
         <input type="number" id="p-railCount" value="2" min="0" max="6" step="1">
       </label>
-      <label>Kızak yüksekliği (mm)
+      <label id="lbl-railHeight" hidden>Kızak yüksekliği (mm)
         <input type="number" id="p-railHeight" value="60" min="20" max="200" step="5">
+      </label>
+      <label id="lbl-stripWidth">Çıta eni (mm) <small>duvara yatık durur</small>
+        <input type="number" id="p-stripWidth" value="80" min="40" max="200" step="5">
       </label>
       <label>Geçme boşluğu (mm)
         <input type="number" id="p-fit" value="0.2" min="-0.5" max="1" step="0.05">

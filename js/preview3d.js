@@ -131,15 +131,24 @@ export async function createPreview3d(container) {
       wall.visible = true;
       const horizontal = info.params.orientation === 'horizontal';
       const t = info.params.thickness;
+      // Zıvanalı çıtada lameller çıtanın önünde durur: çıta Z ∈ [0, t].
+      const ileri = info.standoff || 0;
       for (const part of parts) {
         const geo = extrude(part, t);
         let m;
         if (part.kind === 'lamel') {
           m = horizontal
             // yerel x (boy) → X, yerel y (derinlik) → Z, kalınlık → Y
-            ? basis([1, 0, 0], [0, 0, 1], [0, -1, 0], [0, part.meta.across + t, 0])
+            ? basis([1, 0, 0], [0, 0, 1], [0, -1, 0], [0, part.meta.across + t, ileri])
             // yerel x (boy) → Y, yerel y (derinlik) → Z, kalınlık → X
-            : basis([0, 1, 0], [0, 0, 1], [1, 0, 0], [part.meta.across, 0, 0]);
+            : basis([0, 1, 0], [0, 0, 1], [1, 0, 0], [part.meta.across, 0, ileri]);
+        } else if (part.kind === 'cita') {
+          // Çıta duvara yatık: yerel x dizilme yönü, yerel y lamel boyu yönü.
+          // Gravürlü üst yüz öne (lamellere) bakar; yatayda numaralı kenar sağda.
+          const y0 = part.meta.position - part.meta.width / 2;
+          m = horizontal
+            ? basis([0, 1, 0], [-1, 0, 0], [0, 0, 1], [y0 + part.meta.width, 0, 0])
+            : basis([1, 0, 0], [0, 1, 0], [0, 0, 1], [0, y0, 0]);
         } else {
           const pos = part.meta.position;
           m = horizontal
