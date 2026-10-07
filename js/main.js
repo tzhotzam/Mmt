@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-06-e';
+const APP_VERSION = '2026-10-07-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -330,7 +330,10 @@ function readNestOpts() {
  */
 function composeSource() {
   if (!state.uploadGrid) return false;
-  const yukleme = kenarPayi(state.uploadGrid, num('p-subjectPad', 0));
+  // Kenar sönümü yalnız yapay zekâ derinliğinde: orada kadraja değen saç ve
+  // boyun uçurumla kesilmesin diye var. Logoda kenara yakın harfi siliyordu
+  // (ŞAPCI'nın I'sı ve ikon kayboluyordu).
+  const yukleme = kenarPayi(state.uploadGrid, num('p-subjectPad', 0), state.uploadKind === 'ai');
   state.aspect = yukleme.w / yukleme.h;
 
   const k = Math.min(1, Math.max(0, num('p-patMix', 0)));
@@ -374,7 +377,7 @@ function composeSource() {
  * "koyu alanlar öne" seçiliyken çerçeveyi duvar gibi öne çıkarırdı.
  * Izgara uzun kenarı yine GRID_MAX olacak şekilde yeniden örneklenir.
  */
-function kenarPayi(grid, pay) {
+function kenarPayi(grid, pay, sonum = true) {
   if (!(pay > 0)) return grid;
   const ek = pay * Math.max(grid.w, grid.h);
   const W = grid.w + 2 * ek, H = grid.h + 2 * ek;
@@ -403,7 +406,7 @@ function kenarPayi(grid, pay) {
       // sönümünde kadrajı dolduran saç, başı kutu gibi köşeli bırakıyordu.
       const nx = Math.abs((sx / (grid.w - 1)) * 2 - 1), ny = Math.abs((sy / (grid.h - 1)) * 2 - 1);
       const r = Math.pow(nx ** 2.5 + ny ** 2.5, 1 / 2.5);
-      const t = Math.min(1, Math.max(0, (1 - r) / sol));
+      const t = sonum ? Math.min(1, Math.max(0, (1 - r) / sol)) : 1;
       const a = t * t * (3 - 2 * t);
       out.data[j * cols + i] = zemin + (v - zemin) * a;
     }
