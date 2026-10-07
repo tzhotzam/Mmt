@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-07-g';
+const APP_VERSION = '2026-10-07-h';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -1714,6 +1714,8 @@ function syncRangeOutputs() {
   const zivana = els['p-joint']?.value === 'zivana';
   if (els['lbl-railHeight']) els['lbl-railHeight'].hidden = zivana;
   if (els['lbl-stripWidth']) els['lbl-stripWidth'].hidden = !zivana;
+  // Zıvanada kemik payı yok (yuvalar düz, uzatmalı); seçenek yalnız geçmede.
+  if (els['lbl-dogbone']) els['lbl-dogbone'].hidden = zivana;
 }
 
 els['dir-light'].onclick = () => { setInvert(false); saveSettings(); scheduleRegen(); };

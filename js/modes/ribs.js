@@ -78,8 +78,10 @@ export function generateRibs(grid, userParams = {}) {
   // Yuva, dilden her iki uçta takım çapı kadar uzun açılır. Freze yuvanın
   // köşelerinde yarıçapı kadar et bırakır, lamel de dilin dibinde aynı
   // yuvarlaklığı taşır; uzatma ikisini de dilin dışında bırakır. Uzatma
-  // lamelin gövdesinin altında kalır, görünmez.
-  const ext = zivana && p.dogbone ? Math.max(0, p.toolDiameter || 0) : 0;
+  // lamelin gövdesinin altında kalır, görünmez. Böylece zıvanada hiçbir
+  // köşeye kemik yayı gerekmez: her şey düz kanal olarak kesilir (küçük
+  // yayları CAM programları takım çapına eşit diye reddedebiliyor).
+  const ext = zivana ? Math.max(0, p.toolDiameter || 0) : 0;
   let tabLen = 0;
   if (zivana) {
     tabLen = p.tabLength > 0 ? p.tabLength : Math.round(p.stripWidth * 0.5);
@@ -182,9 +184,8 @@ export function generateRibs(grid, userParams = {}) {
     ring = ensureOrientation(ring, true);
     // Kemik payı en sonda: ofset (köşe birleştirmeli) bir yayın üzerinden
     // geçerse yayı bozar.
-    // Zıvanada dil dibine pay açılmaz (yuvanın uzatması karşılar); pay
-    // kapalıysa dil dibi köşeleri sıkı köşe olarak bildirilir.
-    ring = finishRing(ring, zivana ? (p.dogbone ? () => false : kanalDibi(0)) : kanalDibi(railSlotDepth));
+    // Zıvanada dil dibine pay açılmaz; yuvanın uzatması karşılar.
+    ring = finishRing(ring, zivana ? () => false : kanalDibi(railSlotDepth));
 
     const maxD = profile.reduce((m, q) => Math.max(m, q[1]), 0);
     parts.push({

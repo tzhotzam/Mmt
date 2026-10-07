@@ -658,6 +658,23 @@ test('zıvanalı çıta: lamel dilleri çıta yuvalarına oturuyor', () => {
   assert.ok(!g.includes('Kızakların üstünde'), 'eski kızak tarifi karışmış');
 });
 
+test('zıvanalı çıta: yay yok, hepsi düz kanal (kemik payı açık da olsa)', () => {
+  for (const dogbone of [true, false]) {
+    const z = generateRibs(applyFilters(testGrid(), {}), {
+      panelW: 1000, panelH: 700, thickness: 18, gap: 4, joint: 'zivana', railCount: 2, toolDiameter: 6, dogbone,
+    });
+    assert.equal(z.info.dogboneApplied, 0);
+    for (const l of z.parts.filter((p) => p.kind === 'lamel')) {
+      // Arka kenar: iki uç + her dil için 4 köşe — ara nokta (yay) yok.
+      assert.equal(l.outline.filter((q) => q[1] < 1).length, 2 + 4 * 2, `${l.id} arka kenarında yay var`);
+    }
+    for (const c of z.parts.filter((p) => p.kind === 'cita')) {
+      assert.equal(c.outline.length, 12, 'çıta dış hattında yay var');
+      assert.ok(c.holes.every((h) => h.length === 4), 'çıta yuvasında yay var');
+    }
+  }
+});
+
 test('zıvanalı çıta: boşluk çok darsa yarım geçmeye döner ve uyarır', () => {
   const z = generateRibs(applyFilters(testGrid(), {}), {
     panelW: 600, panelH: 400, thickness: 12, gap: 1, joint: 'zivana', railCount: 2,
