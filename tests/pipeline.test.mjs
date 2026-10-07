@@ -2701,6 +2701,17 @@ test('Meshy: görev başlar, sorgulanır, OBJ iner; hatalar anlaşılır', async
   assert.match(oku('js/main.js'), /'gizli' in el\.dataset/, 'alanlariTopla gizli alanları atlamıyor');
 });
 
+test('logoda desen logonun altında kalır, ton yüklenen içerikte ölçülür', () => {
+  const js = oku('js/main.js');
+  const govde = js.match(/function composeSource[\s\S]*?\n}/)?.[0] || '';
+  // Çizgi iş (logo) da üstte tutulan konudur; yön (koyu öne) hesaba katılır.
+  assert.match(govde, /const ust = state\.uploadKind === 'ai' \|\| cizgi/, 'logo desenle doğrusal karışıyor');
+  assert.match(govde, /ters \? 1 - b : b/, 'koyu öne logoda bileşim geri çevrilmiyor');
+  // Desen karışımı tonu düşürüp logoyu fotoğraf sandırmamalı.
+  const stats = js.match(/function updateSourceStats[\s\S]*?\n}/)?.[0] || '';
+  assert.match(stats, /state\.uploadGrid \|\| state\.sourceGrid/, 'ton karışımda ölçülüyor');
+});
+
 test('derinlik modeli ve çalıştırıcı depoda, lisanslarıyla', () => {
   const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
   const model = path.join(kok, 'models', 'derinlik-v2-kucuk-w8.onnx');

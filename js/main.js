@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-07-a';
+const APP_VERSION = '2026-10-07-b';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -267,9 +267,11 @@ function cizgiIsiMi() {
 
 /** Kaynak her değiştiğinde bir kez ölçülür; filtreler ve uyarılar kullanır. */
 function updateSourceStats() {
-  state.sourceStats = state.sourceGrid
-    ? { tone: toneConcentration(state.sourceGrid) }
-    : null;
+  // Ton ölçümü YÜKLENEN içerikte yapılır, desenle karışımda değil: desen
+  // sürekli tonlar ekler, logo "fotoğraf" sanılıp lamel adımının üçte biri
+  // kadar yumuşatılıyor, harf kenarları bulanıklaşıyordu.
+  const g = state.uploadGrid || state.sourceGrid;
+  state.sourceStats = g ? { tone: toneConcentration(g) } : null;
 }
 
 /** Yumuşatma alanında gerçekte kullanılan mm değeri. */
@@ -350,13 +352,21 @@ function composeSource() {
     // Konu, dalga ortasının üstünden başlar (L): yoksa dalga tepeleri yüz
     // kadar yükselip yüzü çukurda bırakıyordu. Kenarda (değer < 0,18, yani
     // yapay zekânın yumuşak geçişi) yükseltme de yumuşakça söner.
-    const ust = state.uploadKind === 'ai';
+    // Logo / çizgi iş de konudur: desen onun ALTINDA kalır. Doğrusal
+    // karışımda desen payını artırmak dalgayı büyütürken logoyu aynı oranda
+    // söndürüyor, panel değişmiyor gibi duruyordu. Logoda konu çoğu zaman
+    // koyudur (koyu alanlar öne): bileşim "öne çıkan = büyük" uzayında yapılır,
+    // ters çevirme filtre zincirinde sonra uygulandığı için geri çevrilir.
+    const cizgi = state.uploadKind === 'foto' && toneConcentration(state.uploadGrid) >= CIZGI_ISI_ESIGI;
+    const ust = state.uploadKind === 'ai' || cizgi;
+    const ters = cizgi && state.invert;
     const L = 0.6 * k;
     for (let i = 0; i < out.data.length; i++) {
-      const f = yukleme.data[i];
+      const f = ters ? 1 - yukleme.data[i] : yukleme.data[i];
       if (ust) {
         const m = Math.min(1, f / 0.18);
-        out.data[i] = Math.max(m * (L + (1 - L) * f), desen.data[i] * k);
+        const b = Math.max(m * (L + (1 - L) * f), desen.data[i] * k);
+        out.data[i] = ters ? 1 - b : b;
       } else {
         out.data[i] = f * (1 - k) + desen.data[i] * k;
       }
@@ -797,7 +807,10 @@ function applyPattern({ saf = false } = {}) {
  * @param {boolean} auto otomatik seçildiyse kullanıcıya nedenini söyler
  */
 function setInvert(v, auto = false) {
+  const degisti = state.invert !== !!v;
   state.invert = !!v;
+  // Logo bileşimi yöne bağlı (öne çıkan taraf desenin üstünde kalır).
+  if (degisti && state.uploadGrid && num('p-patMix', 0) > 0) composeSource();
   const light = !state.invert;
   els['dir-light'].classList.toggle('active', light);
   els['dir-dark'].classList.toggle('active', !light);
