@@ -105,10 +105,21 @@ export function generateRibs(grid, userParams = {}) {
   }
 
   const railSlotDepth = p.railCount > 0 && !zivana ? p.railHeight / 2 : 0;
-  if (!zivana && p.railCount > 0 && p.baseDepth < railSlotDepth + 8) {
+  // DÜZ KANAL (kemik payı kapalı): CAM programları takım yarıçapına eşit
+  // kemik yaylarını açamayabiliyor. Yay yerine iki kanal da dipte δ kadar
+  // derin açılır. Freze kanal dibinin köşelerinde r yüksekliğinde et
+  // bırakır; karşı parça o köşeye ulaşmadan durur (δ ≥ r/2 yeter: iki dip
+  // arasında 2δ boşluk kalır). Geçme dipte değil, lamelin arka kenarı ile
+  // kızağın alt kenarının aynı düzlemde (masa / duvar) durmasıyla hizalanır.
+  const duzPay = !zivana && p.railCount > 0 && !p.dogbone && (p.toolDiameter || 0) > 0
+    ? Math.round((p.toolDiameter / 4 + 0.5) * 10) / 10
+    : 0;
+  const kanal = railSlotDepth + duzPay;          // lamelde ve kızakta kanal derinliği
+  const kizakEt = p.railHeight - kanal;          // kızakta kanal altında kalan et
+  if (!zivana && p.railCount > 0 && p.baseDepth < kanal + 8) {
     warnings.push(
       `Taban derinliği (${p.baseDepth} mm) kızak kanalı için yetersiz. ` +
-      `En az ${Math.ceil(railSlotDepth + 8)} mm önerilir.`
+      `En az ${Math.ceil(kanal + 8)} mm önerilir.`
     );
   }
 
@@ -177,7 +188,7 @@ export function generateRibs(grid, userParams = {}) {
 
     const backEdge = zivana
       ? buildTabbedEdge(ribLength, railPositions, tabLen, tabDepth)
-      : buildNotchedEdge(ribLength, railPositions, p.thickness + p.fit, railSlotDepth);
+      : buildNotchedEdge(ribLength, railPositions, p.thickness + p.fit, kanal);
     let ring = backEdge.concat(profile.slice().reverse());
     ring = simplify(ring, p.simplifyTol, true);
     if (p.offset !== 0) ring = offsetRing(ensureOrientation(ring, true), p.offset);
@@ -185,7 +196,7 @@ export function generateRibs(grid, userParams = {}) {
     // Kemik payı en sonda: ofset (köşe birleştirmeli) bir yayın üzerinden
     // geçerse yayı bozar.
     // Zıvanada dil dibine pay açılmaz; yuvanın uzatması karşılar.
-    ring = finishRing(ring, zivana ? () => false : kanalDibi(railSlotDepth));
+    ring = finishRing(ring, zivana || duzPay ? () => false : kanalDibi(kanal));
 
     const maxD = profile.reduce((m, q) => Math.max(m, q[1]), 0);
     parts.push({
@@ -197,8 +208,8 @@ export function generateRibs(grid, userParams = {}) {
       // lamelde SOLU), üstteki dalgalı kenar öne bakar. Kesimden sonra
       // parçanın hangi ucunun nereye geldiği buradan anlaşılır.
       engrave: [
-        { type: 'text', text: `L${i + 1}`, x: ribLength / 2, y: railSlotDepth + 6, size: p.labelSize },
-        { type: 'text', text: horizontal ? 'SOL' : 'ALT', x: 4 + p.labelSize * 1.4, y: railSlotDepth + 6, size: p.labelSize * 0.8 },
+        { type: 'text', text: `L${i + 1}`, x: ribLength / 2, y: kanal + 6, size: p.labelSize },
+        { type: 'text', text: horizontal ? 'SOL' : 'ALT', x: 4 + p.labelSize * 1.4, y: kanal + 6, size: p.labelSize * 0.8 },
       ],
       w: ribLength,
       h: maxD,
@@ -218,13 +229,13 @@ export function generateRibs(grid, userParams = {}) {
   for (let r = 0; r < (zivana ? 0 : p.railCount); r++) {
     const slotCenters = [];
     for (let i = 0; i < count; i++) slotCenters.push(i * pitch + p.thickness / 2);
-    const edge = buildNotchedEdge(actualAcross, slotCenters, p.thickness + p.fit, railSlotDepth);
+    const edge = buildNotchedEdge(actualAcross, slotCenters, p.thickness + p.fit, kanal);
     // Kızak profili: alt kenar düz, üst kenarda lamel kanalları.
     // Üst kenar soldan sağa yürür, sonra sağ ve alt kenarlarla halka kapanır.
     const topEdge = edge.map(([x, y]) => [x, p.railHeight - y]);
     const ring = finishRing(
       ensureOrientation(topEdge.concat([[actualAcross, 0], [0, 0]]), true),
-      kanalDibi(p.railHeight - railSlotDepth)
+      duzPay ? () => false : kanalDibi(kizakEt)
     );
     parts.push({
       id: `K${r + 1}`,
@@ -234,19 +245,19 @@ export function generateRibs(grid, userParams = {}) {
       // Yuva numaraları: ilk yuva ve her beşincisi — hangi lamelin hangi
       // yuvaya gireceği kızağın üstünde yazar (L1 kızağın bu ucunda).
       engrave: [
-        { type: 'text', text: `KIZAK ${r + 1}`, x: actualAcross / 2, y: Math.min(p.railHeight / 4, (p.railHeight - railSlotDepth) * 0.28), size: p.labelSize },
+        { type: 'text', text: `KIZAK ${r + 1}`, x: actualAcross / 2, y: Math.min(p.railHeight / 4, kizakEt * 0.28), size: p.labelSize },
         ...slotCenters
           .map((x, i) => ({ x, no: i + 1 }))
           .filter(({ no }) => no === 1 || no % 5 === 0)
           .map(({ x, no }) => {
-            const size = Math.min(5, (p.railHeight - railSlotDepth) * 0.25);
+            const size = Math.min(5, kizakEt * 0.25);
             // Uçtaki yuvanın numarası kızağın dışına taşmasın (tek çizgili
             // harf 5,5 birim ilerler, yükseklik 6 birim).
             const yari = ((String(no).length * 5.5 - 1.5) * size) / 12 + 1;
             return {
               type: 'text', text: String(no),
               x: Math.min(actualAcross - yari, Math.max(yari, x)),
-              y: (p.railHeight - railSlotDepth) * 0.68,
+              y: kizakEt * 0.68,
               size,
             };
           }),
@@ -288,6 +299,8 @@ export function generateRibs(grid, userParams = {}) {
       panelH: horizontal ? actualAcross : p.panelH,
       totalDepth: p.baseDepth + p.maxDepth + (zivana ? stripT : 0),
       joint: zivana ? 'zivana' : 'gecme',
+      straightSlotExtra: duzPay,
+      slotDepth: kanal,
       standoff: zivana ? stripT : 0,
       tabLength: tabLen,
       profileSamples: samples,

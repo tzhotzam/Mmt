@@ -2540,17 +2540,13 @@ test('lamel modu kanal diplerine kemik açar', () => {
   const g = testGrid();
   const ortak = { panelW: 900, panelH: 600, thickness: 18, gap: 6, railCount: 2, railHeight: 60 };
   const acik = generateRibs(g, { ...ortak, toolDiameter: 6, dogbone: true });
-  const kapali = generateRibs(g, { ...ortak, toolDiameter: 6, dogbone: false });
+  // Takım çapı 0: ne kemik ne derinleştirme — karşılaştırma tabanı.
+  const kapali = generateRibs(g, { ...ortak, toolDiameter: 0, dogbone: false });
 
   // Her lamelde 2 kızak kanalı × 2 iç köşe, her kızakta lamel sayısı × 2.
   assert.ok(acik.info.dogboneApplied > 0, 'hiç kemik açılmamış');
   assert.equal(acik.info.dogboneSkipped, 0);
   assert.equal(kapali.info.dogboneApplied, 0);
-  assert.ok(kapali.info.tightCorners > 0, 'kapalıyken sıkışık köşeler sayılmalı');
-  assert.ok(
-    kapali.warnings.some((w) => w.includes('Kemik payı kapalı')),
-    'kemik payı kapalıyken uyarı verilmiyor'
-  );
 
   // Kemik sadece eksiltir; parçalar levhaya sığmaya devam eder.
   for (let i = 0; i < acik.parts.length; i++) {
@@ -2561,6 +2557,35 @@ test('lamel modu kanal diplerine kemik açar', () => {
     assert.equal(kendiniKesiyorMu(acik.parts[i].outline), null,
       `${acik.parts[i].id}: halka kendini kesiyor`);
   }
+});
+
+test('yarım geçme düz kanal: yay yok, iki kanal da r/2 + 0,5 mm derin', () => {
+  const g = testGrid();
+  const ortak = { panelW: 900, panelH: 600, thickness: 18, gap: 6, railCount: 2, railHeight: 60, joint: 'gecme' };
+  const duz = generateRibs(g, { ...ortak, toolDiameter: 6, dogbone: false });
+  assert.equal(duz.info.dogboneApplied, 0);
+  assert.equal(duz.info.tightCorners, 0, 'düz kanal sıkı köşe sayılmamalı');
+  assert.ok(!duz.warnings.some((w) => w.includes('Kemik payı kapalı')));
+  assert.equal(duz.info.straightSlotExtra, 2);
+  assert.equal(duz.info.slotDepth, 32);
+  for (const p of duz.parts) {
+    const ys = p.outline.map((q) => q[1]);
+    if (p.kind === 'lamel') {
+      // Arka kenar: 0 ve 32'de yatay; aradaki her nokta bir kanal duvarında (yay yok).
+      const arka = p.outline.filter((q) => q[1] < 40);
+      assert.ok(arka.every((q) => Math.abs(q[1]) < 1e-6 || Math.abs(q[1] - 32) < 1e-6), `${p.id} kanalda yay var`);
+      assert.equal(arka.length, 2 + 4 * 2, `${p.id} arka kenar nokta sayısı`);
+    } else {
+      assert.ok(Math.min(...ys.filter((y) => y > 1e-6)) >= 28 - 1e-6, 'kızak kanalı 32 mm olmalı');
+      assert.ok(p.outline.every((q) => [0, 28, 60].some((y) => Math.abs(q[1] - y) < 1e-6)), `${p.id} kanalda yay var`);
+    }
+  }
+  // İki dip arasında 2δ boşluk: lamel kanal dibi 32, kızak kanal dibi 60-32 = 28.
+  const kemikli = generateRibs(g, { ...ortak, toolDiameter: 6, dogbone: true });
+  assert.equal(kemikli.info.straightSlotExtra, 0);
+  assert.equal(kemikli.info.slotDepth, 30);
+  assert.ok(assemblyGuide(duz.info).includes('DÜZ KANAL'));
+  assert.ok(!assemblyGuide(kemikli.info).includes('DÜZ KANAL'));
 });
 
 test('dar kızak kanalında kemik atlanır ve kullanıcıya söylenir', () => {

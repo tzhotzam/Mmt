@@ -73,6 +73,15 @@ export function assemblyGuide(info, seams = [], folds = []) {
       info.railPositions.length
         ? `${info.railPositions.length} adet kızak, lamel boyunca ${info.railPositions.map((v) => round(v)).join(' / ')} mm konumlarında.`
         : 'Kızak kullanılmıyor — lamelleri arka panele doğrudan sabitleyin.',
+      ...(info.straightSlotExtra ? [
+        '',
+        'DÜZ KANAL:',
+        `  Kanallar yaysız, düz kesilir ve dipleri ${info.straightSlotExtra} mm fazladan derindir (${round(info.slotDepth)} mm).`,
+        '  Freze kanal dibinin köşesinde yuvarlak et bırakır; bu derinlik sayesinde karşı',
+        '  parça o ete değmeden oturur. İçeride görünmeyen küçük bir boşluk kalır, bu normaldir.',
+        '  Hizayı kanal dibi değil zemin verir: lamelin arka kenarı ile kızağın alt kenarı',
+        '  aynı düzlemde (masaya / duvara değecek şekilde) durmalı.',
+      ] : []),
       '',
       'PARÇALARI TANIMA:',
       `  Her lamelin yüzüne numarası kazınır (L1 … L${info.count}). Bir ucunda da "${p.orientation === 'horizontal' ? 'SOL' : 'ALT'}" yazar.`,
@@ -89,6 +98,9 @@ export function assemblyGuide(info, seams = [], folds = []) {
       '     "1" yazan uçlar aynı tarafa baksın.',
       '  2. Lamelleri L1\'den başlayarak kızaktaki numaralı yuvalara sırayla oturtun;',
       '     gravür numaraları hep aynı yöne baksın.',
+      ...(info.straightSlotExtra
+        ? ['     Lameli, arka kenarı zemine değene kadar bastırın (kanal dibine değil).']
+        : []),
       '  3. Geçmeler sıkıysa kanalları zımparayla açın; gevşekse ahşap tutkalı boşluğu doldurur.',
       '  4. Kare/gönye kontrolü yapıp tutkalı kuruyana kadar işkence ile sıkın.',
       '  5. Kızakların arkasına duvar askı profili (fransız askısı) vidalayın.',
