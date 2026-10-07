@@ -2859,7 +2859,7 @@ test('çözünürlük uyarısı HAM kaynağı ölçer', () => {
   const js = oku('js/main.js');
   const govde = js.match(/function cozunurlukUyarilari[\s\S]*?\n}/)?.[0] || '';
   assert.ok(govde, 'cozunurlukUyarilari yok');
-  assert.ok(/state\.sourceGrid/.test(govde), 'ham kaynak yerine filtreli ızgara ölçülüyor');
+  assert.ok(/kenarPayi\(state\.uploadGrid/.test(govde), 'ham (desensiz) kaynak yerine karışım ölçülüyor');
   assert.ok(!/fineDetailRatio\(state\.grid/.test(govde), 'filtreli ızgara ölçülüyor');
   assert.ok(/gerekenPanelGenisligi/.test(govde),
     'uyarı gereken panel genişliğini söylemiyor — "mod değiştir" tek başına yanlış tavsiye');

@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-07-e';
+const APP_VERSION = '2026-10-07-f';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -911,6 +911,8 @@ function regenerate() {
   // kutusunda göstermek kullanıcıyı boşuna korkutuyordu.
   state.notes = [];
   const tool = num('p-toolDiameter', 6);
+  const cn = cizgiNotu();
+  if (cn) state.notes.push(cn);
   if (state.mode === 'ribs' && num('p-gap', 6) > 0 && num('p-gap', 6) < tool) {
     state.notes.push(`Lamel boşluğu (${num('p-gap', 6)} mm) takım çapından (${tool} mm) küçük — ` +
       'lameller ayrı ayrı kesildiği için sorun değil; yalnızca montajda araya parmak girmez.');
@@ -1151,7 +1153,12 @@ function cozunurlukUyarilari() {
   // HAM kaynak ölçülür, filtrelenmiş hâli değil. Yumuşatma ince ayrıntıyı
   // zaten siliyor; filtre sonrasını ölçmek "ayrıntıyı sildim, demek ki
   // ayrıntı yokmuş" demek olurdu. Bu logoda ham %40, filtre sonrası %24.
-  const kaynak = state.sourceGrid;
+  // Desen KATILMADAN ölçülür (boşluk dahil): yumuşak dalga değişimin büyük
+  // kısmını oluşturup ince ayrıntı oranını eşiğin altına çekiyordu — 60 cm'lik
+  // 18 mm'lik okunmaz logo paneli uyarısız geçiyordu.
+  const kaynak = state.uploadGrid
+    ? kenarPayi(state.uploadGrid, num('p-subjectPad', 0), false)
+    : state.sourceGrid;
   if (state.mode !== 'ribs' || !kaynak) return out;
 
   const adim = num('p-thickness', 18) + num('p-gap', 6);
@@ -1174,17 +1181,19 @@ function cozunurlukUyarilari() {
     );
   }
 
-  if (cizgiIsiMi()) {
-    out.push(
-      'Kaynak düz renkli bir grafik (logo, yazı, çizgi iş) gibi görünüyor. ' +
-      'Lamel panelde yazı, harf gövdesi 2-3 lamel genişliğine ulaştığında ' +
-      'okunur; küçük punto her ölçüde kaybolur. Paneli büyütmek işe yarar. ' +
-      'Küçük ölçüde yapılacaksa Katman / Rölyef modu ya da düz siluet kesimi ' +
-      'daha iyi sonuç verir. (Fotoğraf yumuşatması bu kaynağa uygulanmadı — ' +
-      'grafiklerde keskin kenar kasıtlıdır.)'
-    );
-  }
   return out;
+}
+
+/**
+ * Logo / çizgi iş için genel tavsiye — BİLGİ notu, uyarı değil. Her logoda
+ * kırmızı kutuda çıkıp, panel sorunsuzken bile kullanıcıyı endişelendiriyordu.
+ * Gerçek sorun (ayrıntı adımdan ince) cozunurlukUyarilari'nda uyarı kalır.
+ */
+function cizgiNotu() {
+  if (state.mode !== 'ribs' || !state.sourceGrid || !cizgiIsiMi()) return null;
+  return 'Kaynak düz renkli bir grafik (logo, yazı) olarak tanındı. Lamel panelde yazı, ' +
+    'harf gövdesi 2-3 lamel genişliğine ulaştığında okunur; okunmuyorsa paneli büyütün ya da ' +
+    'lamel adımını küçültün. Fotoğraf yumuşatması uygulanmadı — grafiklerde keskin kenar kasıtlıdır.';
 }
 
 function collectWarnings() {
