@@ -1629,6 +1629,16 @@ test('zarf onarımı tabanı açık yüzey modelini dolu gövdeye çevirir', () 
   }
 });
 
+test('mil yoksa dilim tarifinde boş mil bölümü yazılmaz', () => {
+  const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
+  const s = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 18, gap: 12, support: 'kizak' });
+  assert.equal(s.info.rodPoints.length, 0);
+  assert.ok(s.info.rails?.length > 0, 'kızak kurulmadı');
+  const g = assemblyGuide(s.info);
+  assert.ok(!/MİL: 0 adet/.test(g) && !g.includes('boyunda olmalı'), 'boş mil bölümü yazıldı');
+  assert.ok(g.includes('KIZAK:'));
+});
+
 test('dilim modu bozuk modeli zarf onarımıyla kurar', () => {
   const js = oku('js/main.js');
   const govde = js.match(/function sliceMeshSource[\s\S]*?\n}/)?.[0] || '';

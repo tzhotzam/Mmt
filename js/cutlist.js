@@ -408,6 +408,13 @@ function sliceGuide(info) {
     `Dilim ekseni: ${String(p.axis).toUpperCase()} — dilimler bu eksen boyunca dizilir.`,
     `Yığın yüksekliği ${round(yigin)} mm.`,
     '',
+  ];
+  // Mil yoksa (kızak her dilimi tutuyor) mil bölümü hiç yazılmaz; "MİL: 0
+  // adet … 1270 mm boyunda olmalı" kafa karıştırıyordu.
+  const milVar = info.rodPoints.length > 0;
+  if (!milVar) {
+    if (!info.rails?.length) satirlar.push('MİL / KIZAK yok: dilimleri birbirine yapıştırın.');
+  } else satirlar.push(
     kare
       ? `KAZIK: ${info.rodPoints.length} adet, ${p.rodDiameter}×${p.rodDiameter} mm kare kesit.`
       : `MİL: ${info.rodPoints.length} adet, Ø${p.rodDiameter} mm.`,
@@ -424,13 +431,13 @@ function sliceGuide(info) {
       `  Bu heykel ${Math.floor(info.maxRodSize / 5) * 5} mm'ye kadar kaldırır —` +
       ' daha kalın omurga istiyorsanız yer var.',
     ] : []),
-  ];
+  );
 
   if (!kare && info.rodPoints.length === 1) {
     satirlar.push('  TEK MİL: parçalar mil etrafında dönebilir. Montajda her dilimi');
     satirlar.push('  gözle hizalayın ya da mil sayısını 2 yapıp yeniden üretin.');
   }
-  if (p.gap > 0 && !info.rails?.length) {
+  if (milVar && p.gap > 0 && !info.rails?.length) {
     satirlar.push(`  Dilimler arasına ${p.gap} mm kalınlığında ara pul gerekir` +
       (kare ? ' (kare kazıkta: aynı kesitte kısa takozlar).' : ' (boru/rondela).'));
   }
