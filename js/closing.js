@@ -130,3 +130,72 @@ export function kesitKapat(rings, r, o = {}) {
     .map((ring) => ring.map(([gx, gy]) => [x0 + (gx + 0.5) * c, y0 + (gy + 0.5) * c]))
     .filter((ring) => ring.length >= 3);
 }
+
+/**
+ * İÇ BOŞALTMA — parçanın içini, kenarlardan `et` kadar bant bırakarak
+ * oyar (çerçeve dilim). Sac heykelde dolu dilim hem çok ağır hem çok sac
+ * yer: 1,2 m'lik arabada 3 mm çelikle ~350 kg. Bant, dış hattan VE mevcut
+ * deliklerden (mil deliği, kızak çentiği dış hattın parçası) ölçülür; bu
+ * yüzden mil çevresinde ve kızak çentiğinin üstünde et kendiliğinden kalır.
+ *
+ * @param {Array} outline dış halka
+ * @param {Array} holes mevcut delikler
+ * @param {number} et bant genişliği (mm)
+ * @param {object} [o] { minAlan: bundan küçük oyuk açılmaz (mm²) }
+ * @returns {{oyuklar: Array, etiket: [number,number]|null}} yeni delikler ve
+ *   bandın içinde, parçanın altına yakın bir yazı noktası
+ */
+export function icBosalt(outline, holes, et, o = {}) {
+  const bos = { oyuklar: [], etiket: null };
+  if (!(et > 0)) return bos;
+  const rings = [outline, ...holes];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of outline) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  if (Math.min(maxX - minX, maxY - minY) < 3 * et) return bos;   // oyacak yer yok
+  const boy = Math.max(maxX - minX, maxY - minY);
+  const c = Math.min(et / 4, Math.max(0.4, boy / 700));
+  const pay = 3 * c;
+  const x0 = minX - pay, y0 = minY - pay;
+  const w = Math.ceil((maxX - minX + 2 * pay) / c) + 1;
+  const h = Math.ceil((maxY - minY + 2 * pay) / c) + 1;
+  const ic = doldur(rings, x0, y0, c, w, h);
+  const disari = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) disari[i] = ic[i] ? 0 : 1;
+  const D = kareUzaklik(disari, w, h);
+  const alan = { w, h, data: new Float32Array(w * h) };
+  // ½ hücre kaydırma: eşik √tamsayı'ya denk gelmesin.
+  for (let i = 0; i < w * h; i++) alan.data[i] = Math.sqrt(D[i]) * c - et + 0.5 * c;
+
+  const minAlan = o.minAlan ?? 4 * et * et;
+  const alanOf = (r) => {
+    let s = 0;
+    for (let i = 0, n = r.length; i < n; i++) {
+      const a = r[i], b = r[(i + 1) % n];
+      s += a[0] * b[1] - b[0] * a[1];
+    }
+    return Math.abs(s / 2);
+  };
+  bos.oyuklar = contourRings(alan, 0)
+    .map((ring) => ring.map(([gx, gy]) => [x0 + (gx + 0.5) * c, y0 + (gy + 0.5) * c]))
+    .filter((ring) => ring.length >= 3 && alanOf(ring) >= minAlan);
+
+  // Yazı yeri: bandın ortasında (kenardan ~et/2), alt kenara en yakın, yatayda
+  // ortaya yakın nokta. Oyuk açılmadıysa çağıran eski yeri kullanır.
+  if (bos.oyuklar.length) {
+    const orta = (minX + maxX) / 2;
+    let enIyi = Infinity;
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const d = Math.sqrt(D[j * w + i]) * c;
+        if (!ic[j * w + i] || d < et * 0.4 || d > et * 0.6) continue;
+        const x = x0 + (i + 0.5) * c, y = y0 + (j + 0.5) * c;
+        const puan = (y - minY) + 0.25 * Math.abs(x - orta);
+        if (puan < enIyi) { enIyi = puan; bos.etiket = [x, y]; }
+      }
+    }
+  }
+  return bos;
+}

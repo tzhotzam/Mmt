@@ -33,7 +33,7 @@ import { generateSlices } from '../js/modes/slices.js';
 import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js';
 import { decimate } from '../js/decimate.js';
 import { voxelRemesh, meshHealth } from '../js/remesh.js';
-import { kesitKapat } from '../js/closing.js';
+import { kesitKapat, icBosalt } from '../js/closing.js';
 import { applyRivetJoints, reliefHoles, icerdeMi } from '../js/joints.js';
 import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
 import { buildMesh, groupCoplanar, dihedralAngle, mergeSmallGroups } from '../js/mesh.js';
@@ -1645,6 +1645,36 @@ test('dilim modu bozuk modeli zarf onarımıyla kurar', () => {
   assert.ok(/voxelRemesh\(state\.tris, \{[^}]*zarf: 2/.test(govde), 'dilim onarımı zarf kullanmıyor');
   assert.ok(govde.includes('rc.dilimTris'), 'dilim onarımı facet önbelleğiyle karışıyor');
   assert.ok(oku('sw.js').includes("'./js/closing.js'"), 'closing.js önbellek listesinde yok');
+});
+
+test('iç boşaltma kenarda ve mil deliği çevresinde bant bırakır', () => {
+  const kare = [[0, 0], [200, 0], [200, 120], [0, 120]];
+  const mil = [];
+  for (let k = 0; k < 24; k++) { const a = (k / 24) * Math.PI * 2; mil.push([100 + 5 * Math.cos(a), 60 + 5 * Math.sin(a)]); }
+  const { oyuklar, etiket } = icBosalt(kare, [mil], 20);
+  assert.ok(oyuklar.length >= 1, 'oyuk açılmadı');
+  const net = 200 * 120 - oyuklar.reduce((t, r) => t + Math.abs(signedArea(r)), 0);
+  assert.ok(net < 0.6 * 200 * 120, `yeterince boşalmadı (${net.toFixed(0)} mm² kaldı)`);
+  for (const r of oyuklar) for (const [x, y] of r) {
+    const kenar = Math.min(x, 200 - x, y, 120 - y);
+    assert.ok(kenar > 19, `oyuk kenara ${kenar.toFixed(1)} mm yaklaştı`);
+    assert.ok(Math.hypot(x - 100, y - 60) > 5 + 19, 'mil deliğinin çevresi oyuldu');
+  }
+  // Yazı bandın içinde, altta.
+  assert.ok(etiket && etiket[1] < 20 && etiket[1] > 0, `yazı yeri ${etiket}`);
+  // Dar parça oyulmaz.
+  assert.equal(icBosalt([[0, 0], [50, 0], [50, 40], [0, 40]], [], 20).oyuklar.length, 0);
+});
+
+test('dilim modunda iç boşaltma parçaya oyuk ekler', () => {
+  const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
+  const dolu = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 3, gap: 6, support: 'kizak' });
+  const bos = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 3, gap: 6, support: 'kizak', hollowBand: 30 });
+  const net = (r) => r.parts.filter((p) => p.kind === 'dilim')
+    .reduce((t, p) => t + Math.abs(signedArea(p.outline)) - p.holes.reduce((u, h) => u + Math.abs(signedArea(h)), 0), 0);
+  assert.ok(net(bos) < 0.5 * net(dolu), 'iç boşaltma alanı düşürmedi');
+  assert.ok(bos.parts.filter((p) => p.kind === 'dilim').every((p) => p.meta.hollows >= 1));
+  assert.ok(oku('index.html').includes('id="p-sliceHollow"') && /hollowBand: num\('p-sliceHollow'/.test(oku('js/main.js')));
 });
 
 test('kesit sadeleştirme dar yarığı kapatır, yakın kırıntıyı gövdeye katar', () => {

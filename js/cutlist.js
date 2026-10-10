@@ -414,6 +414,7 @@ function sliceGuide(info) {
   const milVar = info.rodPoints.length > 0;
   if (!milVar) {
     if (!info.rails?.length) satirlar.push('MİL / KIZAK yok: dilimleri birbirine yapıştırın.');
+    else satirlar.pop();   // kızak bölümü kendi boş satırıyla başlar
   } else satirlar.push(
     kare
       ? `KAZIK: ${info.rodPoints.length} adet, ${p.rodDiameter}×${p.rodDiameter} mm kare kesit.`

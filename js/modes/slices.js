@@ -23,7 +23,7 @@ import { planRails, notchBottom, railPart, railAxes, railEngage, YUVA_PAYI } fro
 import { kopruKur, enYakin } from '../bridge.js';
 import { heightmapToSlices, arkaPano } from '../heightslice.js';
 import { cornerRelief } from '../corners.js';
-import { kesitKapat } from '../closing.js';
+import { kesitKapat, icBosalt } from '../closing.js';
 
 export const SLICE_DEFAULTS = {
   targetSize: 1200,     // heykelin en uzun kenarı (mm)
@@ -34,6 +34,7 @@ export const SLICE_DEFAULTS = {
   gap: 0,               // dilimler arası (mm) — 0 = sıkı istif
   minArea: 300,         // bu alanın altındaki adalar elenir (mm²)
   cleanRadius: 0,       // kesit sadeleştirme: bu yarıçaptan dar yarık/delik kapanır (mm)
+  hollowBand: 0,        // iç boşaltma: dilim kenarında kalan bant (mm); 0 = dolu dilim
   rodShape: 'yuvarlak', // 'yuvarlak' (mil) | 'kare' (kazık)
   rodDiameter: 10,      // yuvarlakta ÇAP, karede KENAR (mm)
   rodCount: 0,          // 0 = otomatik: her parça tutulana kadar mil eklenir (en çok 12)
@@ -228,7 +229,14 @@ export function generateSlices(rawTris, userParams = {}) {
       if (!tutuluyor) milsiz++;
 
       const b = bbox(ada.outline);
-      const c = centroid(ada.outline);
+      let c = centroid(ada.outline);
+      let oyukSayisi = 0;
+      if (p.hollowBand > 0) {
+        const bos = icBosalt(ada.outline, holes, p.hollowBand);
+        holes.push(...bos.oyuklar);
+        oyukSayisi = bos.oyuklar.length;
+        if (bos.etiket) c = bos.etiket;
+      }
       parts.push({
         id,
         kind: 'dilim',
@@ -239,7 +247,7 @@ export function generateSlices(rawTris, userParams = {}) {
         h: b.h,
         meta: {
           layer: l.index, coord: l.coord, island: ai,
-          area: ada.area, rods: tutan.length, group: grup, held: tutuluyor,
+          area: ada.area, rods: tutan.length, group: grup, held: tutuluyor, hollows: oyukSayisi,
         },
       });
     });
