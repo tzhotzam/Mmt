@@ -23,6 +23,7 @@ import { planRails, notchBottom, railPart, railAxes, railEngage, YUVA_PAYI } fro
 import { kopruKur, enYakin } from '../bridge.js';
 import { heightmapToSlices, arkaPano } from '../heightslice.js';
 import { cornerRelief } from '../corners.js';
+import { kesitKapat } from '../closing.js';
 
 export const SLICE_DEFAULTS = {
   targetSize: 1200,     // heykelin en uzun kenarı (mm)
@@ -32,6 +33,7 @@ export const SLICE_DEFAULTS = {
   thickness: 18,
   gap: 0,               // dilimler arası (mm) — 0 = sıkı istif
   minArea: 300,         // bu alanın altındaki adalar elenir (mm²)
+  cleanRadius: 0,       // kesit sadeleştirme: bu yarıçaptan dar yarık/delik kapanır (mm)
   rodShape: 'yuvarlak', // 'yuvarlak' (mil) | 'kare' (kazık)
   rodDiameter: 10,      // yuvarlakta ÇAP, karede KENAR (mm)
   rodCount: 0,          // 0 = otomatik: her parça tutulana kadar mil eklenir (en çok 12)
@@ -83,7 +85,10 @@ export function generateSlices(rawTris, userParams = {}) {
     // dosyası bunun altında eziliyordu (konsept arabada 12 saniye). Tolerans
     // heykel boyunun 1/5000'i — 450 mm'de 0,09 mm, lazerin ışın payından az.
     const tol = Math.max(0.02, p.targetSize * 2e-4);
-    const sinif = classifyRings(l.rings
+    const halkalar = p.cleanRadius > 0 && !(rawTris && rawTris.heightmap)
+      ? kesitKapat(l.rings, p.cleanRadius)
+      : l.rings;
+    const sinif = classifyRings(halkalar
       .map((ring) => simplify(ring, tol, true))
       .filter((ring) => ring.length >= 3));
     const disHalkalar = sinif.filter((s) => !s.hole);

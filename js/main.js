@@ -31,7 +31,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-07-i';
+const APP_VERSION = '2026-10-10-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -183,6 +183,7 @@ function readParams() {
       axis: els['p-sliceAxis'].value,
       gap: num('p-sliceGap', 0),
       minArea: num('p-sliceMinArea', 300),
+      cleanRadius: num('p-sliceClean', 0),
       rodShape: els['p-rodShape'].value,
       rodDiameter: num('p-rodDiameter', 10),
       rodCount: Math.round(num('p-rodCount', 0)),
@@ -933,6 +934,7 @@ function regenerate() {
 /** Onarımda uzun kenar boyunca voksel sayısı. At modelinde 64 ve 80'de
  * ince bacaklar koptu, 96'da alt bacak parçalandı, 128'de sağlam kaldı. */
 const REMESH_RES = 128;
+const DILIM_REMESH_RES = 256;
 
 /**
  * Poligonal kabuk için üçgen ağı hazırlar.
@@ -958,7 +960,7 @@ function facetMeshSource() {
     // düğüm düğüm kulplu modeller doğrudan sadeleştirilemez — at modelinde
     // gövde dev kıymıklara dönüştü. Ağ sağlığı model başına bir kez ölçülür.
     if (state.remeshCache?.src !== state.tris) {
-      state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null };
+      state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null, dilimTris: null };
     }
     const rc = state.remeshCache;
     const onar = secim === 'acik' || (secim === 'oto' && rc.health.bozuk);
@@ -1033,20 +1035,24 @@ function sliceMeshSource() {
     };
   }
   if (state.remeshCache?.src !== state.tris) {
-    state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null };
+    state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null, dilimTris: null };
   }
   const rc = state.remeshCache;
   const secim = els['p-remesh']?.value || 'oto';
   const onar = secim === 'acik' || (secim === 'oto' && rc.health.bozuk);
   if (!onar) return { tris: state.tris, not: null };
-  if (!rc.tris) {
-    const r = voxelRemesh(state.tris, { resolution: REMESH_RES, smooth: 1 });
-    rc.tris = r.tris;
-    rc.info = r.info;
+  // Dilim için ZARF onarımı: parite yerine dış kabuk doldurulur. İnternetten
+  // inen araba modelleri (kaporta, cam, iç döşeme ayrı yüzeyler, tabanı
+  // açık) paritede delik deşik, kırıntı dolu kesit veriyordu; zarf dolu,
+  // temiz gövde verir. Çözünürlük facet onarımının iki katı: dilim ayrıntı ister.
+  if (!rc.dilimTris) {
+    const r = voxelRemesh(state.tris, { resolution: DILIM_REMESH_RES, smooth: 1, zarf: 2 });
+    rc.dilimTris = r.tris;
   }
   return {
-    tris: rc.tris,
-    not: `Model onarıldı (${rc.health.openEdges} delik kenarı vardı): kesitler artık kapanıyor.`,
+    tris: rc.dilimTris,
+    not: `Model onarıldı (${rc.health.openEdges} açık kenar vardı): dış kabuk dolu gövde olarak kuruldu, ` +
+      'kesitler temiz ve kapalı.',
   };
 }
 

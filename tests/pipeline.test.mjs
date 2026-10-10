@@ -33,6 +33,7 @@ import { generateSlices } from '../js/modes/slices.js';
 import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js';
 import { decimate } from '../js/decimate.js';
 import { voxelRemesh, meshHealth } from '../js/remesh.js';
+import { kesitKapat } from '../js/closing.js';
 import { applyRivetJoints, reliefHoles, icerdeMi } from '../js/joints.js';
 import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
 import { buildMesh, groupCoplanar, dihedralAngle, mergeSmallGroups } from '../js/mesh.js';
@@ -1593,6 +1594,66 @@ test('bozuk modelde poligonal kabuk dağılmaz', () => {
   const f = generateFacets(d.tris, { targetSize: 600, minArea: 0, unfold: true });
   assert.equal(f.info.openEdges, 0);
   assert.ok(!f.warnings.some((w) => w.includes('karşı tarafı yok')), 'açık kenar kaldı');
+});
+
+/** Araba gibi yüzey çorbası: tabanı açık 200 mm kutu + içinde bağımsız bir "koltuk" plakası. */
+function tabaniAcikKutu() {
+  const t = [];
+  const kare = (a, b, c, d) => { t.push([a, b, c], [a, c, d]); };
+  const L = 200;
+  const P = (x, y, z) => [x, y, z];
+  kare(P(0, 0, L), P(L, 0, L), P(L, L, L), P(0, L, L));          // tavan
+  kare(P(0, 0, 0), P(L, 0, 0), P(L, 0, L), P(0, 0, L));          // ön
+  kare(P(0, L, 0), P(0, L, L), P(L, L, L), P(L, L, 0));          // arka
+  kare(P(0, 0, 0), P(0, 0, L), P(0, L, L), P(0, L, 0));          // sol
+  kare(P(L, 0, 0), P(L, L, 0), P(L, L, L), P(L, 0, L));          // sağ
+  kare(P(50, 50, 80), P(150, 50, 80), P(150, 150, 80), P(50, 150, 80)); // iç plaka
+  return t;
+}
+
+test('zarf onarımı tabanı açık yüzey modelini dolu gövdeye çevirir', () => {
+  const kutu = tabaniAcikKutu();
+  assert.ok(meshHealth(kutu).openEdges > 0, 'test modelinde açık kenar olmalı');
+  const z = voxelRemesh(kutu, { resolution: 96, smooth: 1, zarf: 2 });
+  const c = checkClosed(z.tris, 1e-9);
+  assert.ok(c.closed, `zarf ağında ${c.openEdges} açık kenar`);
+  assert.ok(c.volume > 0.85 * 200 ** 3, `gövde dolmadı: hacim ${c.volume.toFixed(0)}`);
+  // Dilimler tek parça, deliksiz, neredeyse tam kare.
+  const s = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 18, gap: 12, support: 'mil', minArea: 300 });
+  const dilimler = s.parts.filter((p) => p.kind !== 'kizak');
+  assert.ok(dilimler.length >= 10);
+  for (const p of dilimler.slice(2, -2)) {
+    assert.ok(!/[a-z]$/.test(p.id), `${p.id}: kesit parçalara bölünmüş`);
+    const alan = Math.abs(signedArea(p.outline));
+    assert.ok(alan > 0.85 * 400 * 400, `${p.id}: kesit dolu değil (${alan.toFixed(0)} mm²)`);
+  }
+});
+
+test('dilim modu bozuk modeli zarf onarımıyla kurar', () => {
+  const js = oku('js/main.js');
+  const govde = js.match(/function sliceMeshSource[\s\S]*?\n}/)?.[0] || '';
+  assert.ok(/voxelRemesh\(state\.tris, \{[^}]*zarf: 2/.test(govde), 'dilim onarımı zarf kullanmıyor');
+  assert.ok(govde.includes('rc.dilimTris'), 'dilim onarımı facet önbelleğiyle karışıyor');
+  assert.ok(oku('sw.js').includes("'./js/closing.js'"), 'closing.js önbellek listesinde yok');
+});
+
+test('kesit sadeleştirme dar yarığı kapatır, yakın kırıntıyı gövdeye katar', () => {
+  const kare = (x, y, a) => [[x, y], [x + a, y], [x + a, y + a], [x, y + a]];
+  // 100 mm kare, ortasında 4 mm genişliğinde yarık delik, 3 mm ötede 10 mm kırıntı.
+  const govde = kare(0, 0, 100);
+  const yarik = [[20, 48], [20, 52], [80, 52], [80, 48]];
+  const kirinti = kare(103, 45, 10);
+  const once = classifyRings([govde, yarik, kirinti]);
+  assert.equal(once.filter((r) => r.hole).length, 1);
+  const sonra = classifyRings(kesitKapat([govde, yarik, kirinti], 3));
+  assert.equal(sonra.filter((r) => r.hole).length, 0, 'yarık kapanmadı');
+  assert.equal(sonra.filter((r) => !r.hole).length, 1, 'kırıntı gövdeye katılmadı');
+  const alan = Math.abs(sonra[0].area ?? signedArea(sonra[0].ring));
+  assert.ok(Math.abs(alan - (10000 + 100 + 3 * 10)) < 150, `alan ${alan.toFixed(0)}`);
+  // Geniş boşluk (30 mm) olduğu gibi kalır.
+  const genis = classifyRings(kesitKapat([govde, kare(35, 35, 30)], 3));
+  assert.equal(genis.filter((r) => r.hole).length, 1, 'geniş boşluk kapanmamalı');
+  assert.deepEqual(kesitKapat([govde], 0), [govde]);
 });
 
 test('bükülemeyecek kadar keskin kenar büküme dönmez', () => {

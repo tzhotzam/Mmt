@@ -1,3 +1,5 @@
+import { edt1 } from './closing.js';
+
 // HACİMSEL YENİDEN ÖRGÜLEME (voxel remesh).
 //
 // Neden gerekli: sadeleştirme (decimate.js) ağın YÜZEYİNİ inceltir; ağ
@@ -47,6 +49,8 @@ const TETS = [
 export function voxelRemesh(tris, opts = {}) {
   const res = Math.max(8, Math.round(opts.resolution ?? 64));
   const sigma = Math.max(0, opts.smooth ?? 1);
+  // ZARF (opts.zarf = k voksel): parite yerine kabuk + kapanış. Bkz. zarfAlani.
+  const zarf = Math.max(0, Math.round(opts.zarf || 0));
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -63,7 +67,7 @@ export function voxelRemesh(tris, opts = {}) {
   const h = boyut / res;
   // Kenar payı: yumuşatma çekirdeği ızgaranın dışına taşmasın, dış yüzey
   // her yerde en az bir boş voksel katmanıyla çevrili olsun.
-  const pad = 2 + Math.ceil(2 * sigma);
+  const pad = 2 + Math.ceil(2 * sigma) + zarf;
   const n = [
     Math.ceil((maxX - minX) / h) + 2 * pad,
     Math.ceil((maxY - minY) / h) + 2 * pad,
@@ -72,6 +76,16 @@ export function voxelRemesh(tris, opts = {}) {
   const o = [minX - pad * h, minY - pad * h, minZ - pad * h];
   const N = n[0] * n[1] * n[2];
   const idx = (i, j, k) => i + n[0] * (j + n[1] * k);
+
+  if (zarf > 0) {
+    const alan = zarfAlani(tris, n, o, h, zarf);
+    if (sigma > 0) gaussBlur3(alan, n, sigma);
+    const { kept, removed } = keepLargest(alan, n, 0);
+    return {
+      tris: marchingTets(alan, n, o, h, 0),
+      info: { resolution: res, voxel: h, kept, removed, grid: n, zarf },
+    };
+  }
 
   // ---- 1. Parite ile içerisi/dışarısı, üç eksen oylaması ------------------
   const oy = new Uint8Array(N);
@@ -112,6 +126,113 @@ export function voxelRemesh(tris, opts = {}) {
     tris: out,
     info: { resolution: res, voxel: h, kept, removed, grid: n },
   };
+}
+
+/**
+ * ZARF: yüzey çorbası modellerden (araba gibi: kaporta, cam, iç döşeme ayrı
+ * yüzeyler, binlerce açık kenar) dolu gövde. Işın paritesi böyle modelde
+ * iç yüzeylerde ters döner, gövde delik deşik çıkar. Burada parite yok:
+ *   1. Üçgenlerin değdiği her voksel KABUKTUR (yüzey vokselleştirme).
+ *   2. Kabuk k voksel şişirilir: 2k'dan dar her açıklık (ızgara, cam payı,
+ *      jant ile çamurluk arası) kapanır.
+ *   3. Dışarısı köşeden taşkınla bulunur; ulaşılamayan her şey doludur —
+ *      iç döşeme, motor, ne varsa.
+ *   4. Dolu küme k voksel daraltılır (kapanışın ikinci yarısı): dış yüzey
+ *      eski yerine döner. Alan dışarıya uzaklık − k olduğundan süreklidir,
+ *      yüzey voksel basamağı taşımaz.
+ * @returns {Float32Array} işaretli alan (içerisi > 0), [-2, 2] aralığında
+ */
+function zarfAlani(tris, n, o, h, k) {
+  const N = n[0] * n[1] * n[2];
+  const nx = n[0], nxy = n[0] * n[1];
+  const kabuk = new Uint8Array(N);
+  const isle = (x, y, z) => {
+    const i = Math.floor((x - o[0]) / h), j = Math.floor((y - o[1]) / h), q = Math.floor((z - o[2]) / h);
+    if (i >= 0 && j >= 0 && q >= 0 && i < n[0] && j < n[1] && q < n[2]) kabuk[i + nx * j + nxy * q] = 1;
+  };
+  for (const [a, b, c] of tris) {
+    const e = Math.max(
+      Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]),
+      Math.hypot(b[0] - c[0], b[1] - c[1], b[2] - c[2]),
+      Math.hypot(c[0] - a[0], c[1] - a[1], c[2] - a[2]),
+    );
+    const m = Math.max(1, Math.ceil(e / (0.5 * h)));
+    for (let u = 0; u <= m; u++) {
+      for (let v = 0; u + v <= m; v++) {
+        const s = u / m, t = v / m, r = 1 - s - t;
+        isle(a[0] * r + b[0] * s + c[0] * t, a[1] * r + b[1] * s + c[1] * t, a[2] * r + b[2] * s + c[2] * t);
+      }
+    }
+  }
+  // 2. Şişir.
+  const Dk = kareUzaklik3(kabuk, n);
+  const engel = new Uint8Array(N);
+  for (let i = 0; i < N; i++) engel[i] = Dk[i] <= k * k ? 1 : 0;
+  // 3. Dışarısı (6-komşu taşkın, köşe vokseli kenar payında, boş).
+  const dis = new Uint8Array(N);
+  const yigin = [0];
+  dis[0] = 1;
+  while (yigin.length) {
+    const v = yigin.pop();
+    const i = v % nx, j = Math.floor(v / nx) % n[1], q = Math.floor(v / nxy);
+    if (i > 0 && !dis[v - 1] && !engel[v - 1]) { dis[v - 1] = 1; yigin.push(v - 1); }
+    if (i < nx - 1 && !dis[v + 1] && !engel[v + 1]) { dis[v + 1] = 1; yigin.push(v + 1); }
+    if (j > 0 && !dis[v - nx] && !engel[v - nx]) { dis[v - nx] = 1; yigin.push(v - nx); }
+    if (j < n[1] - 1 && !dis[v + nx] && !engel[v + nx]) { dis[v + nx] = 1; yigin.push(v + nx); }
+    if (q > 0 && !dis[v - nxy] && !engel[v - nxy]) { dis[v - nxy] = 1; yigin.push(v - nxy); }
+    if (q < n[2] - 1 && !dis[v + nxy] && !engel[v + nxy]) { dis[v + nxy] = 1; yigin.push(v + nxy); }
+  }
+  // 3b. Açık taban: araba modellerinde alt taban çoğu zaman yoktur, taşkın
+  // alttan içeri girip gövdeyi boşaltır. Altı eksen yönünün en az beşinde
+  // kabuğa çarpan voksel içeridir (tek açık yön hoş görülür). Dış girintide
+  // (araç altı, spoyler altı) en az iki yön açık kaldığından dolmaz.
+  const oy = new Uint8Array(N);
+  const adim = [1, nx, nxy];
+  for (let a = 0; a < 3; a++) {
+    const b = (a + 1) % 3, c = (a + 2) % 3;
+    const st = adim[a], len = n[a];
+    for (let jc = 0; jc < n[c]; jc++) {
+      for (let jb = 0; jb < n[b]; jb++) {
+        const bas = jb * adim[b] + jc * adim[c];
+        let gordu = 0;
+        for (let i = 0; i < len; i++) { const w = bas + i * st; if (gordu) oy[w]++; if (engel[w]) gordu = 1; }
+        gordu = 0;
+        for (let i = len - 1; i >= 0; i--) { const w = bas + i * st; if (gordu) oy[w]++; if (engel[w]) gordu = 1; }
+      }
+    }
+  }
+  for (let i = 0; i < N; i++) if (dis[i] && oy[i] >= 5) dis[i] = 0;
+  // 4. Daralt: dışarıya uzaklık − (k − ½). Yarım voksel, yüzeyi kabuk
+  // vokselinin dış yüzüne koyar; ayrıca eşik hiçbir √tamsayı'ya denk gelmez —
+  // tam eşikte duran voksel, marching'de sıfır alanlı üçgen ve yırtık açar.
+  const Dd = kareUzaklik3(dis, n);
+  const alan = new Float32Array(N);
+  for (let i = 0; i < N; i++) alan[i] = Math.max(-2, Math.min(2, Math.sqrt(Dd[i]) - (k - 0.5)));
+  return alan;
+}
+
+/** 3B kare Öklid uzaklık dönüşümü (eksen eksen ayrılabilir), voksel biriminde. */
+function kareUzaklik3(hedef, n) {
+  const N = hedef.length;
+  const D = new Float64Array(N);
+  for (let i = 0; i < N; i++) D[i] = hedef[i] ? 0 : 1e20;
+  const L = Math.max(n[0], n[1], n[2]);
+  const f = new Float64Array(L), d = new Float64Array(L);
+  const v = new Int32Array(L), z = new Float64Array(L + 1);
+  const adim = [1, n[0], n[0] * n[1]];
+  for (let a = 0; a < 3; a++) {
+    const b = (a + 1) % 3, c = (a + 2) % 3;
+    const s = adim[a], len = n[a];
+    for (let jc = 0; jc < n[c]; jc++) {
+      for (let jb = 0; jb < n[b]; jb++) {
+        const bas = jb * adim[b] + jc * adim[c];
+        for (let i = 0; i < len; i++) f[i] = D[bas + i * s];
+        edt1(f, len, d, v, z);
+        for (let i = 0; i < len; i++) D[bas + i * s] = d[i];
+      }
+    }
+  }
+  return D;
 }
 
 /**
