@@ -229,19 +229,33 @@ export function railPart(rail, layers, p, id) {
     [xe, fins[fins.length - 1].zb - alt]];
   const outline = [...dip, ...tepe.reverse()];
 
-  // Ad, ortadaki iki kanadın arasına; her beşinci kanadın numarası yuvanın
-  // altına: montajda yer bulmak kolay.
-  const k = Math.max(0, Math.floor(fins.length / 2) - 1);
+  // Ad ve numaralar yuvaların altındaki düz bantta (kanat dibi ile yuva dibi
+  // arası, e/2 + alt yüksekliğinde) ortalanır. Ad, numaralı kanatların (her
+  // beşinci) tam ortasına konur: eskiden ortadaki kanadın üstüne düşüp 25
+  // numarasıyla üst üste biniyor, ince kızakta bandın altından taşıyordu.
+  const bant = (zbA, zbB) => {
+    const alt_ = Math.max(zbA, zbB) - alt, ust_ = Math.min(zbA, zbB) + e / 2;
+    return { y: (alt_ + ust_) / 2, h: Math.max(0, ust_ - alt_) };
+  };
+  const orta = Math.floor(fins.length / 2);
+  let k = Math.max(0, Math.min(fins.length - 2, orta - 1));
+  for (let d = 0; d < fins.length; d++) {
+    const aday = [orta - 1 - d, orta - 1 + d].find((i) => i >= 0 && i + 1 < fins.length
+      && (fins[i].li + 1) % 5 === 2 && fins[i + 1].li === fins[i].li + 1);
+    if (aday !== undefined) { k = aday; break; }
+  }
   const k2 = Math.min(fins.length - 1, k + 1);
+  const ad = bant(fins[k].zb, fins[k2].zb);
   const engrave = [{
     type: 'text', text: id,
-    x: (fins[k].s + fins[k2].s) / 2,
-    y: Math.max(fins[k].zb, fins[k2].zb) - alt + 1.5,
-    size: Math.min(5, e / 3),
+    x: (fins[k].s + fins[k2].s) / 2, y: ad.y,
+    size: Math.min(5, ad.h * 0.55),
   }];
-  fins.forEach((f) => {
+  fins.forEach((f, i) => {
     const no = f.li + 1;
-    if (no % 5 === 0) engrave.push({ type: 'text', text: String(no), x: f.s, y: f.zb - alt + 1.8, size: 2.5 });
+    if (no % 5 !== 0 && i !== 0) return;
+    const b = bant(f.zb, f.zb);
+    engrave.push({ type: 'text', text: String(no), x: f.s, y: b.y, size: Math.min(3, b.h * 0.45) });
   });
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const [x, y] of outline) {
