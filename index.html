@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-10-10-b">
+<meta name="app-version" content="2026-10-11-a">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-10-10-b';
+  var V = '2026-10-11-a';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -436,6 +436,10 @@
       </label>
       <label>İç boşaltma (mm) <small>dilimin içini oyar, kenarda bu kadar bant kalır; 0 = dolu. Sacda ağırlığı düşürür</small>
         <input type="number" id="p-sliceHollow" value="0" min="0" max="200" step="1">
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-sliceNoWheels">
+        Tekerlekleri çıkar <small>araba modelinde tekerlek, jant ve fren gövdeden ayrılır; tekerlek ayrı yapılır</small>
       </label>
       <label>Görselden derinlik (mm) <small>fotoğraftan maske; 0 = boyun %40'ı</small>
         <input type="number" id="p-sliceReliefDepth" value="0" min="0" max="1000" step="10">

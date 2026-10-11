@@ -18,6 +18,7 @@ import { generateFacets, FACET_DEFAULTS } from './modes/facets.js';
 import { generateSlices, SLICE_DEFAULTS } from './modes/slices.js';
 import { decimate } from './decimate.js';
 import { voxelRemesh, meshHealth } from './remesh.js';
+import { tekerlekCikar } from './wheels.js';
 import { meshFromHeightmap } from './relief3d.js';
 import { nest, applyPlacement } from './nest.js';
 import { sheetToDxf } from './export/dxf.js';
@@ -31,7 +32,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-10-b';
+const APP_VERSION = '2026-10-11-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -1035,26 +1036,61 @@ function sliceMeshSource() {
           '"Yapay zekâ derinliği"ni seçin; serbest duran heykel için 3B model yükleyin.',
     };
   }
-  if (state.remeshCache?.src !== state.tris) {
-    state.remeshCache = { src: state.tris, health: meshHealth(state.tris), tris: null, info: null, dilimTris: null };
+  // TEKERLEKSİZ: araba heykelinde tekerlek çoğu zaman ayrı yapılır (krom
+  // halka, torna parça); gövde dilimlerinde yalnız çamurluk boşluğu kalır.
+  let kaynak = state.tris;
+  const notlar = [];
+  if (bool('p-sliceNoWheels')) {
+    const up = els['p-sliceUpAxis'].value;
+    if (state.tekerCache?.src !== state.tris || state.tekerCache.up !== up) {
+      const r = tekerlekCikar(state.tris, up);
+      state.tekerCache = { src: state.tris, up, ...r };
+    }
+    const tc = state.tekerCache;
+    if (tc.tekerlekler.length) {
+      kaynak = tc.tris;
+      notlar.push(tekerlekNotu(tc));
+    } else {
+      notlar.push('Tekerlek bulunamadı: modelde tekerlekler ayrı parça değil (gövdeyle tek parça). Model olduğu gibi dilimlendi.');
+    }
   }
-  const rc = state.remeshCache;
+  // Dilimin kendi onarım önbelleği: facet modunun önbelleğiyle aynı nesneyi
+  // paylaşsaydı mod değiştikçe (ve tekerleksiz ağda) her şey baştan ölçülürdü.
+  if (state.dilimOnarim?.src !== kaynak) {
+    state.dilimOnarim = { src: kaynak, health: meshHealth(kaynak), tris: null };
+  }
+  const rc = state.dilimOnarim;
   const secim = els['p-remesh']?.value || 'oto';
   const onar = secim === 'acik' || (secim === 'oto' && rc.health.bozuk);
-  if (!onar) return { tris: state.tris, not: null };
+  if (!onar) return { tris: kaynak, not: notlar.join(' ') || null };
   // Dilim için ZARF onarımı: parite yerine dış kabuk doldurulur. İnternetten
   // inen araba modelleri (kaporta, cam, iç döşeme ayrı yüzeyler, tabanı
   // açık) paritede delik deşik, kırıntı dolu kesit veriyordu; zarf dolu,
   // temiz gövde verir. Çözünürlük facet onarımının iki katı: dilim ayrıntı ister.
-  if (!rc.dilimTris) {
-    const r = voxelRemesh(state.tris, { resolution: DILIM_REMESH_RES, smooth: 1, zarf: 2 });
-    rc.dilimTris = r.tris;
+  if (!rc.tris) rc.tris = voxelRemesh(kaynak, { resolution: DILIM_REMESH_RES, smooth: 1, zarf: 2 }).tris;
+  notlar.push(`Model onarıldı (${rc.health.openEdges} açık kenar vardı): dış kabuk dolu gövde olarak kuruldu, ` +
+    'kesitler temiz ve kapalı.');
+  return { tris: rc.tris, not: notlar.join(' ') };
+}
+
+/** Çıkarılan tekerleklerin ölçekli ölçüsü (en uzun kenara göre ölçeklemede). */
+function tekerlekNotu(tc) {
+  const t = tc.tekerlekler;
+  let olcek = 0;
+  if ((els['p-sliceSizeAxis']?.value || 'max') === 'max') {
+    if (!tc.uzun) {
+      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      for (const tri of tc.tris) for (const p of tri) for (let a = 0; a < 3; a++) {
+        if (p[a] < lo[a]) lo[a] = p[a]; if (p[a] > hi[a]) hi[a] = p[a];
+      }
+      tc.uzun = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+    }
+    olcek = num('p-sculptSize', 1200) / tc.uzun;
   }
-  return {
-    tris: rc.dilimTris,
-    not: `Model onarıldı (${rc.health.openEdges} açık kenar vardı): dış kabuk dolu gövde olarak kuruldu, ` +
-      'kesitler temiz ve kapalı.',
-  };
+  const olc = (k) => `Ø${Math.round(k.cap * olcek)} × ${Math.round(k.genislik * olcek)} mm`;
+  const farkli = [...new Set(t.map(olc))];
+  return `${t.length} tekerlek çıkarıldı (jant, disk ve kaliperle birlikte); gövdede çamurluk boşlukları kalır.` +
+    (olcek ? ` Ayrı yapılacak tekerlek ölçüsü: ${farkli.join(', ')}.` : '');
 }
 
 function regenerateMesh() {

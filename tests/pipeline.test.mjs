@@ -34,6 +34,7 @@ import { sliceMesh, crossSectionSegments, stitchSegments } from '../js/slice.js'
 import { decimate } from '../js/decimate.js';
 import { voxelRemesh, meshHealth } from '../js/remesh.js';
 import { kesitKapat, icBosalt } from '../js/closing.js';
+import { tekerlekCikar } from '../js/wheels.js';
 import { applyRivetJoints, reliefHoles, icerdeMi } from '../js/joints.js';
 import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
 import { buildMesh, groupCoplanar, dihedralAngle, mergeSmallGroups } from '../js/mesh.js';
@@ -1642,8 +1643,8 @@ test('mil yoksa dilim tarifinde boş mil bölümü yazılmaz', () => {
 test('dilim modu bozuk modeli zarf onarımıyla kurar', () => {
   const js = oku('js/main.js');
   const govde = js.match(/function sliceMeshSource[\s\S]*?\n}/)?.[0] || '';
-  assert.ok(/voxelRemesh\(state\.tris, \{[^}]*zarf: 2/.test(govde), 'dilim onarımı zarf kullanmıyor');
-  assert.ok(govde.includes('rc.dilimTris'), 'dilim onarımı facet önbelleğiyle karışıyor');
+  assert.ok(/voxelRemesh\(kaynak, \{[^}]*zarf: 2/.test(govde), 'dilim onarımı zarf kullanmıyor');
+  assert.ok(govde.includes('state.dilimOnarim'), 'dilim onarımı facet önbelleğiyle karışıyor');
   assert.ok(oku('sw.js').includes("'./js/closing.js'"), 'closing.js önbellek listesinde yok');
 });
 
@@ -1675,6 +1676,56 @@ test('dilim modunda iç boşaltma parçaya oyuk ekler', () => {
   assert.ok(net(bos) < 0.5 * net(dolu), 'iç boşaltma alanı düşürmedi');
   assert.ok(bos.parts.filter((p) => p.kind === 'dilim').every((p) => p.meta.hollows >= 1));
   assert.ok(oku('index.html').includes('id="p-sliceHollow"') && /hollowBand: num\('p-sliceHollow'/.test(oku('js/main.js')));
+});
+
+/** Oyuncak araba: havada duran kutu gövde + yere değen 4 lastik (x ekseninde) + her lastiğin içinde jant diski. */
+function oyuncakAraba() {
+  const t = [];
+  const kutu = (x0, y0, z0, x1, y1, z1) => {
+    const P = (x, y, z) => [x, y, z];
+    const k = (a, b, c, d) => { t.push([a, b, c], [a, c, d]); };
+    k(P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0), P(x1, y0, z0));
+    k(P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1));
+    k(P(x0, y0, z0), P(x1, y0, z0), P(x1, y0, z1), P(x0, y0, z1));
+    k(P(x0, y1, z0), P(x0, y1, z1), P(x1, y1, z1), P(x1, y1, z0));
+    k(P(x0, y0, z0), P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0));
+    k(P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1), P(x1, y0, z1));
+  };
+  const silindir = (cx, cy, cz, r, w, n = 32) => {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, b = ((i + 1) / n) * Math.PI * 2;
+      const p = (x, ang) => [x, cy + r * Math.cos(ang), cz + r * Math.sin(ang)];
+      const x0 = cx - w / 2, x1 = cx + w / 2;
+      t.push([p(x0, a), p(x1, a), p(x1, b)], [p(x0, a), p(x1, b), p(x0, b)]);
+      t.push([[x0, cy, cz], p(x0, b), p(x0, a)], [[x1, cy, cz], p(x1, a), p(x1, b)]);
+    }
+  };
+  kutu(-80, -200, 30, 80, 200, 120);              // gövde (z=30'dan başlar, yere değmez)
+  for (const x of [-90, 90]) for (const y of [-130, 130]) {
+    silindir(x, y, 35, 35, 25);                     // lastik: Ø70, 25 geniş, yere değer
+    silindir(x, y, 35, 22, 10);                     // jant (ayrı parça, lastiğin içinde)
+  }
+  return t;
+}
+
+test('tekerlek çıkarma lastik ve jantı alır, gövdeyi bırakır', () => {
+  const araba = oyuncakAraba();
+  const r = tekerlekCikar(araba, 'z');
+  assert.equal(r.tekerlekler.length, 4, `${r.tekerlekler.length} tekerlek bulundu`);
+  for (const k of r.tekerlekler) {
+    assert.ok(Math.abs(k.cap - 70) < 2 && Math.abs(k.genislik - 25) < 1, `ölçü ${k.cap}×${k.genislik}`);
+    assert.equal(k.eksen, 0);
+  }
+  assert.equal(r.tris.length, 12, 'gövde dışında üçgen kaldı ya da gövde silindi');
+  // Tekerleği olmayan model olduğu gibi döner.
+  const kup = araba.slice(0, 12);
+  const k2 = tekerlekCikar(kup, 'z');
+  assert.equal(k2.tekerlekler.length, 0);
+  assert.equal(k2.tris, kup);
+  // Arayüz ve servis çalışanı.
+  assert.ok(oku('index.html').includes('id="p-sliceNoWheels"'));
+  assert.ok(/bool\('p-sliceNoWheels'\)/.test(oku('js/main.js')));
+  assert.ok(oku('sw.js').includes("'./js/wheels.js'"));
 });
 
 test('kesit sadeleştirme dar yarığı kapatır, yakın kırıntıyı gövdeye katar', () => {
