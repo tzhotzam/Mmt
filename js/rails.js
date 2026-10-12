@@ -206,7 +206,9 @@ export function railEngage(p) {
 export function railPart(rail, layers, p, id) {
   const e = railEngage(p);
   const t = p.thickness;
-  const ys = t + YUVA_PAYI;
+  // Kızak yuvasının genişliği: kanat kalınlığı + geçme payı + kullanıcının
+  // ek boşluğu (sıkı gelen yuvayı her tarafta yarısı kadar açar).
+  const ys = t + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0);
   const alt = p.railBelow || 0;
   const fins = rail.fins.map((f) => ({ s: layers[f.li].coord, zb: f.zb, li: f.li }))
     .sort((a, b) => a.s - b.s);

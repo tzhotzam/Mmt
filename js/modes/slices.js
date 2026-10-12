@@ -42,6 +42,7 @@ export const SLICE_DEFAULTS = {
   support: 'mil',
   railCount: 0,         // 0 = otomatik: tutulmayan parça kalmayana dek
   railEngage: 0,        // 0 → max(10, 5·kalınlık) mm geçme yüksekliği
+  railSlotExtra: 0,     // kızak yuvalarına eklenen boşluk (mm); kanat yuvaya sıkı geliyorsa
   railBelow: 0,         // kızağın heykelin altından sarkması (mm)
   rodInset: 0.35,       // iki mil, parçanın ana ekseninde bu oranda ayrılır
   toolDiameter: 6,      // kare kazık yuvasının köşe payı bu uca göre açılır
@@ -254,6 +255,12 @@ export function generateSlices(rawTris, userParams = {}) {
   });
 
   kizaklar.forEach((k, i) => parts.push(railPart(k, layers, p, `K${i + 1}`)));
+  if (kizaklar.length && p.thickness + YUVA_PAYI + (p.railSlotExtra || 0) >= pitch - 0.5) {
+    warnings.push(
+      `Kızak yuvası (${(p.thickness + YUVA_PAYI + (p.railSlotExtra || 0)).toFixed(1)} mm) dilim adımına ` +
+      `(${pitch} mm) çok yakın: yuvalar arasında diş kalmıyor. Yuva ek boşluğunu azaltın ya da dilim aralığını artırın.`
+    );
+  }
   // Görselden maske: arkasına yapıştırılacağı pano (hat + oluk gravürlü).
   if (rawTris && rawTris.heightmap && p.board !== false) {
     parts.push(arkaPano(rawTris.heightmap.grid, {

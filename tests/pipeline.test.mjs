@@ -1630,6 +1630,32 @@ test('zarf onarımı tabanı açık yüzey modelini dolu gövdeye çevirir', () 
   }
 });
 
+test('kızak yuvası ek boşluğu yuvaları genişletir', () => {
+  const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
+  const ortak = { axis: 'y', targetSize: 400, thickness: 1, gap: 4, support: 'kizak' };
+  const yuvaGen = (r) => {
+    const k = r.parts.find((p) => p.kind === 'kizak');
+    // Yuva: üst kenarda iki dik çizgi arasındaki dar aralık (x farkı < adım).
+    const xs = [];
+    const o = k.outline;
+    for (let i = 0; i < o.length; i++) {
+      const a = o[i], b = o[(i + 1) % o.length];
+      if (Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) > 1) xs.push(a[0]);
+    }
+    xs.sort((a, b) => a - b);
+    const farklar = [];
+    for (let i = 1; i < xs.length; i++) if (xs[i] - xs[i - 1] > 0.5 && xs[i] - xs[i - 1] < 4) farklar.push(xs[i] - xs[i - 1]);
+    return Math.min(...farklar);
+  };
+  const once = generateSlices(z.tris, ortak);
+  const sonra = generateSlices(z.tris, { ...ortak, railSlotExtra: 1 });
+  assert.ok(Math.abs(yuvaGen(once) - 1.2) < 1e-6, `yuva ${yuvaGen(once)}`);
+  assert.ok(Math.abs(yuvaGen(sonra) - 2.2) < 1e-6, `yuva ${yuvaGen(sonra)}`);
+  const asiri = generateSlices(z.tris, { ...ortak, railSlotExtra: 4 });
+  assert.ok(asiri.warnings.some((w) => w.includes('diş kalmıyor')));
+  assert.ok(oku('index.html').includes('id="p-railSlotExtra"') && /railSlotExtra: num\('p-railSlotExtra'/.test(oku('js/main.js')));
+});
+
 test('mil yoksa dilim tarifinde boş mil bölümü yazılmaz', () => {
   const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
   const s = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 18, gap: 12, support: 'kizak' });
