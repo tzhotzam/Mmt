@@ -42,7 +42,7 @@ export const SLICE_DEFAULTS = {
   support: 'mil',
   railCount: 0,         // 0 = otomatik: tutulmayan parça kalmayana dek
   railEngage: 0,        // 0 → max(10, 5·kalınlık) mm geçme yüksekliği
-  railSlotExtra: 0,     // kızak yuvalarına eklenen boşluk (mm); kanat yuvaya sıkı geliyorsa
+  railSlotExtra: 0,     // geçme ek boşluğu (mm): kızak yuvaları ve kanat çentikleri bu kadar genişler
   railBelow: 0,         // kızağın heykelin altından sarkması (mm)
   rodInset: 0.35,       // iki mil, parçanın ana ekseninde bu oranda ayrılır
   toolDiameter: 6,      // kare kazık yuvasının köşe payı bu uca göre açılır
@@ -139,7 +139,7 @@ export function generateSlices(rawTris, userParams = {}) {
   for (const k of kizaklar) {
     for (const f of k.fins) {
       const ada = layers[f.li].adalar[f.ai];
-      const yeni = notchBottom(ada.outline, ax.hi, ax.vi, k.h, p.thickness + YUVA_PAYI, f.zb + railEngage(p) / 2);
+      const yeni = notchBottom(ada.outline, ax.hi, ax.vi, k.h, p.thickness + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0), f.zb + railEngage(p) / 2);
       if (yeni) ada.outline = yeni;
     }
   }

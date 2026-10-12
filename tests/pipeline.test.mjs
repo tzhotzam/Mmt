@@ -1630,7 +1630,7 @@ test('zarf onarımı tabanı açık yüzey modelini dolu gövdeye çevirir', () 
   }
 });
 
-test('kızak yuvası ek boşluğu yuvaları genişletir', () => {
+test('geçme ek boşluğu kızak yuvalarını ve kanat çentiklerini genişletir', () => {
   const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
   const ortak = { axis: 'y', targetSize: 400, thickness: 1, gap: 4, support: 'kizak' };
   const yuvaGen = (r) => {
@@ -1651,6 +1651,20 @@ test('kızak yuvası ek boşluğu yuvaları genişletir', () => {
   const sonra = generateSlices(z.tris, { ...ortak, railSlotExtra: 1 });
   assert.ok(Math.abs(yuvaGen(once) - 1.2) < 1e-6, `yuva ${yuvaGen(once)}`);
   assert.ok(Math.abs(yuvaGen(sonra) - 2.2) < 1e-6, `yuva ${yuvaGen(sonra)}`);
+  // Kanat çentiği de aynı kadar genişler.
+  const centik = (r) => {
+    const d = r.parts.find((p) => p.kind === 'dilim' && p.meta.held);
+    const o = d.outline, xs = [];
+    for (let i = 0; i < o.length; i++) {
+      const a = o[i], b = o[(i + 1) % o.length];
+      if (Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) > 1) xs.push(a[0]);
+      if (Math.abs(a[1] - b[1]) < 1e-9 && Math.abs(a[0] - b[0]) > 1) xs.push(a[1]);
+    }
+    return xs;
+  };
+  const yakin = (arr, v) => arr.some((x, i) => arr.some((y, j) => j > i && Math.abs(Math.abs(x - y) - v) < 1e-6));
+  assert.ok(yakin(centik(once), 1.2), 'çentik 1,2 mm değil');
+  assert.ok(yakin(centik(sonra), 2.2), 'çentik genişlemedi');
   const asiri = generateSlices(z.tris, { ...ortak, railSlotExtra: 4 });
   assert.ok(asiri.warnings.some((w) => w.includes('diş kalmıyor')));
   assert.ok(oku('index.html').includes('id="p-railSlotExtra"') && /railSlotExtra: num\('p-railSlotExtra'/.test(oku('js/main.js')));
