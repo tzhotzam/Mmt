@@ -1670,6 +1670,27 @@ test('geçme ek boşluğu kızak yuvalarını ve kanat çentiklerini genişletir
   assert.ok(oku('index.html').includes('id="p-railSlotExtra"') && /railSlotExtra: num\('p-railSlotExtra'/.test(oku('js/main.js')));
 });
 
+test('tam boy kızak dilimin tepesine çıkar, geçme yarı yükseklikte', () => {
+  const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
+  const ortak = { axis: 'y', targetSize: 400, thickness: 3, gap: 6, support: 'kizak' };
+  const kisa = generateSlices(z.tris, ortak);
+  const tam = generateSlices(z.tris, { ...ortak, railFull: true });
+  const boy = (p) => { const ys = p.outline.map((q) => q[0]); return Math.max(...ys) - Math.min(...ys); };
+  const kK = kisa.parts.find((p) => p.kind === 'kizak'), kT = tam.parts.find((p) => p.kind === 'kizak');
+  const dilimler = tam.parts.filter((p) => p.kind === 'dilim' && p.meta.held);
+  const d = dilimler.reduce((a, b) => (boy(b) > boy(a) ? b : a));
+  // Y diliminde dikey = model x (düzlem u=0). Kısa kızak ~e, tam kızak dilim boyunda.
+  const dilimBoy = boy(d);
+  assert.ok(kK.h < 0.3 * dilimBoy, `kısa kızak ${kK.h}`);
+  assert.ok(kT.h > 0.95 * dilimBoy && kT.h <= dilimBoy, `tam kızak ${kT.h} / dilim ${dilimBoy}`);
+  // Çentik yarıya kadar: dilimde alt kenardan ~yarı yükseklikte yatay kenar var.
+  const alt = Math.min(...d.outline.map((q) => q[0]));
+  const yari = alt + (dilimBoy - 0.5) / 2;
+  assert.ok(d.outline.some((q) => Math.abs(q[0] - yari) < 1), 'çentik yarı yüksekliğe çıkmıyor');
+  assert.ok(tam.info.railFull && assemblyGuide(tam.info).includes('PARÇA BOYUNDADIR'));
+  assert.ok(oku('index.html').includes('id="p-railFull" checked') && /railFull: bool\('p-railFull'\)/.test(oku('js/main.js')));
+});
+
 test('mil yoksa dilim tarifinde boş mil bölümü yazılmaz', () => {
   const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
   const s = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 18, gap: 12, support: 'kizak' });

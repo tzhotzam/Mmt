@@ -448,8 +448,15 @@ function sliceGuide(info) {
     satirlar.push('');
     satirlar.push(`KIZAK: ${info.rails.length} adet (${info.rails.map((r) => `${r.id}: ${r.fins} kanat`).join(', ')}).`);
     satirlar.push(`  Kanatlarla aynı ${p.thickness} mm sacdan kesilir. Kızağın üstünde her kanat için`);
-    satirlar.push(`  bir yuva, kanadın altında kızak için bir çentik var; ikisi ${round(e / 2)} mm'şer`);
-    satirlar.push('  birbirine geçer. Aralığı yuvalar belirler — ARA BORU, PUL GEREKMEZ.');
+    if (info.railFull) {
+      satirlar.push('  bir yuva, kanadın altında kızak için bir çentik var. Kızak PARÇA BOYUNDADIR:');
+      satirlar.push('  her kanadın tepesine kadar çıkar, ikisi yarı yükseklikte birbirine geçer —');
+      satirlar.push('  kanat alttan üste desteklenir, sağa sola sallanmaz.');
+      satirlar.push('  Aralığı yuvalar belirler — ARA BORU, PUL GEREKMEZ.');
+    } else {
+      satirlar.push(`  bir yuva, kanadın altında kızak için bir çentik var; ikisi ${round(e / 2)} mm'şer`);
+      satirlar.push('  birbirine geçer. Aralığı yuvalar belirler — ARA BORU, PUL GEREKMEZ.');
+    }
     satirlar.push('  Kızak üstündeki küçük sayılar (5, 10, 15 ...) o yuvaya giren kanadın numarasıdır.');
     satirlar.push('  Geçme sıkıysa yuvayı eğeyle bir tık açın; gevşekse bir damla yapıştırıcı yeter.');
   }

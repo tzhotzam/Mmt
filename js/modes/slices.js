@@ -19,7 +19,7 @@ import { sliceMesh } from '../slice.js';
 import { classifyRings, signedArea, bbox, pointInRing, centroid, simplify } from '../geom.js';
 import { scaleTriangles } from '../mesh.js';
 import { dikCevir } from './facets.js';
-import { planRails, notchBottom, railPart, railAxes, railEngage, YUVA_PAYI } from '../rails.js';
+import { planRails, notchBottom, railPart, railAxes, railEngage, gecme, YUVA_PAYI } from '../rails.js';
 import { kopruKur, enYakin } from '../bridge.js';
 import { heightmapToSlices, arkaPano } from '../heightslice.js';
 import { cornerRelief } from '../corners.js';
@@ -42,6 +42,7 @@ export const SLICE_DEFAULTS = {
   support: 'mil',
   railCount: 0,         // 0 = otomatik: tutulmayan parça kalmayana dek
   railEngage: 0,        // 0 → max(10, 5·kalınlık) mm geçme yüksekliği
+  railFull: false,      // kızak parça boyunda: kanadın tepesine kadar çıkar, yarı yükseklikte geçer
   railSlotExtra: 0,     // geçme ek boşluğu (mm): kızak yuvaları ve kanat çentikleri bu kadar genişler
   railBelow: 0,         // kızağın heykelin altından sarkması (mm)
   rodInset: 0.35,       // iki mil, parçanın ana ekseninde bu oranda ayrılır
@@ -139,7 +140,7 @@ export function generateSlices(rawTris, userParams = {}) {
   for (const k of kizaklar) {
     for (const f of k.fins) {
       const ada = layers[f.li].adalar[f.ai];
-      const yeni = notchBottom(ada.outline, ax.hi, ax.vi, k.h, p.thickness + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0), f.zb + railEngage(p) / 2);
+      const yeni = notchBottom(ada.outline, ax.hi, ax.vi, k.h, p.thickness + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0), gecme(f, p).m);
       if (yeni) ada.outline = yeni;
     }
   }
@@ -428,6 +429,7 @@ export function generateSlices(rawTris, userParams = {}) {
       support: destek,
       rails: kizaklar.map((k, i) => ({ id: `K${i + 1}`, h: k.h, fins: k.fins.length })),
       railEngage: railEngage(p),
+      railFull: !!p.railFull,
       bridges: kopruSayisi,
       board: parts.some((q) => q.kind === 'pano'),
       singleRodParts: tekMil,

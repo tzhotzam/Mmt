@@ -50,6 +50,38 @@ function altKenar(ada, hi, vi, h) {
 }
 
 /**
+ * Kanadın `h` çevresindeki [h - w/2, h + w/2] bandında ilk dolu aralığın
+ * TEPESİ (en düşüğü): tam boy kızak buraya kadar yükselir.
+ */
+function ustKenar(ada, hi, vi, h, w) {
+  let enAz = Infinity;
+  for (const hh of [h - w / 2, h, h + w / 2]) {
+    const a = altKenar(ada, hi, vi, hh);
+    if (!a) return null;
+    enAz = Math.min(enAz, a.zb + a.dolu);
+  }
+  return enAz;
+}
+
+/**
+ * Bir kanattaki geçmenin ölçüleri: kızağın o kanattaki tepesi (`ust`) ve
+ * iki parçanın birleştiği yükseklik (`m`: kızak yuvasının dibi = kanat
+ * çentiğinin tepesi).
+ *  - Kısa kızak: kanat dibinden e kadar, yarısı yarısına geçer.
+ *  - TAM BOY (p.railFull): kızak kanadın tepesine kadar (0,5 mm altı)
+ *    çıkar, geçme yarı yükseklikte. Kanat alttan üste desteklenir;
+ *    kısa kızakta 1 mm sacla dilimler sağa sola sallanıyordu.
+ */
+export function gecme(f, p) {
+  const e = railEngage(p);
+  if (p.railFull && Number.isFinite(f.zt) && f.zt - 0.5 >= f.zb + e) {
+    const ust = f.zt - 0.5;
+    return { ust, m: (f.zb + ust) / 2 };
+  }
+  return { ust: f.zb + e, m: f.zb + e / 2 };
+}
+
+/**
  * Kanadın alt kenarına kızak çentiği açar: [h - w/2, h + w/2] genişliğinde,
  * alt kenardan `ust` yüksekliğine kadar. Halkayı yerinde değiştirmez, yenisini
  * döndürür; alt kenar bu genişlikte tek ve düzgün bir zincir değilse null.
@@ -139,7 +171,7 @@ export function planRails(layers, p) {
       if (!f) { dizi = []; return; }
       const onceki = dizi[dizi.length - 1];
       if (onceki && Math.abs(f.zb - onceki.zb) > sicrama) dizi = [];
-      dizi.push({ li, ai: f.ai, zb: f.zb });
+      dizi.push({ li, ai: f.ai, zb: f.zb, zt: ustKenar(layers[li].adalar[f.ai], hi, vi, h, w) ?? undefined });
       if (dizi.length > enUzun.length) enUzun = dizi;
     });
     if (enUzun.length < 2) return null;
@@ -210,17 +242,20 @@ export function railPart(rail, layers, p, id) {
   // ek boşluğu. Aynı ek boşluk kanadın kızak çentiğine de eklenir (slices.js).
   const ys = t + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0);
   const alt = p.railBelow || 0;
-  const fins = rail.fins.map((f) => ({ s: layers[f.li].coord, zb: f.zb, li: f.li }))
+  const fins = rail.fins.map((f) => ({ s: layers[f.li].coord, zb: f.zb, zt: f.zt, li: f.li, ...gecme(f, p) }))
     .sort((a, b) => a.s - b.s);
-  const ust = fins.map((f) => f.zb + e);
+  const ust = fins.map((f) => f.ust);
+  // Kanatlar arasında tepe: kısa kızakta komşuların yükseği (düz şerit),
+  // tam boyda alçağı — kızak hiçbir kanadın üstünden dışarı taşmasın.
+  const ara = p.railFull ? Math.min : Math.max;
   const xs = fins[0].s - ys / 2 - 3, xe = fins[fins.length - 1].s + ys / 2 + 3;
 
   // Üst kenar basamaklı: her kanadın altında kanat kalınlığında yuva.
   const tepe = [[xs, ust[0]]];
   fins.forEach((f, i) => {
-    const sol = i === 0 ? ust[0] : Math.max(ust[i - 1], ust[i]);
-    const sag = i === fins.length - 1 ? ust[i] : Math.max(ust[i], ust[i + 1]);
-    const xl = f.s - ys / 2, xr = f.s + ys / 2, m = f.zb + e / 2;
+    const sol = i === 0 ? ust[0] : ara(ust[i - 1], ust[i]);
+    const sag = i === fins.length - 1 ? ust[i] : ara(ust[i], ust[i + 1]);
+    const xl = f.s - ys / 2, xr = f.s + ys / 2, m = f.m;
     tepe.push([xl, sol], [xl, m], [xr, m], [xr, sag]);
   });
   tepe.push([xe, ust[ust.length - 1]]);
@@ -235,8 +270,8 @@ export function railPart(rail, layers, p, id) {
   // arası, e/2 + alt yüksekliğinde) ortalanır. Ad, numaralı kanatların (her
   // beşinci) tam ortasına konur: eskiden ortadaki kanadın üstüne düşüp 25
   // numarasıyla üst üste biniyor, ince kızakta bandın altından taşıyordu.
-  const bant = (zbA, zbB) => {
-    const alt_ = Math.max(zbA, zbB) - alt, ust_ = Math.min(zbA, zbB) + e / 2;
+  const bant = (fa, fb) => {
+    const alt_ = Math.max(fa.zb, fb.zb) - alt, ust_ = Math.min(fa.m, fb.m);
     return { y: (alt_ + ust_) / 2, h: Math.max(0, ust_ - alt_) };
   };
   const orta = Math.floor(fins.length / 2);
@@ -247,7 +282,7 @@ export function railPart(rail, layers, p, id) {
     if (aday !== undefined) { k = aday; break; }
   }
   const k2 = Math.min(fins.length - 1, k + 1);
-  const ad = bant(fins[k].zb, fins[k2].zb);
+  const ad = bant(fins[k], fins[k2]);
   const engrave = [{
     type: 'text', text: id,
     x: (fins[k].s + fins[k2].s) / 2, y: ad.y,
@@ -256,7 +291,7 @@ export function railPart(rail, layers, p, id) {
   fins.forEach((f, i) => {
     const no = f.li + 1;
     if (no % 5 !== 0 && i !== 0) return;
-    const b = bant(f.zb, f.zb);
+    const b = bant(f, f);
     engrave.push({ type: 'text', text: String(no), x: f.s, y: b.y, size: Math.min(3, b.h * 0.45) });
   });
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
