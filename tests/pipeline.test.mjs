@@ -1730,6 +1730,18 @@ test('taban plakası: kızak ayakları plakadaki kanallara denk gelir', () => {
   assert.ok(/rot: \(\(e\.rot \|\| 0\) \+ \(rot \? 90 : 0\)\) % 360/.test(oku('js/nest.js')));
 });
 
+test('iki kızak her dilimi birlikte tutar (uç dilimler yuvarlak köşede kalmaz)', () => {
+  // Köşeleri yuvarlatılmış kutu (zarf onarımı köşeleri yuvarlar): uçtaki
+  // dilimlerin tabanı dar. Kızaklar yanlara itilirse uç dilimlerin köşesine
+  // düşüp kırık çentik açıyordu ya da o dilimleri tek kızakta bırakıyordu.
+  const z = voxelRemesh(tabaniAcikKutu(), { resolution: 48, smooth: 2, zarf: 3 });
+  const r = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 2, gap: 4, support: 'kizak', railFull: true, railCount: 2 });
+  assert.equal(r.info.rails.length, 2);
+  // En uçtaki, köşesi yuvarlanmış tek dilim bir kızağı kaçırabilir; gerisi ikisinde de.
+  for (const k of r.info.rails) assert.ok(k.fins >= r.info.layerCount - 1, `${k.id} dilimlerin çoğundan geçmiyor (${k.fins}/${r.info.layerCount})`);
+  assert.equal(r.info.rodlessParts, 0, 'tutulmayan dilim var');
+});
+
 test('mil yoksa dilim tarifinde boş mil bölümü yazılmaz', () => {
   const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
   const s = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 18, gap: 12, support: 'kizak' });

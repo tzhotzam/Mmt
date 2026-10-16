@@ -174,6 +174,13 @@ export function planRails(layers, p) {
         if (a && (!enIyi || a.zb < enIyi.zb)) enIyi = { ai, ...a };
       });
       if (!enIyi) return null;
+      // Çentik kanadın alt kenarının DÜZ bir yerine düşmeli: yuvanın iki
+      // yanında birkaç mm boyunca alt kenar aynı yükseklikte sürmeli. Kanadın
+      // yuvarlak köşesine düşen çentik (heykelin en arka/ön dilimi) köşeyi
+      // kemirip ince, kırık bir dil bırakıyordu.
+      const pay = w / 2 + Math.max(2, e * 0.3);
+      const yan = [h - pay, h + pay].map((hh) => altKenar(l.adalar[enIyi.ai], hi, vi, hh));
+      if (yan.some((a) => !a || Math.abs(a.zb - enIyi.zb) > Math.max(1.5, 0.15 * e))) return null;
       const tamam = enIyi.dolu >= e + 3 &&
         notchBottom(l.adalar[enIyi.ai].outline, hi, vi, h, w, enIyi.zb + e / 2) !== null;
       return tamam ? enIyi : null;
@@ -204,10 +211,31 @@ export function planRails(layers, p) {
   const secilen = [];
   const sabit = p.railCount > 0;
   const adet = sabit ? Math.round(p.railCount) : 2;
-  for (const a of adaylar) {
-    if (secilen.length >= adet) break;
-    if (secilen.some((s) => Math.abs(s.h - a.h) < aralik * (adet > 2 ? 0.2 : 0.35))) continue;
-    secilen.push(a);
+  if (adet === 2 && adaylar.length > 1) {
+    // İKİ KIZAK: her kanat İKİ kızağa otursun diye çift, önce ikisinin de
+    // tuttuğu kanat sayısına (az olanınkine), sonra aralarındaki mesafeye
+    // göre seçilir. Tek tek "en iyi" seçmek, kızakları heykelin yanlarına
+    // itiyordu; orada ön ve arka dilimlerin yuvarlak köşeleri çentik
+    // taşımıyor, o dilimler tek kızakta kalıp dönüyordu.
+    const enAz = Math.max(2.5 * e, 0.2 * aralik);
+    let enIyi = null;
+    for (let i = 0; i < adaylar.length; i++) {
+      for (let j = i + 1; j < adaylar.length; j++) {
+        const a = adaylar[i], b = adaylar[j];
+        const ara = Math.abs(a.h - b.h);
+        if (ara < enAz) continue;
+        const ortak = Math.min(a.fins.length, b.fins.length);
+        const puan = ortak * 1000 + Math.min(ara, 0.6 * aralik);
+        if (!enIyi || puan > enIyi.puan) enIyi = { puan, a, b };
+      }
+    }
+    if (enIyi) secilen.push(enIyi.a, enIyi.b);
+  } else {
+    for (const a of adaylar) {
+      if (secilen.length >= adet) break;
+      if (secilen.some((s) => Math.abs(s.h - a.h) < aralik * (adet > 2 ? 0.2 : 0.35))) continue;
+      secilen.push(a);
+    }
   }
 
   // Otomatikte kızak, kızağa ulaşmayan parça kalmayana dek eklenir. Dış
