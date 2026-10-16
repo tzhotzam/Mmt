@@ -42,6 +42,10 @@ export const SLICE_DEFAULTS = {
   support: 'mil',
   railCount: 0,         // 0 = otomatik: tutulmayan parça kalmayana dek
   railEngage: 0,        // 0 → max(10, 5·kalınlık) mm geçme yüksekliği
+  base: false,          // taban plakası: kızak ayakları plakadaki kanallara geçer
+  baseThickness: 5,     // taban plakası kalınlığı (mm)
+  baseText: '',         // tabana kazınacak yazı
+  groundGap: 0,         // gövdenin plakadan yüksekliği (mm) — tekerlek çıkarıldıysa yerden yükseklik
   railFull: false,      // kızak parça boyunda: kanadın tepesine kadar çıkar, yarı yükseklikte geçer
   railSlotExtra: 0,     // geçme ek boşluğu (mm): kızak yuvaları ve kanat çentikleri bu kadar genişler
   railBelow: 0,         // kızağın heykelin altından sarkması (mm)
@@ -255,7 +259,15 @@ export function generateSlices(rawTris, userParams = {}) {
     });
   });
 
-  kizaklar.forEach((k, i) => parts.push(railPart(k, layers, p, `K${i + 1}`)));
+  // TABAN PLAKASI: kızaklar ayaklarıyla plakadaki kanallara geçer.
+  let taban = null;
+  if (p.base && kizaklar.length) {
+    const zMin = Math.min(...kizaklar.flatMap((k) => k.fins.map((f) => f.zb)));
+    taban = { zFlat: zMin - Math.max(0, p.groundGap || 0), T: Math.max(1, p.baseThickness || 5) };
+  }
+  const kizakParcalari = kizaklar.map((k, i) => railPart(k, layers, p, `K${i + 1}`, taban));
+  parts.push(...kizakParcalari);
+  if (taban) parts.push(tabanPlakasi(layers, kizakParcalari, ax, p, taban));
   if (kizaklar.length && p.thickness + YUVA_PAYI + (p.railSlotExtra || 0) >= pitch - 0.5) {
     warnings.push(
       `Kızak yuvası (${(p.thickness + YUVA_PAYI + (p.railSlotExtra || 0)).toFixed(1)} mm) dilim adımına ` +
@@ -430,6 +442,10 @@ export function generateSlices(rawTris, userParams = {}) {
       rails: kizaklar.map((k, i) => ({ id: `K${i + 1}`, h: k.h, fins: k.fins.length })),
       railEngage: railEngage(p),
       railFull: !!p.railFull,
+      base: taban ? {
+        w: parts.find((q) => q.kind === 'taban').w, h: parts.find((q) => q.kind === 'taban').h, t: taban.T,
+        legs: kizakParcalari.reduce((n, k) => n + k.meta.legs.length, 0), gap: Math.max(0, p.groundGap || 0),
+      } : null,
       bridges: kopruSayisi,
       board: parts.some((q) => q.kind === 'pano'),
       singleRodParts: tekMil,
@@ -838,6 +854,53 @@ function squareSlot(c, side, toolRadius) {
   const yeni = Math.abs(signedArea(pay.ring));
   if (pay.applied === 4 && yeni > eski) return pay.ring;
   return kare;
+}
+
+/**
+ * Taban plakası, model (x, y) planında. Kızak ayakları için kanallar açılır;
+ * plaka heykelin izinden her yana pay kadar taşar.
+ */
+function tabanPlakasi(layers, kizaklar, ax, p, taban) {
+  const hiIdx = ax.hi;
+  let hLo = Infinity, hHi = -Infinity, sLo = Infinity, sHi = -Infinity;
+  for (const l of layers) {
+    for (const ada of l.adalar) for (const q of ada.outline) {
+      if (q[hiIdx] < hLo) hLo = q[hiIdx]; if (q[hiIdx] > hHi) hHi = q[hiIdx];
+    }
+    if (l.adalar.length) { sLo = Math.min(sLo, l.coord - p.thickness / 2); sHi = Math.max(sHi, l.coord + p.thickness / 2); }
+  }
+  const pay = Math.max(15, 0.06 * Math.max(hHi - hLo, sHi - sLo));
+  // Plan koordinatı: Y diliminde X = h (model x), Y = s (model y); X diliminde X = s, Y = h.
+  const yE = p.axis === 'y';
+  const P = (h, s_) => (yE ? [h, s_] : [s_, h]);
+  const a = P(hLo - pay, sLo - pay), b = P(hHi + pay, sHi + pay);
+  const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
+  const outline = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  const ws = p.thickness + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0);
+  const holes = [];
+  for (const k of kizaklar) {
+    for (const ayak of k.meta.legs) {
+      const c1 = P(k.meta.h - ws / 2, ayak.s0 - 0.2), c2 = P(k.meta.h + ws / 2, ayak.s1 + 0.2);
+      const hx0 = Math.min(c1[0], c2[0]), hx1 = Math.max(c1[0], c2[0]);
+      const hy0 = Math.min(c1[1], c2[1]), hy1 = Math.max(c1[1], c2[1]);
+      holes.push([[hx0, hy0], [hx0, hy1], [hx1, hy1], [hx1, hy0]]);
+    }
+  }
+  const engrave = [];
+  const yazi = String(p.baseText || '').trim();
+  if (yazi) {
+    // Yazı uzun kenar boyunca, yan paydaki boşluğa.
+    const boy = Math.min(pay * 0.5, 12);
+    engrave.push(yE
+      ? { type: 'text', text: yazi, x: x1 - pay / 2, y: (y0 + y1) / 2, size: boy, rot: 90 }
+      : { type: 'text', text: yazi, x: (x0 + x1) / 2, y: y0 + pay / 2, size: boy });
+  }
+  engrave.push({ type: 'text', text: `TABAN ${taban.T} mm`, x: x0 + pay * 0.5 + 20, y: y0 + pay * 0.25, size: Math.min(4, pay * 0.2) });
+  return {
+    id: 'TABAN', kind: 'taban', outline, holes, engrave,
+    w: x1 - x0, h: y1 - y0,
+    meta: { taban: true, thickness: taban.T, z: taban.zFlat },
+  };
 }
 
 function emptyInfo(p, scaled, pitch) {

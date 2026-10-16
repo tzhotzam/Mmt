@@ -461,6 +461,15 @@ function sliceGuide(info) {
     satirlar.push('  Geçme sıkıysa yuvayı eğeyle bir tık açın; gevşekse bir damla yapıştırıcı yeter.');
   }
 
+  if (info.base) {
+    const b = info.base;
+    satirlar.push('');
+    satirlar.push(`TABAN PLAKASI: ${round(b.w)} × ${round(b.h)} mm, ${b.t} mm kalınlıkta (dilimlerden AYRI malzemeden kesilir).`);
+    satirlar.push(`  Kızakların altında toplam ${b.legs} ayak var; ayaklar plakadaki kanallardan geçer.`);
+    if (b.gap > 0) satirlar.push(`  Gövde plakadan ${round(b.gap)} mm yukarıda durur — tekerlekler takılınca plakaya basar.`);
+    satirlar.push('  Önce kızakları plakaya takın, sonra dilimleri kızaklara dizin; ayakları alttan');
+    satirlar.push('  bir damla yapıştırıcı ya da puntayla sabitleyin.');
+  }
   if (info.bridges > 0) {
     satirlar.push('');
     satirlar.push(`KÖPRÜ: ${info.bridges} kopuk ada aynı dilimdeki parçaya ince bir şeritle bağlı.`);

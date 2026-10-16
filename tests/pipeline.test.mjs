@@ -1691,6 +1691,41 @@ test('tam boy kızak dilimin tepesine çıkar, geçme yarı yükseklikte', () =>
   assert.ok(oku('index.html').includes('id="p-railFull" checked') && /railFull: bool\('p-railFull'\)/.test(oku('js/main.js')));
 });
 
+test('taban plakası: kızak ayakları plakadaki kanallara denk gelir', () => {
+  const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
+  const r = generateSlices(z.tris, {
+    axis: 'y', targetSize: 400, thickness: 3, gap: 6, support: 'kizak', railFull: true,
+    base: true, baseThickness: 5, groundGap: 8, baseText: 'DENEME',
+  });
+  const taban = r.parts.find((p) => p.kind === 'taban');
+  const kizaklar = r.parts.filter((p) => p.kind === 'kizak');
+  assert.ok(taban && kizaklar.length >= 1, 'taban ya da kızak yok');
+  const ayak = kizaklar.reduce((n, k) => n + k.meta.legs.length, 0);
+  assert.equal(taban.holes.length, ayak, 'her ayağa bir kanal');
+  assert.ok(ayak >= 2 * kizaklar.length);
+  // Ayağın ucu: en alttaki kanat dibi − yerden yükseklik − plaka kalınlığı.
+  const enAltKanat = Math.min(...r.parts.filter((p) => p.kind === 'dilim').map((p) => Math.min(...p.outline.map((q) => q[0]))));
+  for (const k of kizaklar) {
+    const uc = Math.min(...k.outline.map((q) => q[1]));
+    assert.ok(Math.abs(uc - (enAltKanat - 8 - 5)) < 0.6, `ayak ucu ${uc.toFixed(2)} (beklenen ${(enAltKanat - 13).toFixed(2)})`);
+    // Kanal, kızağın düzlemi (model x = h) ve ayağın aralığı üstünde.
+    for (const a of k.meta.legs) {
+      assert.ok(taban.holes.some((h) => {
+        const xs = h.map((q) => q[0]), ys = h.map((q) => q[1]);
+        return Math.min(...xs) < k.meta.h && Math.max(...xs) > k.meta.h && Math.min(...ys) <= a.s0 && Math.max(...ys) >= a.s1;
+      }), 'ayağın kanalı yok');
+    }
+  }
+  // Plaka heykelin izini her yandan kapsar.
+  assert.ok(taban.w > 400 * 0.95 || taban.h > 400 * 0.95);
+  assert.ok(taban.engrave.some((e) => e.text === 'DENEME' && e.rot === 90));
+  assert.ok(r.info.base && assemblyGuide(r.info).includes('TABAN PLAKASI'));
+  assert.ok(oku('index.html').includes('id="p-sliceBase"') && /base: bool\('p-sliceBase'\)/.test(oku('js/main.js')));
+  assert.ok(oku('js/preview3d.js').includes('part.meta.taban'));
+  // Yerleşim 90° döndürünce yazının kendi açısı korunur.
+  assert.ok(/rot: \(\(e\.rot \|\| 0\) \+ \(rot \? 90 : 0\)\) % 360/.test(oku('js/nest.js')));
+});
+
 test('mil yoksa dilim tarifinde boş mil bölümü yazılmaz', () => {
   const z = voxelRemesh(tabaniAcikKutu(), { resolution: 64, smooth: 1, zarf: 2 });
   const s = generateSlices(z.tris, { axis: 'y', targetSize: 400, thickness: 18, gap: 12, support: 'kizak' });

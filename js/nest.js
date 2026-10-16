@@ -130,7 +130,7 @@ export function applyPlacement(pl) {
     engrave: part.engrave.map((e) => {
       if (e.type === 'polyline') return { ...e, points: map(e.points) };
       const [tx, ty] = mapPoint([e.x, e.y]);
-      return { ...e, x: tx, y: ty, rot: rot ? 90 : 0 };
+      return { ...e, x: tx, y: ty, rot: ((e.rot || 0) + (rot ? 90 : 0)) % 360 };
     }),
   };
 }

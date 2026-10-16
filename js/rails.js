@@ -235,7 +235,7 @@ export function railEngage(p) {
  * Kızak parçası: (s = dilim ekseni koordinatı, z = dikey) düzleminde.
  * Üst kenar basamaklı: her kanadın altında kanat kalınlığında yuva.
  */
-export function railPart(rail, layers, p, id) {
+export function railPart(rail, layers, p, id, taban = null) {
   const e = railEngage(p);
   const t = p.thickness;
   // Kızak yuvasının genişliği: kanat kalınlığı + geçme payı + kullanıcının
@@ -262,8 +262,34 @@ export function railPart(rail, layers, p, id) {
   // Alt kenar kanat diplerini izler: kızak, gövdenin altına yapışık sabit
   // yükseklikte bir şerit olur. Düz alt kenarla gövde yana doğru
   // yükseldiğinde dış kanatların altında yandan görünen bir plaka kalıyordu.
-  const dip = [[xs, fins[0].zb - alt], ...fins.map((f) => [f.s, f.zb - alt]),
+  let dip = [[xs, fins[0].zb - alt], ...fins.map((f) => [f.s, f.zb - alt]),
     [xe, fins[fins.length - 1].zb - alt]];
+  // TABAN: kızağın altından ince ayaklar iner, taban plakasındaki kanallardan
+  // geçer. Ayak boyu = gövdenin yerden yüksekliği + plaka kalınlığı; araba
+  // ayakların üstünde, gerçek yerden yüksekliğinde durur (tekerlek takılınca
+  // plakaya basar). Kızaklar dik ve sabit kalır, heykel yana esnemez.
+  const ayaklar = [];
+  if (taban) {
+    const L = xe - xs;
+    const oranlar = L < 150 ? [0.2, 0.8] : [0.15, 0.5, 0.85];
+    const gen = Math.max(6, Math.min(20, 0.06 * L));
+    const dipZ = (x) => {
+      for (let i = 0; i + 1 < dip.length; i++) {
+        const [x0, z0] = dip[i], [x1, z1] = dip[i + 1];
+        if (x >= x0 && x <= x1) return x1 > x0 ? z0 + ((x - x0) / (x1 - x0)) * (z1 - z0) : Math.min(z0, z1);
+      }
+      return dip[dip.length - 1][1];
+    };
+    const alt_ = taban.zFlat - taban.T;
+    let yeni = dip.slice();
+    for (const o of oranlar) {
+      const a = xs + o * L - gen / 2, b = a + gen;
+      ayaklar.push({ s0: a, s1: b });
+      const once = yeni.filter((q) => q[0] < a), sonra = yeni.filter((q) => q[0] > b);
+      yeni = [...once, [a, dipZ(a)], [a, alt_], [b, alt_], [b, dipZ(b)], ...sonra];
+    }
+    dip = yeni;
+  }
   const outline = [...dip, ...tepe.reverse()];
 
   // Ad ve numaralar yuvaların altındaki düz bantta (kanat dibi ile yuva dibi
@@ -302,7 +328,7 @@ export function railPart(rail, layers, p, id) {
   return {
     id, kind: 'kizak', outline, holes: [], engrave,
     w: maxX - minX, h: maxY - minY,
-    meta: { rail: true, h: rail.h, fins: fins.length },
+    meta: { rail: true, h: rail.h, fins: fins.length, legs: ayaklar },
   };
 }
 

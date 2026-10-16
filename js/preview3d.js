@@ -180,6 +180,16 @@ export async function createPreview3d(container) {
           group.add(new THREE.Mesh(geo, railMaterial));
           continue;
         }
+        if (part.meta.taban) {
+          // Taban plakası: plan (model x, y), kalınlık model z'de aşağı —
+          // üst yüzü kızak ayaklarının plakaya girdiği z'de.
+          const z0 = part.meta.z - part.meta.thickness;
+          const geoT = extrude(part, part.meta.thickness);
+          geoT.applyMatrix4(basis([1, 0, 0], [0, 0, -1], [0, 1, 0], [0, z0, 0]));
+          geoT.computeVertexNormals();
+          group.add(new THREE.Mesh(geoT, railMaterial));
+          continue;
+        }
         if (part.meta.rail) {
           // Kızak: yerel (s = dilim ekseni, z = dikey), kalınlık yatay eksende,
           // kanatlara DİK. X diliminde kalınlık model y'de, Y diliminde model x'te.

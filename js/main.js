@@ -32,7 +32,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-15-a';
+const APP_VERSION = '2026-10-16-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -194,6 +194,10 @@ function readParams() {
       railEngage: num('p-railEngage', 0),
       railSlotExtra: num('p-railSlotExtra', 0),
       railFull: bool('p-railFull'),
+      base: bool('p-sliceBase'),
+      baseThickness: num('p-sliceBaseT', 5),
+      baseText: els['p-sliceBaseText']?.value || '',
+      groundGap: zeminBoslugu(),
       upAxis: els['p-sliceUpAxis'].value,
       reliefDepth: num('p-sliceReliefDepth', 0),
       board: bool('p-sliceBoard'),
@@ -1073,6 +1077,27 @@ function sliceMeshSource() {
   notlar.push(`Model onarıldı (${rc.health.openEdges} açık kenar vardı): dış kabuk dolu gövde olarak kuruldu, ` +
     'kesitler temiz ve kapalı.');
   return { tris: rc.tris, not: notlar.join(' ') };
+}
+
+/**
+ * Tekerlek çıkarıldıysa gövdenin yerden yüksekliği (ölçekli, mm): taban
+ * plakası tekerleklerin bastığı zemine konur, gövde ayaklar üstünde o kadar
+ * yukarıda durur. Tekerlek yoksa 0 (gövde plakaya oturur).
+ */
+function zeminBoslugu() {
+  const tc = state.tekerCache;
+  if (!state.tris || !bool('p-sliceNoWheels') || !tc?.tekerlekler?.length || tc.src !== state.tris) return 0;
+  if ((els['p-sliceSizeAxis']?.value || 'max') !== 'max') return 0;
+  const u = { x: 0, y: 1, z: 2 }[tc.up] ?? 2;
+  if (tc.govdeAlt === undefined) {
+    let m = Infinity;
+    for (const tri of tc.tris) for (const p of tri) if (p[u] < m) m = p[u];
+    tc.govdeAlt = m;
+  }
+  const zemin = Math.min(...tc.tekerlekler.map((k) => k.merkez[u] - k.cap / 2));
+  if (!tc.uzun) tekerlekNotu(tc);
+  const olcek = num('p-sculptSize', 1200) / tc.uzun;
+  return Math.max(0, (tc.govdeAlt - zemin) * olcek);
 }
 
 /** Çıkarılan tekerleklerin ölçekli ölçüsü (en uzun kenara göre ölçeklemede). */

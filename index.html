@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-10-15-a">
+<meta name="app-version" content="2026-10-16-a">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-10-15-a';
+  var V = '2026-10-16-a';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -467,6 +467,16 @@
       <label class="check">
         <input type="checkbox" id="p-railFull" checked>
         Kızak parça boyunda <small>kızak dilimin tepesine kadar çıkar, yarı yükseklikte geçer; dilimler sallanmaz</small>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-sliceBase">
+        Taban plakası <small>kızakların ayakları plakadaki kanallara geçer; heykel sallanmaz</small>
+      </label>
+      <label>Taban kalınlığı (mm)
+        <input type="number" id="p-sliceBaseT" value="5" min="1" max="30" step="0.5">
+      </label>
+      <label>Tabana yazı <small>boş bırakılabilir</small>
+        <input type="text" id="p-sliceBaseText" value="" maxlength="40">
       </label>
       <label>Omurga biçimi
         <select id="p-rodShape">
