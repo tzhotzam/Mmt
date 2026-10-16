@@ -14,6 +14,18 @@
 
 const YUVA_PAYI = 0.2;   // geçme boşluğu (mm): lazer kesimde sıkı ama takılır
 
+/**
+ * Kızak yuvası ve kanat çentiğinin genişliği: sac + geçme boşluğu.
+ * `railClearance` toplam boşluktur (0 = sacla birebir); verilmezse eski
+ * davranış: 0,2 mm + `railSlotExtra`.
+ */
+export function yuvaGenisligi(p) {
+  const bosluk = Number.isFinite(p.railClearance)
+    ? p.railClearance
+    : YUVA_PAYI + Math.max(0, p.railSlotExtra || 0);
+  return p.thickness + Math.max(0, bosluk);
+}
+
 /** Dikey ve yatay düzlem koordinatının indisleri; Z ekseninde null. */
 export function railAxes(axis) {
   if (axis === 'x') return { vi: 1, hi: 0 };
@@ -131,7 +143,7 @@ export function planRails(layers, p) {
   if (!ax) return [];
   const { vi, hi } = ax;
   const e = railEngage(p);
-  const w = p.thickness + YUVA_PAYI;
+  const w = yuvaGenisligi(p);
 
   let lo = Infinity, hiMax = -Infinity, zmin = Infinity;
   for (const l of layers) {
@@ -240,7 +252,7 @@ export function railPart(rail, layers, p, id, taban = null) {
   const t = p.thickness;
   // Kızak yuvasının genişliği: kanat kalınlığı + geçme payı + kullanıcının
   // ek boşluğu. Aynı ek boşluk kanadın kızak çentiğine de eklenir (slices.js).
-  const ys = t + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0);
+  const ys = yuvaGenisligi(p);
   const alt = p.railBelow || 0;
   const fins = rail.fins.map((f) => ({ s: layers[f.li].coord, zb: f.zb, zt: f.zt, li: f.li, ...gecme(f, p) }))
     .sort((a, b) => a.s - b.s);

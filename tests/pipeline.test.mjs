@@ -1667,7 +1667,11 @@ test('geçme ek boşluğu kızak yuvalarını ve kanat çentiklerini genişletir
   assert.ok(yakin(centik(sonra), 2.2), 'çentik genişlemedi');
   const asiri = generateSlices(z.tris, { ...ortak, railSlotExtra: 4 });
   assert.ok(asiri.warnings.some((w) => w.includes('diş kalmıyor')));
-  assert.ok(oku('index.html').includes('id="p-railSlotExtra"') && /railSlotExtra: num\('p-railSlotExtra'/.test(oku('js/main.js')));
+  // Toplam boşluk verilirse yuva = sac + boşluk; 0 = sacla birebir.
+  const birebir = generateSlices(z.tris, { ...ortak, railClearance: 0 });
+  assert.ok(Math.abs(yuvaGen(birebir) - 1.0) < 1e-6, `birebir yuva ${yuvaGen(birebir)}`);
+  assert.ok(yakin(centik(birebir), 1.0), 'birebir çentik 1 mm değil');
+  assert.ok(oku('index.html').includes('id="p-railClearance" value="0.2"') && /railClearance: num\('p-railClearance', 0\.2\)/.test(oku('js/main.js')));
 });
 
 test('tam boy kızak dilimin tepesine çıkar, geçme yarı yükseklikte', () => {

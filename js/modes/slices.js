@@ -19,7 +19,7 @@ import { sliceMesh } from '../slice.js';
 import { classifyRings, signedArea, bbox, pointInRing, centroid, simplify } from '../geom.js';
 import { scaleTriangles } from '../mesh.js';
 import { dikCevir } from './facets.js';
-import { planRails, notchBottom, railPart, railAxes, railEngage, gecme, YUVA_PAYI } from '../rails.js';
+import { planRails, notchBottom, railPart, railAxes, railEngage, gecme, yuvaGenisligi } from '../rails.js';
 import { kopruKur, enYakin } from '../bridge.js';
 import { heightmapToSlices, arkaPano } from '../heightslice.js';
 import { cornerRelief } from '../corners.js';
@@ -47,7 +47,8 @@ export const SLICE_DEFAULTS = {
   baseText: '',         // tabana kazınacak yazı
   groundGap: 0,         // gövdenin plakadan yüksekliği (mm) — tekerlek çıkarıldıysa yerden yükseklik
   railFull: false,      // kızak parça boyunda: kanadın tepesine kadar çıkar, yarı yükseklikte geçer
-  railSlotExtra: 0,     // geçme ek boşluğu (mm): kızak yuvaları ve kanat çentikleri bu kadar genişler
+  railClearance: undefined, // geçme boşluğu (mm, toplam): yuva = sac + bu; verilmezse 0,2 + railSlotExtra
+  railSlotExtra: 0,     // (eski) 0,2 mm'nin üstüne eklenen boşluk
   railBelow: 0,         // kızağın heykelin altından sarkması (mm)
   rodInset: 0.35,       // iki mil, parçanın ana ekseninde bu oranda ayrılır
   toolDiameter: 6,      // kare kazık yuvasının köşe payı bu uca göre açılır
@@ -144,7 +145,7 @@ export function generateSlices(rawTris, userParams = {}) {
   for (const k of kizaklar) {
     for (const f of k.fins) {
       const ada = layers[f.li].adalar[f.ai];
-      const yeni = notchBottom(ada.outline, ax.hi, ax.vi, k.h, p.thickness + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0), gecme(f, p).m);
+      const yeni = notchBottom(ada.outline, ax.hi, ax.vi, k.h, yuvaGenisligi(p), gecme(f, p).m);
       if (yeni) ada.outline = yeni;
     }
   }
@@ -268,9 +269,9 @@ export function generateSlices(rawTris, userParams = {}) {
   const kizakParcalari = kizaklar.map((k, i) => railPart(k, layers, p, `K${i + 1}`, taban));
   parts.push(...kizakParcalari);
   if (taban) parts.push(tabanPlakasi(layers, kizakParcalari, ax, p, taban));
-  if (kizaklar.length && p.thickness + YUVA_PAYI + (p.railSlotExtra || 0) >= pitch - 0.5) {
+  if (kizaklar.length && yuvaGenisligi(p) >= pitch - 0.5) {
     warnings.push(
-      `Kızak yuvası (${(p.thickness + YUVA_PAYI + (p.railSlotExtra || 0)).toFixed(1)} mm) dilim adımına ` +
+      `Kızak yuvası (${yuvaGenisligi(p).toFixed(1)} mm) dilim adımına ` +
       `(${pitch} mm) çok yakın: yuvalar arasında diş kalmıyor. Yuva ek boşluğunu azaltın ya da dilim aralığını artırın.`
     );
   }
@@ -876,7 +877,7 @@ function tabanPlakasi(layers, kizaklar, ax, p, taban) {
   const a = P(hLo - pay, sLo - pay), b = P(hHi + pay, sHi + pay);
   const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
   const outline = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-  const ws = p.thickness + YUVA_PAYI + Math.max(0, p.railSlotExtra || 0);
+  const ws = yuvaGenisligi(p);
   const holes = [];
   for (const k of kizaklar) {
     for (const ayak of k.meta.legs) {

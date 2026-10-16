@@ -32,7 +32,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-16-a';
+const APP_VERSION = '2026-10-16-b';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -192,7 +192,7 @@ function readParams() {
       support: els['p-support'].value,
       railCount: Math.round(num('p-sliceRailCount', 0)),
       railEngage: num('p-railEngage', 0),
-      railSlotExtra: num('p-railSlotExtra', 0),
+      railClearance: num('p-railClearance', 0.2),
       railFull: bool('p-railFull'),
       base: bool('p-sliceBase'),
       baseThickness: num('p-sliceBaseT', 5),
