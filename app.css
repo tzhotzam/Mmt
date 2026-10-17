@@ -467,3 +467,10 @@ details.gelismis > .grid { margin-top: 8px; }
 .meshy-block label { display: block; margin-top: 10px; }
 .meshy-block input, .meshy-block textarea, .meshy-block select { width: 100%; box-sizing: border-box; }
 .meshy-block textarea { font: inherit; padding: 8px; border-radius: 8px; resize: vertical; }
+
+/* Kayıtlı ayarlar */
+.ayarlarim { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border, #2a3340); border-radius: 12px; }
+.ayarlarim label { display: flex; flex-direction: column; gap: 6px; }
+.ayarlarim select { width: 100%; }
+.ayarlarim-dugmeler { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ayarlarim-dugmeler button { flex: 1 1 auto; }

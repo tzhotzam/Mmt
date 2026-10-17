@@ -19,6 +19,7 @@ import { generateSlices, SLICE_DEFAULTS } from './modes/slices.js';
 import { decimate } from './decimate.js';
 import { voxelRemesh, meshHealth } from './remesh.js';
 import { tekerlekCikar } from './wheels.js';
+import { HAZIR, ayarlarimOku, ayarKaydet, ayarSil } from './presets.js';
 import { meshFromHeightmap } from './relief3d.js';
 import { nest, applyPlacement } from './nest.js';
 import { sheetToDxf } from './export/dxf.js';
@@ -32,7 +33,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-16-c';
+const APP_VERSION = '2026-10-17-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -1498,6 +1499,75 @@ els['dl-json'].onclick = () => {
   };
   download('panel_ayarlari.json', JSON.stringify(data, null, 2), 'application/json');
 };
+
+// ---- Kayıtlı ayarlar -------------------------------------------------------
+function ayarVerisi() {
+  return {
+    uygulama: 'cnc-panel', surum: APP_VERSION, mode: state.mode, invert: state.invert,
+    depthMode: state.depthMode, patternSeed: state.patternSeed, fields: alanlariTopla(),
+  };
+}
+function ayarDurum(metin) {
+  const el = els['ayar-durum'];
+  if (!el) return;
+  el.textContent = metin;
+  el.hidden = !metin;
+}
+function ayarListesiniDoldur(secili = '') {
+  const sel = els['ayar-listesi'];
+  if (!sel) return;
+  const kendi = ayarlarimOku();
+  sel.innerHTML = '';
+  const grup = (etiket, liste, onEk) => {
+    if (!liste.length) return;
+    const g = document.createElement('optgroup');
+    g.label = etiket;
+    for (const a of liste) {
+      const o = document.createElement('option');
+      o.value = onEk + a.ad;
+      o.textContent = a.ad + (a.tarih ? ` (${a.tarih})` : '');
+      g.appendChild(o);
+    }
+    sel.appendChild(g);
+  };
+  grup('Benim kaydettiklerim', kendi, 'k:');
+  grup('Hazır', HAZIR, 'h:');
+  if (secili) sel.value = secili;
+}
+function seciliAyar() {
+  const v = els['ayar-listesi']?.value || '';
+  if (v.startsWith('k:')) return { kendi: true, ...ayarlarimOku().find((a) => a.ad === v.slice(2)) };
+  if (v.startsWith('h:')) return { kendi: false, ...HAZIR.find((a) => a.ad === v.slice(2)) };
+  return null;
+}
+if (els['ayar-listesi']) {
+  ayarListesiniDoldur();
+  els['ayar-uygula'].onclick = () => {
+    const a = seciliAyar();
+    if (!a?.data) { ayarDurum('Listeden bir ayar seçin.'); return; }
+    setMode(a.data.mode || 'ribs');
+    applySettings(a.data);
+    const yuklu = state.uploadImage || state.tris;
+    ayarDurum(`✓ "${a.ad}" uygulandı.` + (yuklu ? '' : ` ${a.not || 'Şimdi görselinizi yükleyin.'}`));
+  };
+  els['ayar-kaydet'].onclick = () => {
+    const ad = (prompt('Bu ayara bir ad verin (ör. "ŞAPCI 18 mm" ya da müşteri adı):') || '').trim();
+    if (!ad) return;
+    if (ayarKaydet(ad, ayarVerisi())) {
+      ayarListesiniDoldur('k:' + ad);
+      ayarDurum(`✓ "${ad}" kaydedildi. Listeden seçip "Uygula" ile geri getirebilirsiniz.`);
+    } else ayarDurum('Kaydedilemedi: tarayıcı depolamaya izin vermiyor (gizli sekme olabilir).');
+  };
+  els['ayar-sil'].onclick = () => {
+    const a = seciliAyar();
+    if (!a?.ad) return;
+    if (!a.kendi) { ayarDurum('Hazır ayarlar silinemez.'); return; }
+    if (!confirm(`"${a.ad}" silinsin mi?`)) return;
+    ayarSil(a.ad);
+    ayarListesiniDoldur();
+    ayarDurum(`"${a.ad}" silindi.`);
+  };
+}
 
 els['load-json'].onchange = async (e) => {
   const file = e.target.files?.[0];

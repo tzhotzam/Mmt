@@ -35,6 +35,7 @@ import { decimate } from '../js/decimate.js';
 import { voxelRemesh, meshHealth } from '../js/remesh.js';
 import { kesitKapat, icBosalt } from '../js/closing.js';
 import { tekerlekCikar } from '../js/wheels.js';
+import { HAZIR, ayarlarimOku, ayarKaydet, ayarSil } from '../js/presets.js';
 import { applyRivetJoints, reliefHoles, icerdeMi } from '../js/joints.js';
 import { meshFromHeightmap, checkClosed } from '../js/relief3d.js';
 import { buildMesh, groupCoplanar, dihedralAngle, mergeSmallGroups } from '../js/mesh.js';
@@ -693,6 +694,24 @@ test('arayüz bağlantı seçimini okuyor, varsayılan zıvanalı çıta', () =>
   const js = oku('js/main.js');
   assert.ok(/joint: els\['p-joint'\]/.test(js) && /stripWidth: num\('p-stripWidth'/.test(js));
   assert.ok(oku('js/preview3d.js').includes("part.kind === 'cita'"), '3B görünüm çıtayı yerleştirmiyor');
+});
+
+test('kayıtlı ayarlar: hazır ŞAPCI ayarı ve cihazda saklama', () => {
+  const sapci = HAZIR.find((a) => a.ad.startsWith('ŞAPCI'));
+  assert.ok(sapci, 'hazır ŞAPCI ayarı yok');
+  const F = sapci.data.fields;
+  assert.equal(sapci.data.mode, 'ribs');
+  assert.equal(F['p-panelW'], '2000');
+  assert.equal(F['p-thickness'], '18');
+  assert.equal(F['p-subjectMode'], 'yedir');
+  assert.equal(F['p-pattern'], 'akis');
+  // localStorage yoksa (node) sessizce boş döner, hata atmaz.
+  assert.deepEqual(ayarlarimOku(), []);
+  assert.equal(typeof ayarKaydet('x', {}), 'boolean');
+  assert.equal(typeof ayarSil('x'), 'boolean');
+  const html = oku('index.html');
+  assert.ok(html.includes('id="ayar-listesi" data-gizli') && html.includes('id="ayar-uygula"') && html.includes('id="ayar-kaydet"'));
+  assert.ok(oku('sw.js').includes("'./js/presets.js'"));
 });
 
 console.log('katman modu');
