@@ -705,6 +705,14 @@ test('kayıtlı ayarlar: hazır ŞAPCI ayarı ve cihazda saklama', () => {
   assert.equal(F['p-thickness'], '18');
   assert.equal(F['p-subjectMode'], 'yedir');
   assert.equal(F['p-pattern'], 'akis');
+  // Sac heykel: 1,5 m, 2 mm, perçinli büküm, poligonal kabuk.
+  const sac = HAZIR.find((a) => a.ad.startsWith('Sac heykel'));
+  assert.ok(sac, 'hazır sac heykel ayarı yok');
+  assert.equal(sac.data.mode, 'facets');
+  assert.equal(sac.data.fields['p-targetSize'], '1500');
+  assert.equal(sac.data.fields['p-thickness'], '2');
+  assert.equal(sac.data.fields['p-joinMethod'], 'percin');
+  assert.equal(sac.data.fields['p-unfold'], true);
   // Genel logo: ŞAPCI'nın ayarları, ölçüsüz (her firmada en kullanıcıda kalır).
   const logo = HAZIR.find((a) => a.ad.startsWith('Logo / firma'));
   assert.ok(logo, 'hazır genel logo ayarı yok');
@@ -3154,6 +3162,13 @@ test('Meshy: görev başlar, sorgulanır, OBJ iner; hatalar anlaşılır', async
   assert.equal(post.url, 'https://api.meshy.ai/openapi/v2/text-to-3d');
   const govde = JSON.parse(post.o.body);
   assert.equal(govde.mode, 'preview', 'CNC için yalnız dokusuz önizleme üretilmeli');
+  assert.equal(govde.target_polycount, 60000, 'varsayılan detaylı ağ');
+  // Low poly: sac heykel için Meshy baştan az yüzey örer.
+  n = 0; istekler.length = 0;
+  await yazidanModel('aslan', { anahtar: 'k', yuzey: 'lowpoly', fetchFn: sahte([bitti]), bekle });
+  assert.equal(JSON.parse(istekler.find((x) => x.o.method === 'POST').o.body).target_polycount, 1000);
+  // Meshy OBJ'si yüklemede Z-yukarıya çevrilir; dik eksen bir daha Y yapılırsa yatar.
+  assert.ok(!/els\[id\]\.value = 'y'/.test(oku('js/main.js')), 'Meshy modeli için dik eksen Y yapılmamalı');
   assert.ok(asamalar.includes('uretim') && asamalar.includes('indirme'), `aşamalar: ${asamalar}`);
   // Fotoğraftan: doku kapalı.
   n = 0; istekler.length = 0;

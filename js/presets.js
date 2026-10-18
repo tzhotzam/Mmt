@@ -149,6 +149,29 @@ export const HAZIR = [
       }
     },
   },
+  {
+    // Yerde duran, 1,5 m'lik bükümlü sac heykel (ayakta aslanla denendi:
+    // 428 faset, 41 yaprak, 190 perçin, 2 levha). 60 cm varsayılanı bu boyda
+    // biçimi fazla kaba bırakıyordu; 3 mm sac gereksiz ağırdı.
+    ad: 'Sac heykel — 1,5 m, 2 mm sac, perçinli büküm',
+    not: 'Şimdi heykel modelini "3B model (STL/OBJ)" ile yükleyin.',
+    data: {
+      "mode": "facets",
+      "fields": {
+        "p-targetSize": "1500",
+        "p-sizeAxis": "max",
+        "p-targetFaces": "500",
+        "p-targetParts": "0",
+        "p-thickness": "2",
+        "p-joinMethod": "percin",
+        "p-maxLeafSize": "1000",
+        "p-unfold": true,
+        "p-remesh": "oto",
+        "p-upAxis": "z",
+        "p-thicknessComp": true
+      }
+    },
+  },
 ];
 
 // Başka firmanın logosu: ŞAPCI'nın denenmiş ayarları, panel ölçüsü hariç.

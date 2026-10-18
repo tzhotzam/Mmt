@@ -10,8 +10,11 @@ contextBridge.exposeInMainWorld('masaustu', {
     ipcRenderer.on('dosya-ac', (_e, d) => cb(d));
     ipcRenderer.send('sayfa-hazir');
   },
-  /** Meshy dosyasını ana süreç indirir (CORS engeli yok). → { status, tur, veri } */
-  indir(url) {
-    return ipcRenderer.invoke('indir', url);
+  /**
+   * Meshy dosyasını ana süreç indirir (CORS engeli yok). `ad` verilirse bir
+   * kopyası İndirilenler\Meshy'ye kaydedilir. → { status, tur, veri }
+   */
+  indir(url, ad) {
+    return ipcRenderer.invoke('indir', url, ad);
   },
 });

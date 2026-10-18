@@ -179,14 +179,25 @@ app.on('second-instance', (_e, argv) => {
 
 // Meshy'nin dosya sunucusu CORS başlığı vermiyor; sayfanın fetch'i model ve
 // görseli indiremiyor. Ana süreçte CORS yok, indirmeyi burası yapar.
-ipcMain.handle('indir', async (_e, url) => {
+// `ad` verilirse dosyanın bir kopyası İndirilenler\Meshy'ye yazılır: her
+// üretim kredi harcıyor, model program kapanınca kaybolmasın.
+const UZANTI = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
+ipcMain.handle('indir', async (_e, url, ad) => {
   if (new URL(url).protocol !== 'https:') throw new Error('Yalnız https indirilir.');
   const res = await net.fetch(url);
-  return {
-    status: res.status,
-    tur: res.headers.get('content-type') || '',
-    veri: new Uint8Array(await res.arrayBuffer()),
-  };
+  const tur = res.headers.get('content-type') || '';
+  const veri = new Uint8Array(await res.arrayBuffer());
+  if (res.ok && ad) {
+    try {
+      const klasor = path.join(app.getPath('downloads'), 'Meshy');
+      await fs.promises.mkdir(klasor, { recursive: true });
+      const dosya = path.basename(ad) + (path.extname(ad) ? '' : UZANTI[tur.split(';')[0]] || '');
+      await fs.promises.writeFile(path.join(klasor, dosya), veri);
+    } catch (e) {
+      console.error('Meshy kopyası kaydedilemedi:', e.message);   // indirme yine de sürer
+    }
+  }
+  return { status: res.status, tur, veri };
 });
 
 ipcMain.on('sayfa-hazir', () => {

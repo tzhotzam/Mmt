@@ -34,13 +34,14 @@ class MeshyHatasi extends Error {}
 /**
  * Üretilen dosyayı indirecek fetch. Masaüstünde (Electron) indirmeyi ana süreç
  * yapar: Meshy'nin dosya sunucusu CORS başlığı vermiyor, sayfanın fetch'i
- * engelleniyor. Testin verdiği fetchFn'e dokunulmaz.
+ * engelleniyor. Testin verdiği fetchFn'e dokunulmaz. `ad`: masaüstünde
+ * dosyanın İndirilenler\Meshy'ye kaydedilecek kopyasının adı.
  */
-function indirici(fetchFn) {
+function indirici(fetchFn, ad) {
   const m = globalThis.masaustu;
   if (fetchFn !== fetch || typeof m?.indir !== 'function') return fetchFn;
   return async (url) => {
-    const d = await m.indir(url);
+    const d = await m.indir(url, ad);
     return new Response(d.veri, { status: d.status, headers: { 'content-type': d.tur } });
   };
 }
@@ -116,7 +117,7 @@ async function calistir(baslat, yolKalibi, o = {}) {
   onProgress?.({ asama: 'indirme', oran: 1, id });
   let res;
   try {
-    res = await indirici(fetchFn)(url);
+    res = await indirici(fetchFn, `meshy_${id}.obj`)(url);
   } catch {
     throw new MeshyHatasi('Model hazır ama indirilemedi (tarayıcı engeli). meshy.ai\'den OBJ olarak indirip yükleyin.');
   }
@@ -124,8 +125,18 @@ async function calistir(baslat, yolKalibi, o = {}) {
   return { buf: await res.arrayBuffer(), ad: `meshy_${id}.obj`, gorev };
 }
 
+/**
+ * İstenen yüzey sayısı. Detaylı ağ lamel ve dilime yeter; sac heykel için
+ * Meshy'nin kendi yeniden örgüsüyle baştan az yüzey istenir. Prompt'a
+ * "low poly" yazmak işe yaramıyordu (16.126 üçgen, ince bölünmüş eğri yüzey),
+ * bizim sadeleştirmemiz de tüylü yeleyi yumruya çevirip aslanı köpeğe
+ * benzetiyordu.
+ */
+export const YUZEY_SAYILARI = { detayli: 60000, lowpoly: 1000 };
+const yuzeySayisi = (y) => YUZEY_SAYILARI[y] || YUZEY_SAYILARI.detayli;
+
 /** Yazıdan 3B (yalnız önizleme: dokusuz ağ). */
-export async function yazidanModel(metin, { sanat = 'realistic', ...o } = {}) {
+export async function yazidanModel(metin, { sanat = 'realistic', yuzey = 'detayli', ...o } = {}) {
   if (!metin?.trim()) throw new MeshyHatasi('Ne üretileceğini yazın.');
   return calistir({
     yol: '/openapi/v2/text-to-3d',
@@ -135,13 +146,13 @@ export async function yazidanModel(metin, { sanat = 'realistic', ...o } = {}) {
       art_style: sanat,
       should_remesh: true,
       topology: 'triangle',
-      target_polycount: 60000,
+      target_polycount: yuzeySayisi(yuzey),
     },
   }, '/openapi/v2/text-to-3d/{id}', o);
 }
 
 /** Fotoğraftan 3B (doku kapalı). `veriUrl`: data:image/...;base64,... */
-export async function gorseldenModel(veriUrl, o = {}) {
+export async function gorseldenModel(veriUrl, { yuzey = 'detayli', ...o } = {}) {
   if (!veriUrl) throw new MeshyHatasi('Önce bir fotoğraf yükleyin.');
   return calistir({
     yol: '/openapi/v1/image-to-3d',
@@ -151,7 +162,7 @@ export async function gorseldenModel(veriUrl, o = {}) {
       enable_pbr: false,
       should_remesh: true,
       topology: 'triangle',
-      target_polycount: 60000,
+      target_polycount: yuzeySayisi(yuzey),
     },
   }, '/openapi/v1/image-to-3d/{id}', o);
 }
@@ -226,7 +237,7 @@ export async function yazidanGorsel(metin, { tur = 'kabartma', model = 'nano-ban
   onProgress?.({ asama: 'indirme', oran: 1, id });
   let res;
   try {
-    res = await indirici(fetchFn)(url);
+    res = await indirici(fetchFn, `meshy_${id}`)(url);   // uzantı türden
   } catch {
     throw new MeshyHatasi('Görsel hazır ama indirilemedi (tarayıcı engeli). meshy.ai\'den indirip "Görsel seç" ile yükleyin.');
   }

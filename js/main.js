@@ -34,7 +34,7 @@ import { panelFotoBul, panelDerinligi, konuAyir } from './panelfoto.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-19-g';
+const APP_VERSION = '2026-10-19-j';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -2267,15 +2267,18 @@ async function meshyUret(tur) {
           : asama === 'indirme' ? '⏳ Model indiriliyor…'
           : `⏳ Model üretiliyor… %${Math.round(oran * 100)} (1–5 dk)`),
     };
+    const yuzey = els['meshy-polycount']?.value || 'detayli';
     const r = tur === 'foto'
-      ? await m.gorseldenModel(fotoVeriUrl(), o)
-      : await m.yazidanModel(els['meshy-prompt'].value, { sanat: els['meshy-style'].value, ...o });
-    // Meshy modelleri glTF kuralıyla Y-yukarı gelir; Z-yukarı varsayımda heykel
-    // yan yatıyordu. Dilim ve Poligonal'in dik ekseni Y'ye çekilir.
-    for (const id of ['p-sliceUpAxis', 'p-upAxis']) if (els[id]) els[id].value = 'y';
+      ? await m.gorseldenModel(fotoVeriUrl(), { yuzey, ...o })
+      : await m.yazidanModel(els['meshy-prompt'].value, { sanat: els['meshy-style'].value, yuzey, ...o });
+    // Meshy modelleri Y-yukarı gelir; loadMeshBuffer her OBJ'yi Z-yukarıya
+    // çevirdiği için dik eksen Z kalır. Eskiden burada Y'ye çekiliyordu;
+    // çeviriyle birlikte heykel ikinci kez dönüp yan yatıyordu.
+    for (const id of ['p-sliceUpAxis', 'p-upAxis']) if (els[id]) els[id].value = 'z';
     saveSettings();
     await loadMeshBuffer(r.buf, r.ad);
     meshyDurum(`✓ Model yüklendi (${state.meshInfo?.count?.toLocaleString('tr-TR')} üçgen). ` +
+      (globalThis.masaustu ? `Kopyası: İndirilenler\\Meshy\\${r.ad}. ` : '') +
       'Dilim / Heykel ya da Poligonal Kabuk sekmesinde heykel olarak işleyin.');
     setTimeout(onizlemeyeKay, 400);
   } catch (err) {
