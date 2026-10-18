@@ -116,7 +116,50 @@ export const HAZIR = [
       }
     },
   },
+  {
+    // Kadın büstü OBJ'siyle denendi: otomatik yumuşatma lamel adımına göre
+    // 8 mm seçip modelin hafif yüz hatlarını siliyordu. Panel ölçüsüne ve
+    // derinliğe dokunmaz; yalnız yüzün okunmasını sağlayan alanlar gelir.
+    ad: '3B yüz (OBJ/STL) — lamel 12 mm, yüz hatları belirgin',
+    not: 'Şimdi yüz modelini "3B model (STL/OBJ)" ile yükleyin.',
+    data: {
+      "mode": "ribs",
+      // ŞAPCI'dan kalan tersleme, dalga ve "yedir" yüzü zemine gömüyordu:
+      // yüz en önde, zemin düz ve arkada olsun.
+      "invert": false,
+      "fields": {
+        "p-patMix": "0",
+        "p-subjectMode": "ust",
+        // Konu ortada küçülür, etrafında düz zemin kalır: büst 3ds Max'te
+        // levhaya gömülmüş gibi düz yüzeyden çıkar (kullanıcının beğendiği hâl).
+        "p-subjectPad": "0.3",
+        // Yüz paneli: her zaman önden. Otomatik, uzun gövdeli modelde (ayakta
+        // aslan) en ince ekseni, yani yanı seçip yüzü profil yapıyordu.
+        "p-viewAxis": "y",
+        "p-autoBlur": false,
+        "p-blur": "3",
+        "p-sharpen": "1.2",
+        "p-contrast": "0",
+        "p-brightness": "0",
+        "p-gamma": "1",
+        "p-facetCells": "0",
+        "p-inflate": "0",
+        "p-thickness": "12",
+        "p-gap": "6"
+      }
+    },
+  },
 ];
+
+// Başka firmanın logosu: ŞAPCI'nın denenmiş ayarları, panel ölçüsü hariç.
+// Logo tanıma ve zemin atma kodda, her logoda çalışır; ŞAPCI'ya özel olan
+// yalnız 200×81 cm idi. En kullanıcıda kalır, yükseklik logonun oranından gelir.
+const { 'p-panelW': _en, 'p-panelH': _boy, ...logoAlanlari } = HAZIR[0].data.fields;
+HAZIR.splice(1, 0, {
+  ad: 'Logo / firma adı — lamel 18 mm, yazı dalgaya yedirilmiş',
+  not: 'Önce firmanın logosunu "Görsel seç" ile yükleyin, sonra panel enini girin.',
+  data: { ...HAZIR[0].data, fields: logoAlanlari },
+});
 
 export function ayarlarimOku() {
   try {

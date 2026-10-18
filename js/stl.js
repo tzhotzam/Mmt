@@ -156,9 +156,16 @@ export function pickBestAxis(tris) {
 
   // %20'den fazla farklıysa incelik kararı verir; değilse puana bakılır.
   const belirgin = kalinlik[enInce] < kalinlik[ikinci] * 0.8;
-  const axis = belirgin
+  let axis = belirgin
     ? enInce
     : (scores[enInce] >= scores[ikinci] ? enInce : ikinci);
+  // Baş ve büstte ön ile yan neredeyse eşit ince ve eşit puanlıdır (ölçülen
+  // kadın başı: 0,425'e 0,434); kılpayı yan seçilince yüz profil çıkıyordu.
+  // Başa baş durumda insanın beklediği ön kazanır.
+  if (!belirgin && (enInce === 'y' || ikinci === 'y')) {
+    const diger = enInce === 'y' ? ikinci : enInce;
+    if (scores[diger] < scores.y * 1.1) axis = 'y';
+  }
 
   return { axis, scores, thickness: kalinlik };
 }
@@ -267,6 +274,99 @@ export function parseObj(text) {
         if (a && b && c) tris.push([a, b, c]);
       }
     }
+  }
+  return tris;
+}
+
+/**
+ * "Y yukarı" ağı programın "Z yukarı" düzenine çevirir: (x, y, z) → (x, z, y).
+ *
+ * OBJ'de yerleşik düzen Y yukarı, ön +Z'dir (Blender'ın varsayılan OBJ
+ * çıkışı, Meshy, tarama uygulamaları). Program ise Z'yi yukarı, "önden"
+ * bakışı +Y'den sayar. Çevrilmezse "Tepeden" seçeneği yüzü, "Önden" seçeneği
+ * başın tepesini gösteriyordu. Eksen değişimi aynalama olduğu için üçgenin
+ * köşe sırası da çevrilir; yüzey yönü (normal) bozulmaz.
+ */
+export function yYukaridanZYukariya(tris) {
+  const yeni = new Map();   // paylaşılan köşe bir kez çevrilir
+  const cevir = (p) => {
+    let q = yeni.get(p);
+    if (!q) { q = [p[0], p[2], p[1]]; yeni.set(p, q); }
+    return q;
+  };
+  return tris.map(([a, b, c]) => [cevir(a), cevir(c), cevir(b)]);
+}
+
+/** Yüklemede izin verilen en çok üçgen; üstü `seyrelt` ile indirilir. */
+export const MAKS_UCGEN = 400000;
+
+/**
+ * Çok büyük ağı hızlıca seyreltir (köşe kümeleme): uzay eşit hücrelere
+ * bölünür, aynı hücreye düşen köşeler ortalamalarında birleşir, çökmüş
+ * üçgenler atılır.
+ *
+ * Neden: Blender'dan ya da taramadan gelen milyonlarca üçgenli OBJ sayfanın
+ * belleğini aşıp programı çökertiyordu (2,5 milyon üçgen ölçüldü). Karesel
+ * hatalı sadeleştirme (decimate.js) aynı ağda 40 sn ve 1,5 GB istiyor; bu
+ * yöntem tek geçiştir. Panel ızgarası hücreden çok daha kaba olduğu için
+ * kabartmada fark görünmez.
+ *
+ * Hücre boyu yüzey alanından seçilir (üçgen ≈ 2 × köşe ≈ 2 × alan / hücre²);
+ * hedef aşılırsa hücre büyütülüp yeniden denenir.
+ */
+export function seyrelt(tris, hedef = MAKS_UCGEN) {
+  if (tris.length <= hedef) return tris;
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let alan = 0;
+  for (const [a, b, c] of tris) {
+    for (const p of [a, b, c]) {
+      if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+      if (p[2] < minZ) minZ = p[2]; if (p[2] > maxZ) maxZ = p[2];
+    }
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+    const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    alan += Math.sqrt(nx * nx + ny * ny + nz * nz) / 2;
+  }
+  let hucre = Math.sqrt((2 * alan) / hedef) || (maxX - minX) / 200;
+
+  for (let deneme = 0; deneme < 6; deneme++, hucre *= 1.3) {
+    const nx = Math.floor((maxX - minX) / hucre) + 1;
+    const ny = Math.floor((maxY - minY) / hucre) + 1;
+    const indis = new Map();
+    const top = [];   // hücre başına [Σx, Σy, Σz, adet]
+    const kume = (p) => {
+      const k = Math.floor((p[0] - minX) / hucre)
+        + nx * (Math.floor((p[1] - minY) / hucre) + ny * Math.floor((p[2] - minZ) / hucre));
+      let i = indis.get(k);
+      if (i === undefined) { i = top.length; indis.set(k, i); top.push([0, 0, 0, 0]); }
+      return i;
+    };
+    const yuzler = [];
+    const gorulen = new Set();
+    for (const t of tris) {
+      const ia = kume(t[0]), ib = kume(t[1]), ic = kume(t[2]);
+      if (ia === ib || ib === ic || ia === ic) continue;
+      // Aynı üç hücreyi birleştiren ikinci üçgen fazladır.
+      const s = [ia, ib, ic].sort((x, y) => x - y);
+      const anahtar = `${s[0]},${s[1]},${s[2]}`;
+      if (gorulen.has(anahtar)) continue;
+      gorulen.add(anahtar);
+      yuzler.push(ia, ib, ic);
+      for (let j = 0; j < 3; j++) {
+        const q = top[[ia, ib, ic][j]], p = t[j];
+        q[0] += p[0]; q[1] += p[1]; q[2] += p[2]; q[3]++;
+      }
+    }
+    if (yuzler.length / 3 > hedef && deneme < 5) continue;
+    const kose = top.map((q) => (q[3] ? [q[0] / q[3], q[1] / q[3], q[2] / q[3]] : null));
+    const sonuc = [];
+    for (let i = 0; i < yuzler.length; i += 3) {
+      sonuc.push([kose[yuzler[i]], kose[yuzler[i + 1]], kose[yuzler[i + 2]]]);
+    }
+    return sonuc;
   }
   return tris;
 }

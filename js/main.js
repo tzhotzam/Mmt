@@ -4,7 +4,7 @@ import {
   gridFromImageData, applyFilters, suggestInvert, makeGrid,
   toneConcentration, fineDetailRatio,
 } from './heightmap.js';
-import { parseMesh, heightmapFromStl, pickBestAxis, projectedSize } from './stl.js';
+import { parseMesh, seyrelt, yYukaridanZYukariya, heightmapFromStl, pickBestAxis, projectedSize } from './stl.js';
 import { facetize } from './facet.js';
 import { inflateSilhouette, blendRelief } from './relief.js';
 import { demoMeshTris } from './demomesh.js';
@@ -28,13 +28,13 @@ import { buildCutList, cutListToCsv, assemblyGuide } from './cutlist.js';
 import { drawPlan, drawNest, drawSource, drawParts, drawPaintView, screenToGrid } from './preview2d.js';
 import { createPaintLayer, applyPaint, stroke, isEmpty } from './paint.js';
 import { createPreview3d } from './preview3d.js';
-import { panelFotoBul, panelDerinligi } from './panelfoto.js';
+import { panelFotoBul, panelDerinligi, konuAyir } from './panelfoto.js';
 
 // Yükseklik haritasının uzun kenardaki örnek sayısı. 320 idi; 2,6 m'lik bir
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-18-b';
+const APP_VERSION = '2026-10-19-g';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -505,10 +505,12 @@ async function loadImageFile(file) {
   state.decimateCache = null;
   state.remeshCache = null;
   if (state.panelFoto) {
-    // Fotoğraftaki panelin kendi dalgası var: üstüne hazır desen eklemek onu
-    // değiştirirdi. Lamel yönü de fotoğraftakiyle aynı olur. Parlaklık bir
-    // lamel fotoğrafında yalnız çizgi deseni okur; derinlik yapay zekâdan.
-    if (num('p-patMix', 0) > 0) els['p-patMix'].value = 0;
+    // Panelin tamamı alınıyorsa fotoğraftaki panelin kendi dalgası var: üstüne
+    // hazır desen eklemek onu değiştirirdi. Yalnız konu alınıyorsa zemin
+    // kullanıcının deseninden gelir, desen payına dokunulmaz. Lamel yönü
+    // fotoğraftakiyle aynı olur. Parlaklık bir lamel fotoğrafında yalnız
+    // çizgi deseni okur; derinlik yapay zekâdan.
+    if (!bool('p-panelSubject') && num('p-patMix', 0) > 0) els['p-patMix'].value = 0;
     els['p-orientation'].value = state.panelFoto.yon;
     syncRangeOutputs();
     if (state.depthMode !== 'ai') setDepthMode('ai', false);
@@ -596,7 +598,8 @@ async function aiDerinlik() {
     scheduleRegen();
     const sure = `${((performance.now() - t0) / 1000).toFixed(1)} sn`;
     setSourceStatus(state.panelFoto
-      ? `Panel fotoğrafından derinlik hazır: ${state.uploadName} — ${sure}. Fotoğraftaki panelde ` +
+      ? `Panel fotoğrafından derinlik hazır: ${state.uploadName} — ${sure}` +
+        (state.panelFoto.konu ? ' (yalnız konu alındı, panelin zemini atıldı)' : '') + '. Fotoğraftaki panelde ' +
         `~${state.panelFoto.lamel} lamel var; aynı görünüm için lamel adımını (kalınlık + boşluk) ` +
         `panel boyu / ${state.panelFoto.lamel} civarında tutun.`
       : `Yapay zekâ derinliği hazır: ${state.uploadName} — ${sure}`);
@@ -627,7 +630,12 @@ function aiVerisi(g) {
   const pf = state.panelFoto;
   if (!pf) return g.data;
   const adimHucre = pf.yon === 'vertical' ? pf.adim * g.w / pf.en : pf.adim * g.h / pf.boy;
-  return panelDerinligi(g.data, g.w, g.h, { adimHucre, yon: pf.yon });
+  const d = panelDerinligi(g.data, g.w, g.h, { adimHucre, yon: pf.yon });
+  // Yalnız konu: fotoğraftaki panelin zemini (düz lameller, dalga) atılır.
+  if (!bool('p-panelSubject')) return d;
+  const k = konuAyir(d, g.w, g.h);
+  pf.konu = k.ayrildi;
+  return k.data;
 }
 
 /**
@@ -673,7 +681,9 @@ function setDepthMode(mode, yenidenOku = true) {
   scheduleRegen();
 }
 
-const MAX_MESH_BYTES = 120 * 1024 * 1024;
+// Masaüstünde bellek bol; Blender'dan çıkan 180 MB'lık OBJ okunup yüklemede
+// seyreltilir (seyrelt). Telefonda/tarayıcıda eski sınır kalır.
+const MAX_MESH_BYTES = (globalThis.masaustu ? 400 : 120) * 1024 * 1024;
 
 async function loadStlFile(file) {
   if (file.size > MAX_MESH_BYTES) {
@@ -700,13 +710,17 @@ async function loadMeshBuffer(buf, ad) {
       'Dosya ZIP veya USDZ ise önce açıp içinden STL/OBJ çıkarın.'
     );
   }
-  state.tris = tris;
+  // Milyonlarca üçgen sayfanın belleğini aşıp programı çökertir.
+  const ilkSayi = tris.length;
+  state.tris = seyrelt(tris);
+  // OBJ "Y yukarı" gelir; çevrilmezse "Önden" başın tepesini gösterir.
+  if (format === 'OBJ') state.tris = yYukaridanZYukariya(state.tris);
   state.uploadImage = null;
   state.panelFoto = null;
   state.aiIs++;
   state.planFocus = -1;
   state.planView = { k: 1, px: 0, py: 0 };
-  state.meshInfo = { format, name: ad, count: tris.length };
+  state.meshInfo = { format, name: ad, count: state.tris.length, ilkSayi };
   const r = rebuildFromMesh();
   reportMesh(r);
   setInvert(false);
@@ -747,7 +761,8 @@ function reportMesh(r) {
   const b = state.meshInfo;
   if (!r || !b) return;
   setSourceStatus(
-    `${b.format}: ${b.name} — ${b.count.toLocaleString('tr-TR')} üçgen, ` +
+    `${b.format}: ${b.name} — ${b.count.toLocaleString('tr-TR')} üçgen` +
+    (b.ilkSayi > b.count ? ` (${b.ilkSayi.toLocaleString('tr-TR')} üçgenden seyreltildi)` : '') + ', ' +
     `${AXIS_NAMES[r.axis]} bakılıyor${r.otomatik ? ' (otomatik)' : ''}`
   );
 }
@@ -1656,6 +1671,9 @@ function applySettings(data) {
     } else {
       setDepthMode(istenen, false);
       if (state.uploadKind === 'ai') yuzDetayiUygula();
+      // Model yüklüyken ayar uygulanırsa bakış yönü değişmiş olabilir: ağ
+      // yeniden taranır. Yoksa "Önden" seçili görünür ama model yandan kalırdı.
+      else if (state.tris) reportMesh(rebuildFromMesh());
       else if (state.uploadGrid) { composeSource(); resetPaint(); }
       syncAspect();
       scheduleRegen();
@@ -2111,7 +2129,8 @@ for (const input of document.querySelectorAll('.panel input, .panel select')) {
     if (input.id === 'p-patternCode' || input.id === 'p-seedText') return;
     // Desen payı özel: yüklü görsel varken applyPattern() onu deseni ile
     // DEĞİŞTİRİRDİ. Pay sıfıra çekildiğinde de görsel kaybolurdu.
-    if (input.id === 'p-faceDetail') {
+    // Yalnız konu da saklanan ham derinlikten yeniden kurulur, model çalışmaz.
+    if (input.id === 'p-faceDetail' || input.id === 'p-panelSubject') {
       saveSettings();
       yuzDetayiUygula();
       return;
@@ -2167,12 +2186,15 @@ els['file-stl'].onchange = async (e) => {
 
 // Masaüstü sürümü (desktop/preload.cjs): Explorer'da çift tıklanan ya da
 // Dosya → Aç… ile seçilen dosya. Tarayıcıda `masaustu` yoktur.
-globalThis.masaustu?.dosyaAcilinca(async ({ ad, tur, veri }) => {
-  const file = new File([veri], ad, { type: tur });
+// İçerik IPC ile değil `adres`ten gelir: büyük dosya IPC sınırını aşıyordu.
+globalThis.masaustu?.dosyaAcilinca(async ({ ad, tur, adres }) => {
   const model = /\.(stl|obj)$/i.test(ad);
   setSourceStatus(`${ad} okunuyor…`);
   els.busy.hidden = false;
   try {
+    const res = await fetch(adres);
+    if (!res.ok) throw new Error('dosya okunamadı');
+    const file = new File([await res.blob()], ad, { type: tur });
     await (model ? loadStlFile(file) : loadImageFile(file));
   } catch (err) {
     setSourceStatus(model ? err.message : `Görsel okunamadı: ${err.message}`, true);
@@ -2235,7 +2257,7 @@ async function meshyUret(tur) {
   if (!anahtar) { meshyDurum('Önce Meshy API anahtarını girip "Anahtarı kaydet"e basın.', true); return; }
   if (tur === 'foto' && !state.uploadImage) { meshyDurum('Önce "Görsel seç" ile bir fotoğraf yükleyin.', true); return; }
   meshyCalisiyor = true;
-  els['meshy-text'].disabled = els['meshy-image'].disabled = true;
+  meshyDugmeleri(true);
   meshyDurum('⏳ Meshy\'ye gönderiliyor…');
   try {
     const o = {
@@ -2261,9 +2283,72 @@ async function meshyUret(tur) {
     meshyDurum(`✗ ${err.message}`, true);
   } finally {
     meshyCalisiyor = false;
-    els['meshy-text'].disabled = els['meshy-image'].disabled = false;
+    meshyDugmeleri(false);
   }
 }
+
+function meshyDugmeleri(kapali) {
+  for (const id of ['meshy-text', 'meshy-image', 'meshy-gorsel']) els[id].disabled = kapali;
+}
+
+/**
+ * Meshy'den yazıdan görsel: kaynak olarak yüklenir, yapay zekâ derinliğiyle
+ * okunur (parlaklık kabartma görselinde biçimi değil ışığı okur). Görsel
+ * oranı panelinkine en yakın seçilir. "Panel" türünde panel fotoğrafı
+ * tanıma (loadImageFile) kendiliğinden devreye girer.
+ */
+async function meshyGorsel() {
+  if (meshyCalisiyor) return;
+  const m = await import('./meshy.js');
+  const anahtar = els['meshy-key'].value.trim() || m.anahtarOku();
+  if (!anahtar) { meshyDurum('Önce Meshy API anahtarını girip "Anahtarı kaydet"e basın.', true); return; }
+  const model = els['meshy-imgModel'].value;
+  const tur = els['meshy-imgKind'].value;
+  // Logo türü ŞAPCI hazır ayarıyla işlenir; ayar yalnız okunur, değişmez.
+  const sapci = tur === 'logo' ? HAZIR.find((a) => a.ad.startsWith('ŞAPCI')) : null;
+  meshyCalisiyor = true;
+  meshyDugmeleri(true);
+  meshyDurum('⏳ Meshy\'ye gönderiliyor…');
+  try {
+    const r = await m.yazidanGorsel(els['meshy-prompt'].value, {
+      anahtar,
+      model,
+      tur,
+      oran: sapci
+        ? m.enYakinOran(+sapci.data.fields['p-panelW'], +sapci.data.fields['p-panelH'])
+        : m.enYakinOran(num('p-panelW', 900), num('p-panelH', 600)),
+      onProgress: ({ asama, oran }) => meshyDurum(
+        asama === 'sirada' ? '⏳ Meshy sırada bekliyor…'
+          : asama === 'indirme' ? '⏳ Görsel indiriliyor…'
+          : `⏳ Görsel üretiliyor… %${Math.round(oran * 100)} (~30 sn)`),
+    });
+    // Silüet parlaklıktan okunur (ŞAPCI'da da öyle); yapay zekâ derinliği
+    // düz grafikte biçim değil leke verir.
+    const derinlik = sapci ? 'luma' : 'ai';
+    if (state.depthMode !== derinlik) setDepthMode(derinlik, false);
+    setSourceStatus(`${r.ad} okunuyor…`);
+    els.busy.hidden = false;
+    await loadImageFile(new File([r.buf], r.ad, { type: r.tur }));
+    if (sapci) {
+      // "Kayıtlı ayarlarım → Uygula" ile aynı yol; liste de bunu gösterir.
+      setMode(sapci.data.mode || 'ribs');
+      applySettings(sapci.data);
+      ayarListesiniDoldur('h:' + sapci.ad);
+    }
+    meshyDurum(`✓ Görsel yüklendi (${m.GORSEL_MODELLERI[model]} kredi)` +
+      (sapci ? ` ve "${sapci.ad}" ayarı uygulandı` : '') + '. Beğenmezseniz yeniden ' +
+      'üretin — aynı yazı her seferinde başka görsel verir. Görseli "Kaynak" sekmesinde görebilirsiniz.');
+    setTimeout(onizlemeyeKay, 400);
+  } catch (err) {
+    console.error(err);
+    meshyDurum(`✗ ${err.message}`, true);
+    els.busy.hidden = true;
+  } finally {
+    meshyCalisiyor = false;
+    meshyDugmeleri(false);
+  }
+}
+els['meshy-gorsel'].onclick = meshyGorsel;
 els['meshy-text'].onclick = () => meshyUret('yazi');
 els['meshy-image'].onclick = () => meshyUret('foto');
 

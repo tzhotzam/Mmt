@@ -18,7 +18,7 @@ import { sheetToDxf } from '../js/export/dxf.js';
 import { sheetToSvg } from '../js/export/svg.js';
 import { buildCutList, assemblyGuide, cutListToCsv } from '../js/cutlist.js';
 import {
-  heightmapFromStl, parseStl, parseObj, parseMesh, validateMesh,
+  heightmapFromStl, parseStl, parseObj, parseMesh, validateMesh, seyrelt, yYukaridanZYukariya,
   pickBestAxis, projectedSize, heightmapWithCoverage,
 } from '../js/stl.js';
 import { facetize } from '../js/facet.js';
@@ -705,6 +705,29 @@ test('kayıtlı ayarlar: hazır ŞAPCI ayarı ve cihazda saklama', () => {
   assert.equal(F['p-thickness'], '18');
   assert.equal(F['p-subjectMode'], 'yedir');
   assert.equal(F['p-pattern'], 'akis');
+  // Genel logo: ŞAPCI'nın ayarları, ölçüsüz (her firmada en kullanıcıda kalır).
+  const logo = HAZIR.find((a) => a.ad.startsWith('Logo / firma'));
+  assert.ok(logo, 'hazır genel logo ayarı yok');
+  assert.ok(!('p-panelW' in logo.data.fields) && !('p-panelH' in logo.data.fields));
+  assert.equal(logo.data.fields['p-subjectMode'], 'yedir');
+  assert.equal(logo.data.invert, true);
+  assert.equal(F['p-panelW'], '2000', 'ŞAPCI ölçüsü genel ayardan etkilenmemeli');
+  // 3B yüz: yalnız yüzü okutan alanlar; panel ölçüsü ve tersleme kullanıcıda kalır.
+  const yuz = HAZIR.find((a) => a.ad.startsWith('3B yüz'));
+  assert.ok(yuz, 'hazır 3B yüz ayarı yok');
+  assert.equal(yuz.data.mode, 'ribs');
+  assert.equal(yuz.data.fields['p-autoBlur'], false);
+  assert.equal(yuz.data.fields['p-blur'], '3');
+  assert.equal(yuz.data.fields['p-sharpen'], '1.2');
+  assert.equal(yuz.data.fields['p-thickness'], '12');
+  assert.equal(yuz.data.fields['p-gap'], '6');
+  assert.ok(!('p-panelW' in yuz.data.fields));
+  // ŞAPCI'dan sonra uygulansa da yüz en önde kalır: tersleme, dalga ve "yedir" sıfırlanır.
+  assert.equal(yuz.data.invert, false);
+  assert.equal(yuz.data.fields['p-patMix'], '0');
+  assert.equal(yuz.data.fields['p-subjectMode'], 'ust');
+  assert.equal(yuz.data.fields['p-viewAxis'], 'y', 'yüz paneli önden bakmalı');
+  assert.equal(yuz.data.fields['p-subjectPad'], '0.3', 'büstün etrafında düz zemin kalmalı');
   // localStorage yoksa (node) sessizce boş döner, hata atmaz.
   assert.deepEqual(ayarlarimOku(), []);
   assert.equal(typeof ayarKaydet('x', {}), 'boolean');
@@ -855,6 +878,55 @@ test('OBJ okunur: çokgen yüzler üçgenlenir, negatif indis çalışır', () =
     assert.equal(t.length, 3);
     for (const p of t) assert.ok(p.every(Number.isFinite));
   }
+});
+
+test('çok büyük ağ yüklemede seyreltilir, biçimi korunur', () => {
+  // Blender'dan 2,5 milyon üçgenli OBJ programı çökertiyordu.
+  const n = 400, tris = [];
+  const p = (i, j) => [i, j, 20 * Math.sin(i / 40) * Math.cos(j / 40)];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      tris.push([p(i, j), p(i + 1, j), p(i + 1, j + 1)], [p(i, j), p(i + 1, j + 1), p(i, j + 1)]);
+    }
+  }
+  const s = seyrelt(tris, 40000);
+  assert.ok(s.length <= 40000 && s.length > 10000, `seyreltilmiş üçgen: ${s.length}`);
+  assert.ok(validateMesh(s).ok);
+  let tepe = -Infinity, ilkTepe = -Infinity;
+  for (const t of s) for (const q of t) tepe = Math.max(tepe, q[2]);
+  for (const t of tris) for (const q of t) ilkTepe = Math.max(ilkTepe, q[2]);
+  assert.ok(Math.abs(tepe - ilkTepe) < 2, 'kabartmanın tepesi kayboldu');
+  // Sınırın altındaki ağa dokunulmaz.
+  const kucuk = tris.slice(0, 100);
+  assert.equal(seyrelt(kucuk, 40000), kucuk);
+});
+
+test('OBJ Y yukarı düzeninden Z yukarıya çevrilir, yüz önde kalır', () => {
+  // Blender/Meshy OBJ: yukarı +Y, yüz +Z. Programda yukarı +Z, ön +Y.
+  const a = [0, 0, 0], b = [1, 0, 0], c = [0, 1, 0];
+  const [t] = yYukaridanZYukariya([[a, b, c]]);
+  assert.deepEqual(t, [[0, 0, 0], [0, 0, 1], [1, 0, 0]]);
+  // Normal yönü korunur: +Z'ye bakan yüz +Y'ye bakar.
+  const n = (u, v, w) => {
+    const p = [v[0] - u[0], v[1] - u[1], v[2] - u[2]], q = [w[0] - u[0], w[1] - u[1], w[2] - u[2]];
+    return [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+  };
+  assert.deepEqual(n(...t), [0, 1, 0]);
+});
+
+test('pickBestAxis başa baş durumda yandan değil önden bakar', () => {
+  // Baş gibi: eni ve derinliği neredeyse eşit, boyu uzun bir küre-kutu.
+  const tris = [];
+  const kure = (u, v) => [0.6 * Math.cos(v) * Math.cos(u), 0.57 * Math.cos(v) * Math.sin(u), 0.95 * Math.sin(v)];
+  const N = 40;
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const u0 = (i / N) * 2 * Math.PI, u1 = ((i + 1) / N) * 2 * Math.PI;
+      const v0 = (j / N - 0.5) * Math.PI, v1 = ((j + 1) / N - 0.5) * Math.PI;
+      tris.push([kure(u0, v0), kure(u1, v0), kure(u1, v1)], [kure(u0, v0), kure(u1, v1), kure(u0, v1)]);
+    }
+  }
+  assert.equal(pickBestAxis(tris).axis, 'y');
 });
 
 test('parseMesh biçimi içerikten tanır, uzantıya güvenmez', () => {
@@ -3098,6 +3170,89 @@ test('Meshy: görev başlar, sorgulanır, OBJ iner; hatalar anlaşılır', async
   assert.match(oku('js/main.js'), /'gizli' in el\.dataset/, 'alanlariTopla gizli alanları atlamıyor');
 });
 
+test('Meshy yazıdan görsel: istek, sorgulama, indirme ve hatalar', async () => {
+  const { yazidanGorsel, gorselIstemi, enYakinOran } = await import('../js/meshy.js');
+  const istekler = [];
+  let n = 0;
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const sahte = (durumlar) => async (url, o = {}) => {
+    istekler.push({ url, o });
+    const yanit = (status, veri, ikili, tur) => ({
+      ok: status < 300, status, json: async () => veri,
+      arrayBuffer: async () => (ikili || new Uint8Array()).buffer,
+      headers: { get: (k) => (k === 'content-type' ? tur : null) },
+    });
+    if (url.startsWith('https://assets')) return yanit(200, null, PNG, 'image/png');
+    if (o.headers?.Authorization !== 'Bearer k') return yanit(401, { message: 'bad key' });
+    if (o.method === 'POST') return yanit(202, { result: 'r1' });
+    return yanit(200, durumlar[Math.min(n++, durumlar.length - 1)]);
+  };
+  const bekle = async () => {};
+  const bitti = { status: 'SUCCEEDED', progress: 100, image_urls: ['https://assets.meshy.ai/r1.png'] };
+
+  const r = await yazidanGorsel('lion head', {
+    anahtar: 'k', model: 'nano-banana-2', oran: '3:4', fetchFn: sahte([{ status: 'IN_PROGRESS', progress: 50 }, bitti]), bekle,
+  });
+  assert.deepEqual([...new Uint8Array(r.buf)], [...PNG], 'görsel inmedi');
+  assert.equal(r.tur, 'image/png');
+  assert.match(r.ad, /^meshy_r1\.png$/);
+  const post = istekler.find((x) => x.o.method === 'POST');
+  assert.equal(post.url, 'https://api.meshy.ai/openapi/v1/text-to-image');
+  const govde = JSON.parse(post.o.body);
+  assert.equal(govde.ai_model, 'nano-banana-2');
+  assert.equal(govde.aspect_ratio, '3:4');
+  assert.ok(govde.prompt.startsWith('lion head, '), govde.prompt);
+  assert.ok(istekler.some((x) => x.url === 'https://api.meshy.ai/openapi/v1/text-to-image/r1'), 'görev sorgulanmadı');
+  // Bilinmeyen model ucuz olana düşer (pro plan isteyenler gönderilmez).
+  n = 0; istekler.length = 0;
+  await yazidanGorsel('x', { anahtar: 'k', model: 'nano-banana-pro', fetchFn: sahte([bitti]), bekle });
+  assert.equal(JSON.parse(istekler.find((x) => x.o.method === 'POST').o.body).ai_model, 'nano-banana');
+  // Hatalar.
+  n = 0;
+  await assert.rejects(yazidanGorsel('x', { anahtar: 'k', fetchFn: sahte([{ status: 'SUCCEEDED', image_urls: [] }]), bekle }), /görsel vermedi/);
+  await assert.rejects(yazidanGorsel('x', { anahtar: 'yanlis', fetchFn: sahte([bitti]), bekle }), /anahtarı geçersiz/);
+  await assert.rejects(yazidanGorsel(' ', { anahtar: 'k', fetchFn: sahte([bitti]), bekle }), /yazın/);
+
+  // İstem: kabartmada pürüzsüz ve önden; panelde lamel.
+  const k = gorselIstemi('kadın yüzü');
+  assert.ok(/^kadın yüzü, /.test(k) && /front view/.test(k) && /bas-relief/.test(k), k);
+  assert.ok(/slats/.test(gorselIstemi('yüz', 'panel')) && /front view/.test(gorselIstemi('yüz', 'panel')));
+  const l = gorselIstemi('lion head', 'logo');
+  assert.ok(/^lion head, /.test(l) && /black silhouette/.test(l) && /white background/.test(l), l);
+  assert.ok(!/no text/.test(l), 'logo isteminde "no text" monogramı da siler');
+  // Oran: panel ölçüsüne en yakın izinli oran.
+  assert.equal(enYakinOran(1000, 1000), '1:1');
+  assert.equal(enYakinOran(900, 600), '4:3');
+  assert.equal(enYakinOran(600, 1800), '9:16');
+  assert.equal(enYakinOran(2000, 810), '16:9');
+});
+
+test('ŞAPCI hazır ayarı değişmez; Meshy logo türü onu yalnız uygular', async () => {
+  // Kesilip beğenilen ürünün ayarları. Değiştirmek gerekiyorsa yeni bir
+  // hazır ayar ekleyin; bu ayar o ürünü yeniden üretebilmek için duruyor.
+  const { HAZIR } = await import('../js/presets.js');
+  const s = HAZIR.find((a) => a.ad.startsWith('ŞAPCI'));
+  assert.ok(s, 'ŞAPCI hazır ayarı yok');
+  assert.equal(s.data.mode, 'ribs');
+  assert.equal(s.data.depthMode, 'luma');
+  assert.equal(s.data.invert, true);
+  assert.equal(s.data.patternSeed, 0.42);
+  const beklenen = {
+    'p-pattern': 'akis', 'p-patMix': '0.6', 'p-subjectMode': 'yedir', 'p-subjectPad': '0.1',
+    'p-patScale': '0.16', 'p-patAngle': '0.1', 'p-patDetail': '0.5', 'p-patternCode': 'AKIS.16.10.50.6Y222O',
+    'p-panelW': '2000', 'p-panelH': '815', 'p-thickness': '18', 'p-gap': '4',
+    'p-maxDepth': '100', 'p-baseDepth': '40', 'p-orientation': 'vertical', 'p-sharpen': '0.6',
+    'p-railCount': '2', 'p-fit': '0.2', 'p-sheetW': '2100', 'p-sheetH': '2800', 'p-toolDiameter': '6',
+  };
+  for (const [k, v] of Object.entries(beklenen)) assert.equal(s.data.fields[k], v, `ŞAPCI ${k} değişmiş`);
+  // Meshy logo türü: ayarı okur, applySettings ile uygular, kendisi yazmaz.
+  const js = oku('js/main.js');
+  const govde = js.match(/async function meshyGorsel[\s\S]*?\n}/)?.[0] || '';
+  assert.match(govde, /HAZIR\.find\(\(a\) => a\.ad\.startsWith\('ŞAPCI'\)\)/);
+  assert.match(govde, /applySettings\(sapci\.data\)/);
+  assert.ok(!/sapci\.data(\.fields)?\[[^\]]+\]\s*=(?!=)/.test(govde), 'ŞAPCI ayarına yazılıyor');
+});
+
 test('logo dalgaya yedirilir (ya da üstte / oyulmuş), ton yüklenen içerikte ölçülür', () => {
   const js = oku('js/main.js');
   const govde = js.match(/function composeSource[\s\S]*?\n}/)?.[0] || '';
@@ -3381,6 +3536,27 @@ test('kenar doğrusu taşan kabartmaya çekilmez', () => {
   for (let y = 0; y < 100; y++) { ts.push(y); vs.push(0.1 * y + 20 + (y > 45 && y < 56 ? 40 : 0)); }
   const { a, b } = dogruUydur(ts, vs);
   assert.ok(Math.abs(a - 0.1) < 0.01 && Math.abs(b - 20) < 1, `a=${a.toFixed(3)} b=${b.toFixed(2)}`);
+});
+
+test('yalnız konu: panelin zemini atılır, yüz kalır, ayrıntı bulanmaz', async () => {
+  const { konuAyir } = await import('../js/panelfoto.js');
+  const w = 160, h = 160, d = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dalga = 0.15 + 0.1 * Math.sin(x / 9);                          // fotoğraftaki panelin zemini
+    const yuz = Math.hypot((x - 80) / 40, (y - 80) / 52) < 1 ? 0.7 : 0;   // yüz
+    const goz = Math.hypot(x - 66, y - 70) < 5 ? -0.15 : 0;               // göz çukuru
+    d[y * w + x] = Math.max(dalga, yuz + goz);
+  }
+  const { data, ayrildi } = konuAyir(d, w, h);
+  assert.ok(ayrildi, 'konu ayrılmadı');
+  assert.equal(data[5 * w + 5], 0, 'zemin (dalga) kaldı');
+  assert.equal(data[80 * w + 150], 0, 'yüzün yanındaki dalga kaldı');
+  assert.ok(data[80 * w + 80] > 0.18, 'yüz silindi');
+  // Göz çukuru delik sayılıp zemine düşmemeli ve yüzden alçak kalmalı.
+  assert.ok(data[70 * w + 66] > 0.1 && data[70 * w + 66] < data[80 * w + 80], `göz: ${data[70 * w + 66]}`);
+  // Konusu belirsiz (düz) derinlikte dokunulmaz.
+  const duz = new Float32Array(w * h).fill(0.5);
+  assert.equal(konuAyir(duz, w, h).ayrildi, false);
 });
 
 test('panel fotoğrafında zemin ayırma kapalı, kenar payı yok', () => {

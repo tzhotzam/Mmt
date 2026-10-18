@@ -1,12 +1,17 @@
-// Sayfaya yalnızca tek bir şey açılır: masaüstünden gelen dosyayı dinlemek.
+// Sayfaya iki şey açılır: masaüstünden gelen dosyayı dinlemek ve Meshy
+// dosyasını ana sürece indirtmek.
 // Sayfa Node'a ya da dosya sistemine erişemez (contextIsolation + sandbox).
 
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('masaustu', {
-  /** `cb({ ad, tur, veri })` — veri: Uint8Array. Kayıt olunca bekleyen dosyalar gelir. */
+  /** `cb({ ad, tur, adres })` — içerik `adres`ten (app://) okunur. Kayıt olunca bekleyen dosyalar gelir. */
   dosyaAcilinca(cb) {
     ipcRenderer.on('dosya-ac', (_e, d) => cb(d));
     ipcRenderer.send('sayfa-hazir');
+  },
+  /** Meshy dosyasını ana süreç indirir (CORS engeli yok). → { status, tur, veri } */
+  indir(url) {
+    return ipcRenderer.invoke('indir', url);
   },
 });

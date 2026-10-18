@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
-<meta name="app-version" content="2026-10-18-b">
+<meta name="app-version" content="2026-10-19-g">
 <meta name="description" content="Görselden parametrik 3B duvar paneli üretir ve CNC için DXF/SVG çıkarır.">
 <title>Parametrik CNC Duvar Paneli</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
 // Kurtarma kodu js içinde olsaydı tam da çalışması gereken durumda bayat
 // olurdu. Bu betik HTML'in parçası olduğu için her zaman günceldir.
 (function () {
-  var V = '2026-10-18-b';
+  var V = '2026-10-19-g';
   var ANAHTAR = 'cnc-panel-surum';
   try {
     if (localStorage.getItem(ANAHTAR) === V) return;
@@ -147,11 +147,12 @@
       <button id="btn-demo" class="upload ghost"><span>✨ Hazır desen</span></button>
     </div>
     <details id="meshy-block" class="meshy-block">
-      <summary>🤖 Yazıdan / fotoğraftan 3B model (Meshy)</summary>
+      <summary>🤖 Meshy: yazıdan görsel ya da 3B model</summary>
       <p class="seg-hint">
-        Serbest duran heykel (Dilim, Poligonal) için her yanı olan model gerekir. Meshy onu
-        yazıdan ya da fotoğraftan üretir, model bitince buraya kendiliğinden yüklenir.
-        Meshy hesabı ve API anahtarı gerekir; her model kredi harcar.
+        Duvar paneli için <b>yazıdan görsel</b> yeter (3–6 kredi, ~30 sn): görsel gelince yapay
+        zekâ derinliği onu kabartmaya çevirir. Serbest duran heykel (Dilim, Poligonal) için her
+        yanı olan <b>3B model</b> gerekir. Meshy hesabı ve API anahtarı gerekir; her üretim
+        kredi harcar.
       </p>
       <label>Meshy API anahtarı <small>yalnız bu cihazda saklanır, ayar dosyasına girmez</small>
         <input type="password" id="meshy-key" data-gizli autocomplete="off" spellcheck="false" placeholder="msy_…">
@@ -160,17 +161,33 @@
         <button type="button" id="meshy-key-save">Anahtarı kaydet</button>
         <button type="button" id="meshy-key-del" class="ghost">Anahtarı sil</button>
       </div>
-      <label>Ne üretilsin? <small>İngilizce yazmak daha iyi sonuç verir</small>
-        <textarea id="meshy-prompt" data-gizli rows="2" placeholder="örn. roaring lion head, sculpture, solid base"></textarea>
+      <label>Ne üretilsin? <small>yalnız konuyu yazın: "önden, düz zemin" gibi ekleri program koyar</small>
+        <textarea id="meshy-prompt" data-gizli rows="2" placeholder="örn. woman face with closed eyes / roaring lion head"></textarea>
       </label>
-      <label>Tarz
+      <label>Görsel türü
+        <select id="meshy-imgKind" data-gizli>
+          <option value="kabartma">Kabartma heykel (önerilen — lameli program ekler)</option>
+          <option value="logo">Logo / silüet — ŞAPCI gibi dalgaya yedirilir</option>
+          <option value="panel">Hazır lamel panel görünümü</option>
+        </select>
+      </label>
+      <label>Görsel kalitesi
+        <select id="meshy-imgModel" data-gizli>
+          <option value="nano-banana">Hızlı — 3 kredi</option>
+          <option value="nano-banana-2">Kaliteli — 6 kredi</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button type="button" id="meshy-gorsel">🎨 Yazıdan görsel üret</button>
+      </div>
+      <label>3B model tarzı
         <select id="meshy-style" data-gizli>
           <option value="realistic">Gerçekçi</option>
           <option value="sculpture">Heykel</option>
         </select>
       </label>
       <div class="actions">
-        <button type="button" id="meshy-text">✍️ Yazıdan üret</button>
+        <button type="button" id="meshy-text" class="ghost">✍️ Yazıdan 3B model</button>
         <button type="button" id="meshy-image" class="ghost">🖼️ Yüklü fotoğraftan üret</button>
       </div>
       <p id="meshy-status" class="preset-status" hidden></p>
@@ -205,6 +222,11 @@
         <input type="checkbox" id="p-panelPhoto" checked>
         Panel fotoğrafını tanı <small>(internetten bulunan lamel panel görselinde paneli
         odadan ayırır, yandan çekimi düzeltir)</small>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="p-panelSubject" checked>
+        Yalnız konuyu al <small>(fotoğraftaki panelin lamel zemini ve dalgası atılır; yüz sizin
+        seçtiğiniz desene yerleşir)</small>
       </label>
       <label class="yuz-detay">Yüz detayı <small>göz, kaş, dudak ne kadar belirgin — 0 kapalı, 1 normal, 2 çok</small>
         <input type="range" id="p-faceDetail" min="0" max="2" step="0.1" value="1">

@@ -14,7 +14,7 @@
 // Dosyalar file:// yerine kendi "app://" adresimizden sunulur: file:// altında
 // ES modülleri, fetch ve WASM çalışmaz.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, net, protocol, session, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -61,15 +61,21 @@ function dosyaYollari(argv) {
   return argv.slice(1).filter((a) => ACILIR[path.extname(a).toLowerCase()] && fs.existsSync(a));
 }
 
+// Açılan dosyanın içeriği IPC ile gönderilmez: Electron'un mesaj sınırı
+// (~128 MB) aşılınca sayfa çöküyordu (188 MB'lık Blender OBJ'si). Sayfaya
+// yalnız bir adres gider, içeriği oradan app:// ile okur.
+const acikDosyalar = new Map();   // numara → disk yolu
+let acikSayac = 0;
+
 function dosyaGonder(yol) {
   if (!sayfaHazir) { bekleyen.push(yol); return; }
-  fs.promises.readFile(yol).then((veri) => {
-    pencere.webContents.send('dosya-ac', {
-      ad: path.basename(yol),
-      tur: ACILIR[path.extname(yol).toLowerCase()],
-      veri,
-    });
-  }).catch((e) => dialog.showErrorBox('Dosya açılamadı', `${yol}\n${e.message}`));
+  const no = String(++acikSayac);
+  acikDosyalar.set(no, yol);
+  pencere.webContents.send('dosya-ac', {
+    ad: path.basename(yol),
+    tur: ACILIR[path.extname(yol).toLowerCase()],
+    adres: `app://cnc/__acik/${no}`,
+  });
 }
 
 async function dosyaSec() {
@@ -136,6 +142,20 @@ function pencereAc() {
       if (/^https?:\/\//.test(url)) shell.openExternal(url);
     }
   });
+  // Sayfa çökerse pencere boş kalıp program kapanmış gibi görünüyordu.
+  pencere.webContents.on('render-process-gone', (_e, d) => {
+    console.error('Sayfa çöktü:', d.reason, d.exitCode);
+    if (d.reason === 'clean-exit') return;
+    dialog.showMessageBoxSync(pencere, {
+      type: 'error',
+      title: 'Program yeniden başlatılıyor',
+      message: 'Sayfa beklenmedik şekilde kapandı.',
+      detail: d.reason === 'oom'
+        ? 'Bellek yetmedi. Model çok büyük olabilir; daha az üçgenli bir dosya deneyin.'
+        : `Neden: ${d.reason} (${d.exitCode})`,
+    });
+    pencere.webContents.reload();
+  });
   // Yenilemede sayfa dinleyicisini baştan kurar; o ana kadar gelen dosya bekler.
   pencere.webContents.on('did-start-loading', () => { sayfaHazir = false; });
 
@@ -157,6 +177,18 @@ app.on('second-instance', (_e, argv) => {
   dosyaYollari(argv).forEach(dosyaGonder);
 });
 
+// Meshy'nin dosya sunucusu CORS başlığı vermiyor; sayfanın fetch'i model ve
+// görseli indiremiyor. Ana süreçte CORS yok, indirmeyi burası yapar.
+ipcMain.handle('indir', async (_e, url) => {
+  if (new URL(url).protocol !== 'https:') throw new Error('Yalnız https indirilir.');
+  const res = await net.fetch(url);
+  return {
+    status: res.status,
+    tur: res.headers.get('content-type') || '',
+    veri: new Uint8Array(await res.arrayBuffer()),
+  };
+});
+
 ipcMain.on('sayfa-hazir', () => {
   sayfaHazir = true;
   bekleyen.splice(0).forEach(dosyaGonder);
@@ -166,6 +198,21 @@ app.whenReady().then(async () => {
   // Eski sürümün önbellekte kalmış dosyaları (no-store'dan önce yazılmış olanlar).
   await session.defaultSession.clearCache();
   protocol.handle('app', async (istek) => {
+    const acik = /^\/__acik\/(\d+)$/.exec(new URL(istek.url).pathname);
+    if (acik) {
+      // Bir kez okunur; sayfa okuyunca kayıt silinir.
+      const disk = acikDosyalar.get(acik[1]);
+      acikDosyalar.delete(acik[1]);
+      if (!disk) return new Response('', { status: 404 });
+      try {
+        return new Response(await fs.promises.readFile(disk), {
+          headers: { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' },
+        });
+      } catch (e) {
+        dialog.showErrorBox('Dosya açılamadı', `${disk}\n${e.message}`);
+        return new Response('', { status: 404 });
+      }
+    }
     const yol = path.normalize(path.join(KOK, decodeURIComponent(new URL(istek.url).pathname)));
     // Program klasörünün dışına çıkan istek (../..) sunulmaz.
     if (yol !== KOK && !yol.startsWith(KOK + path.sep)) return new Response('', { status: 403 });

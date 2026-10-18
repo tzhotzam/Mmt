@@ -372,6 +372,67 @@ export function panelDerinligi(data, w, h, { adimHucre = 0, yon = 'vertical' } =
   return r >= 1 ? kutu(out, w, h, r, yon === 'vertical') : out;
 }
 
+/** Otsu eşiği (0..1 değerler, 256 kutu). */
+function otsu(data) {
+  const hist = new Float64Array(256);
+  for (const v of data) hist[Math.min(255, Math.max(0, Math.round(v * 255)))]++;
+  let top = 0;
+  for (let i = 0; i < 256; i++) top += i * hist[i];
+  let wB = 0, sB = 0, enIyi = 0, esik = 0.5;
+  for (let i = 0; i < 256; i++) {
+    wB += hist[i];
+    if (!wB) continue;
+    const wF = data.length - wB;
+    if (!wF) break;
+    sB += i * hist[i];
+    const fark = sB / wB - (top - sB) / wF;
+    const ara = wB * wF * fark * fark;
+    if (ara > enIyi) { enIyi = ara; esik = (i + 0.5) / 256; }
+  }
+  return esik;
+}
+
+/**
+ * Yalnız konu (yüz, gövde): fotoğraftaki panelin zemini — düz lameller,
+ * dalgalar — atılır. Düzlemi çıkarılmış derinlikte konu zeminden belirgin
+ * yüksektir; Otsu eşiğinin üstündeki en büyük bölge alınır, içindeki
+ * delikler (göz çukuru) doldurulur, kenarda kısa bir rampa bırakılır.
+ * Zemin 0, konu [taban, 1]: yapay zekâ derinliğinin zemin ayırmasıyla aynı
+ * biçim (depth.js), böylece desen ve "konu üstte / yedirilmiş" aynen çalışır.
+ * Belirgin bir konu yoksa (zemin ya da konu karenin çoğu) girdi döner.
+ */
+export function konuAyir(d, w, h, { taban = 0.18, gecis = 0.04 } = {}) {
+  const t = otsu(d);
+  const m = new Uint8Array(w * h);
+  for (let i = 0; i < m.length; i++) m[i] = d[i] > t ? 1 : 0;
+  const { maske, alan } = enBuyukBilesen(m, w, h);
+  const oran = alan / (w * h);
+  if (oran < 0.03 || oran > 0.85) return { data: d, ayrildi: false };
+  // Delik doldurma: kenara değmeyen zemin parçaları konunun içidir.
+  const dis = new Uint8Array(w * h);
+  const yigin = [];
+  const it = (i) => { if (!maske[i] && !dis[i]) { dis[i] = 1; yigin.push(i); } };
+  for (let x = 0; x < w; x++) { it(x); it((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { it(y * w); it(y * w + w - 1); }
+  while (yigin.length) {
+    const i = yigin.pop(), x = i % w, y = (i / w) | 0;
+    if (x > 0) it(i - 1);
+    if (x < w - 1) it(i + 1);
+    if (y > 0) it(i - w);
+    if (y < h - 1) it(i + w);
+  }
+  // Kenarda uçurum değil kısa bir rampa (ızgaranın ~%1'i). Yalnız maske
+  // yumuşatılır; içerik bulanıklaşırsa göz ve dudak ayrıntısı söner.
+  const r = Math.max(1, Math.round(Math.max(w, h) * 0.01 * (gecis / 0.04)));
+  const alfa = kutu2(Float32Array.from(dis, (v) => 1 - v), w, h, r);
+  const out = new Float32Array(w * h);
+  for (let i = 0; i < out.length; i++) {
+    const sk = Math.min(1, Math.max(0, (d[i] - t) / (1 - t || 1)));
+    out[i] = alfa[i] * (taban + (1 - taban) * sk);
+  }
+  return { data: out, ayrildi: true, oran };
+}
+
 function coz3(M, V) {
   const A = M.map((r, i) => [...r, V[i]]);
   for (let c = 0; c < 3; c++) {
