@@ -34,7 +34,7 @@ import { panelFotoBul, panelDerinligi, konuAyir } from './panelfoto.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-19-j';
+const APP_VERSION = '2026-10-19-k';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?

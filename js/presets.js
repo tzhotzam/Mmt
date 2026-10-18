@@ -150,9 +150,11 @@ export const HAZIR = [
     },
   },
   {
-    // Yerde duran, 1,5 m'lik bükümlü sac heykel (ayakta aslanla denendi:
-    // 428 faset, 41 yaprak, 190 perçin, 2 levha). 60 cm varsayılanı bu boyda
+    // Yerde duran, 1,5 m'lik bükümlü sac heykel. 60 cm varsayılanı bu boyda
     // biçimi fazla kaba bırakıyordu; 3 mm sac gereksiz ağırdı.
+    // Yüzey sayısı Meshy low poly aslanıyla (1.046 üçgen) ölçüldü:
+    //   500 → 51 yaprak, yüz silik | 750 → 63 yaprak, burun/çene/göz seçilir |
+    //   kapalı → 100 yaprak (fazlası gövdeye gidiyor, yüze değil).
     ad: 'Sac heykel — 1,5 m, 2 mm sac, perçinli büküm',
     not: 'Şimdi heykel modelini "3B model (STL/OBJ)" ile yükleyin.',
     data: {
@@ -160,7 +162,7 @@ export const HAZIR = [
       "fields": {
         "p-targetSize": "1500",
         "p-sizeAxis": "max",
-        "p-targetFaces": "500",
+        "p-targetFaces": "750",
         "p-targetParts": "0",
         "p-thickness": "2",
         "p-joinMethod": "percin",
