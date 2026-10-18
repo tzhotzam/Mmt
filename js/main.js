@@ -33,7 +33,7 @@ import { createPreview3d } from './preview3d.js';
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-17-a';
+const APP_VERSION = '2026-10-18-a';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -2115,6 +2115,21 @@ els['file-stl'].onchange = async (e) => {
   }
   e.target.value = '';
 };
+
+// Masaüstü sürümü (desktop/preload.cjs): Explorer'da çift tıklanan ya da
+// Dosya → Aç… ile seçilen dosya. Tarayıcıda `masaustu` yoktur.
+globalThis.masaustu?.dosyaAcilinca(async ({ ad, tur, veri }) => {
+  const file = new File([veri], ad, { type: tur });
+  const model = /\.(stl|obj)$/i.test(ad);
+  setSourceStatus(`${ad} okunuyor…`);
+  els.busy.hidden = false;
+  try {
+    await (model ? loadStlFile(file) : loadImageFile(file));
+  } catch (err) {
+    setSourceStatus(model ? err.message : `Görsel okunamadı: ${err.message}`, true);
+    els.busy.hidden = true;
+  }
+});
 
 // ------------------------------------------------------------ Meshy
 

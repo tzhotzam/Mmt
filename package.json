@@ -1,0 +1,64 @@
+{
+  "name": "cnc-panel",
+  "productName": "CNC Panel",
+  "version": "1.0.0",
+  "description": "Görsel veya 3B modelden parametrik 3B duvar paneli üretir, CNC için DXF/SVG çıkarır.",
+  "author": "Mehmet",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "test": "node tests/pipeline.test.mjs",
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "tr.mmt.cncpanel",
+    "productName": "CNC Panel",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "app.css",
+      "manifest.webmanifest",
+      "assets/**",
+      "js/**",
+      "models/*.onnx",
+      "vendor/**",
+      "desktop/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "CNC Panel"
+    },
+    "portable": {
+      "artifactName": "CNC-Panel-${version}-tasinabilir.exe"
+    },
+    "fileAssociations": [
+      {
+        "ext": "stl",
+        "name": "STL modeli",
+        "description": "3B model (STL)"
+      },
+      {
+        "ext": "obj",
+        "name": "OBJ modeli",
+        "description": "3B model (OBJ)"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3"
+  }
+}

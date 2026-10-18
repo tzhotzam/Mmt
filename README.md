@@ -229,6 +229,31 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 
 ---
 
+## Windows uygulaması
+
+Aynı program Electron penceresinde masaüstü uygulaması olarak da çalışır
+(`desktop/`). Web sürümünden farkları:
+
+- **Yapay zekâ derinliği çok çekirdekte çalışır.** GitHub Pages çapraz köken
+  yalıtımı (COOP/COEP) vermediği için web sürümü tek çekirdektedir; masaüstünde
+  dosyaları program kendisi sunar ve başlıkları verir. Ölçüldü (12 çekirdek):
+  ~8 sn → **~1,6 sn**.
+- DXF/SVG/CSV indirilince **"Farklı kaydet"** açılır, son klasör hatırlanır.
+- STL/OBJ dosyası Explorer'da **çift tıklanınca** programda açılır (kurulumda
+  dosya ilişkilendirmesi yapılır); Dosya → Aç… (Ctrl+O) görsel de açar.
+- İnternet gerekmez; model ve çalıştırıcı kurulumun içindedir.
+
+```
+npm install                       # ilk kez
+node node_modules/electron/install.js   # npm 11 kurulum betiğini atladıysa
+npm start                         # geliştirirken aç
+npm run dist                      # dist/ altına kurulum + taşınabilir .exe
+```
+
+Çıktılar: `dist/CNC Panel Setup 1.0.0.exe` (kurulum) ve
+`dist/CNC-Panel-1.0.0-tasinabilir.exe` (kurulumsuz). İmzasızdır; ilk açılışta
+Windows SmartScreen "Ek bilgi → Yine de çalıştır" ister.
+
 ## Nasıl kullanılır
 
 1. **Kaynak seç** — Görsel yükleyin, telefonla fotoğraf çekin, 3B model
