@@ -14,7 +14,7 @@
 // Dosyalar file:// yerine kendi "app://" adresimizden sunulur: file:// altında
 // ES modülleri, fetch ve WASM çalışmaz.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, session, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -162,7 +162,9 @@ ipcMain.on('sayfa-hazir', () => {
   bekleyen.splice(0).forEach(dosyaGonder);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Eski sürümün önbellekte kalmış dosyaları (no-store'dan önce yazılmış olanlar).
+  await session.defaultSession.clearCache();
   protocol.handle('app', async (istek) => {
     const yol = path.normalize(path.join(KOK, decodeURIComponent(new URL(istek.url).pathname)));
     // Program klasörünün dışına çıkan istek (../..) sunulmaz.
@@ -172,6 +174,9 @@ app.whenReady().then(() => {
       return new Response(veri, {
         headers: {
           'Content-Type': TURLER[path.extname(yol).toLowerCase()] || 'application/octet-stream',
+          // Dosyalar zaten diskte; önbellek yalnız zarar verir: güncellemeden
+          // sonra yeni index.html eski main.js ile açılıyordu.
+          'Cache-Control': 'no-store',
           'Cross-Origin-Opener-Policy': 'same-origin',
           // require-corp yerine credentialless: Meshy'den inen model ve
           // önizleme görselleri CORP başlığı taşımadan da yüklenebilsin.

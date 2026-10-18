@@ -417,6 +417,24 @@ onnxruntime-web (MIT). İkisi depoda durur, ilk kullanımda bir kez iner
 - Süre: masaüstünde ~8 sn, telefonda 10-30 sn (tek çekirdek; GitHub Pages
   çok çekirdeğe izin vermiyor).
 
+### İnternetten bulunan panel fotoğrafı
+"3d parametric wooden wall panel face" diye bulunan görsel yüz fotoğrafı
+değil, **yapılmış bir panelin fotoğrafıdır**. Eskiden yapay zekâ derinliği
+yüzü görse de zemin ayırma kameraya en yakın şeyi (yer, saksı) konu sanıp
+paneli siliyordu; yandan çekimde duvarın eğimi de derinliği yiyordu.
+
+**Panel fotoğrafını tanı** (varsayılan açık) bunu çözer (`js/panelfoto.js`):
+lamel çizgilerinin dokusundan panel odadan ayrılır, dört kenarına doğru
+uydurulup perspektif düzeltilir, derinlikten arka düzlem çıkarılır, kalan
+lamel izi bir lamel adımı genişliğinde silinir. Lamel yönü fotoğraftakine
+ayarlanır ve fotoğraftaki lamel sayısı söylenir. Desen payı sıfırlanır:
+fotoğraftaki panelin kendi dalgası kullanılır.
+
+Altı örnekte denendi: önden ve ~30° yandan çekimlerde (yüz, gövde, dalgalı
+zemin) yüz net çıkar; 2000 px'lik gerçek fotoğrafta 85 lamel doğru sayıldı.
+**Neredeyse tam yandan** çekilmiş fotoğrafta yüzün önü görünmediği için
+olmaz; serbest duran kafa heykelinin fotoğrafı da zayıf sonuç verir.
+
 ### Parametrik yüz paneli (lamel + yapay zekâ)
 Duvardan dalgaların içinden çıkan yüz (parametric_art_wood tarzı). Kısayol:
 **⚡ Yüz paneli ayarlarını uygula** düğmesi aşağıdakilerin hepsini tek

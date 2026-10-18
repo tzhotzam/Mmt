@@ -3300,4 +3300,93 @@ test('görsel ölçüleri close() öncesinde okunuyor', () => {
   );
 });
 
+// --- Panel fotoğrafı ----------------------------------------------------
+console.log('panel fotoğrafı');
+
+const { panelFotoBul, panelDerinligi, dogruUydur } = await import('../js/panelfoto.js');
+
+/**
+ * Düz gri zemin üstünde, dörtgen içinde çizgili (lamel) panel. Çizgiler
+ * görüntü x'inde `adim` px aralıklı (yatay: y'de).
+ */
+function seritliGorsel(w, h, dortgen, adim, yatay = false) {
+  const data = new Uint8ClampedArray(w * h * 4);
+  const icinde = (x, y) => {
+    for (let i = 0; i < 4; i++) {
+      const [ax, ay] = dortgen[i], [bx, by] = dortgen[(i + 1) % 4];
+      if ((bx - ax) * (y - ay) - (by - ay) * (x - ax) < 0) return false;
+    }
+    return true;
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const t = yatay ? y : x;
+      const v = icinde(x + 0.5, y + 0.5) ? ((t % adim) < adim / 2 ? 70 : 150) : 215;
+      data.set([v, v, v, 255], (y * w + x) * 4);
+    }
+  }
+  return { data, width: w, height: h };
+}
+
+const PANEL_DORTGEN = [[120, 80], [480, 100], [470, 420], [130, 400]];
+
+test('panel fotoğrafı: çizgili bölge bulunur, köşeler yakalanır', () => {
+  const pf = panelFotoBul(seritliGorsel(600, 500, PANEL_DORTGEN, 8));
+  assert.ok(pf?.img, `panel bulunamadı (${pf?.neden})`);
+  assert.equal(pf.yon, 'vertical');
+  for (let i = 0; i < 4; i++) {
+    const hata = Math.hypot(pf.dortgen[i][0] - PANEL_DORTGEN[i][0], pf.dortgen[i][1] - PANEL_DORTGEN[i][1]);
+    assert.ok(hata < 15, `${i}. köşe ${hata.toFixed(1)} px kaçtı`);
+  }
+});
+
+test('panel fotoğrafı: lamel adımı ve sayısı ölçülür', () => {
+  const pf = panelFotoBul(seritliGorsel(600, 500, PANEL_DORTGEN, 8));
+  assert.ok(Math.abs(pf.adim - 8) <= 1.5, `adım ${pf.adim}`);
+  // Panel eni ~355 px → ~44 lamel.
+  assert.ok(Math.abs(pf.lamel - 44) <= 6, `lamel ${pf.lamel}`);
+});
+
+test('panel fotoğrafı: yatay lamel yönü tanınır', () => {
+  const pf = panelFotoBul(seritliGorsel(600, 500, PANEL_DORTGEN, 8, true));
+  assert.ok(pf?.img, `panel bulunamadı (${pf?.neden})`);
+  assert.equal(pf.yon, 'horizontal');
+});
+
+test('panel fotoğrafı: çizgisiz görselde tetiklenmez', () => {
+  // Yumuşak geçişli yüz benzeri leke — sıradan bir portre.
+  const w = 400, h = 400, data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = 200 - 120 * Math.exp(-((x - 200) ** 2 + (y - 190) ** 2) / 8000);
+    data.set([v, v, v, 255], (y * w + x) * 4);
+  }
+  assert.ok(!panelFotoBul({ data, width: w, height: h })?.img, 'düz fotoğraf panel sanıldı');
+});
+
+test('panel derinliği: yandan çekim eğimi çıkarılır, kabartma kalır', () => {
+  const w = 120, h = 100, data = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    data[y * w + x] = 0.1 + 0.5 * x / w +                       // duvar eğimi
+      0.4 * Math.exp(-((x - 60) ** 2 + (y - 50) ** 2) / 200);    // yüz
+  }
+  const d = panelDerinligi(data, w, h);
+  const sol = d[50 * w + 3], sag = d[50 * w + w - 4];
+  assert.ok(Math.abs(sol - sag) < 0.08, `eğim kaldı: sol ${sol.toFixed(2)} sağ ${sag.toFixed(2)}`);
+  assert.ok(d[50 * w + 60] > 0.9, `kabartma söndü: ${d[50 * w + 60].toFixed(2)}`);
+});
+
+test('kenar doğrusu taşan kabartmaya çekilmez', () => {
+  // x = 0,1·y + 20; ortadaki 10 satırda yüz kenardan 40 px taşıyor.
+  const ts = [], vs = [];
+  for (let y = 0; y < 100; y++) { ts.push(y); vs.push(0.1 * y + 20 + (y > 45 && y < 56 ? 40 : 0)); }
+  const { a, b } = dogruUydur(ts, vs);
+  assert.ok(Math.abs(a - 0.1) < 0.01 && Math.abs(b - 20) < 1, `a=${a.toFixed(3)} b=${b.toFixed(2)}`);
+});
+
+test('panel fotoğrafında zemin ayırma kapalı, kenar payı yok', () => {
+  const js = oku('js/main.js');
+  assert.ok(/arkaPlan: !state\.panelFoto/.test(js), 'yapay zekâya zemin ayırma kapatılmıyor');
+  assert.ok(/state\.panelFoto && state\.uploadKind === 'ai' \? 0/.test(js), 'kenar payı uygulanıyor');
+});
+
 console.log(`\n${passed} test geçti${process.exitCode ? ' (hatalar var)' : ''}`);

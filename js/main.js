@@ -28,12 +28,13 @@ import { buildCutList, cutListToCsv, assemblyGuide } from './cutlist.js';
 import { drawPlan, drawNest, drawSource, drawParts, drawPaintView, screenToGrid } from './preview2d.js';
 import { createPaintLayer, applyPaint, stroke, isEmpty } from './paint.js';
 import { createPreview3d } from './preview3d.js';
+import { panelFotoBul, panelDerinligi } from './panelfoto.js';
 
 // Yükseklik haritasının uzun kenardaki örnek sayısı. 320 idi; 2,6 m'lik bir
 // panelde 8 mm/örnek demekti ve görselin detayı daha okunmadan atılıyordu.
 // 768'de tipik panellerde ~1-2 mm/örnek düşüyor, lamel profilinin 1,5 mm'lik
 // adımıyla örtüşüyor.
-const APP_VERSION = '2026-10-18-a';
+const APP_VERSION = '2026-10-18-b';
 
 /**
  * HTML ile JavaScript aynı sürümden mi?
@@ -105,6 +106,7 @@ const state = {
   sourceStats: null,     // kaynak teşhisi (ton yoğunluğu)
   uploadGrid: null,      // YÜKLENEN içerik (görsel/model) — desen değil
   uploadKind: null,      // 'foto' | 'model' | 'ai'
+  panelFoto: null,       // yüklenen görsel bir lamel panel fotoğrafıysa: { yon, adim, lamel, en, boy }
   uploadImage: null,     // son yüklenen görsel (ImageData, en çok 2048 px) — derinlik yeniden okunabilsin
   uploadName: '',
   depthMode: 'luma',     // 'luma' (parlaklıktan) | 'ai' (yapay zekâ derinliği)
@@ -347,7 +349,10 @@ function composeSource() {
   // Kenar sönümü yalnız yapay zekâ derinliğinde: orada kadraja değen saç ve
   // boyun uçurumla kesilmesin diye var. Logoda kenara yakın harfi siliyordu
   // (ŞAPCI'nın I'sı ve ikon kayboluyordu).
-  const yukleme = kenarPayi(state.uploadGrid, num('p-subjectPad', 0), state.uploadKind === 'ai');
+  // Panel fotoğrafında karenin tamamı zaten paneldir: etrafına boşluk
+  // eklemek yüzü küçültür, fotoğraftaki kompozisyonu bozardı.
+  const pay = state.panelFoto && state.uploadKind === 'ai' ? 0 : num('p-subjectPad', 0);
+  const yukleme = kenarPayi(state.uploadGrid, pay, state.uploadKind === 'ai');
   state.aspect = yukleme.w / yukleme.h;
 
   const k = Math.min(1, Math.max(0, num('p-patMix', 0)));
@@ -468,16 +473,27 @@ async function loadImageFile(file) {
   const pxH = bitmap.height;
   if (!(pxW > 0 && pxH > 0)) throw new Error('Görselin ölçüleri okunamadı.');
 
-  state.aspect = pxW / pxH;
-  const [cols, rows] = gridDimsFor(state.aspect);
-
   const c = document.createElement('canvas');
   c.width = pxW;
   c.height = pxH;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(bitmap, 0, 0);
-  const img = ctx.getImageData(0, 0, c.width, c.height);
+  let img = ctx.getImageData(0, 0, c.width, c.height);
   bitmap.close?.();
+
+  // İnternetten bulunan lamel panel fotoğrafı: panel odadan ayrılır,
+  // perspektifi düzeltilir; bundan sonra kaynak yalnız paneldir.
+  state.panelFoto = null;
+  if (bool('p-panelPhoto')) {
+    const pf = panelFotoBul(img);
+    if (pf?.img) {
+      img = new ImageData(pf.img.data, pf.img.width, pf.img.height);
+      state.panelFoto = { yon: pf.yon, adim: pf.adim, lamel: pf.lamel, en: pf.img.width, boy: pf.img.height };
+    }
+  }
+
+  state.aspect = img.width / img.height;
+  const [cols, rows] = gridDimsFor(state.aspect);
 
   state.uploadImage = kucult(img, 2048);
   state.uploadName = file.name;
@@ -488,8 +504,21 @@ async function loadImageFile(file) {
   state.tris = null;
   state.decimateCache = null;
   state.remeshCache = null;
+  if (state.panelFoto) {
+    // Fotoğraftaki panelin kendi dalgası var: üstüne hazır desen eklemek onu
+    // değiştirirdi. Lamel yönü de fotoğraftakiyle aynı olur. Parlaklık bir
+    // lamel fotoğrafında yalnız çizgi deseni okur; derinlik yapay zekâdan.
+    if (num('p-patMix', 0) > 0) els['p-patMix'].value = 0;
+    els['p-orientation'].value = state.panelFoto.yon;
+    syncRangeOutputs();
+    if (state.depthMode !== 'ai') setDepthMode('ai', false);
+    saveSettings();
+  }
   composeSource();
-  setSourceStatus(`Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
+  setSourceStatus(state.panelFoto
+    ? `Lamel panel fotoğrafı algılandı: ${file.name} — panel kırpıldı ve perspektifi düzeltildi ` +
+      `(fotoğraftaki panelde ~${state.panelFoto.lamel} lamel).`
+    : `Görsel yüklendi: ${file.name} — ${pxW}×${pxH} piksel`);
   resetPaint();
   // Koyu konu + açık zemin ise ters çevirmezsek konu panele gömülür.
   setInvert(suggestInvert(state.sourceGrid), true);
@@ -533,6 +562,9 @@ async function aiDerinlik() {
     const { derinlikTahmin } = await import('./depth.js');
     const t0 = performance.now();
     const g = await derinlikTahmin(img, cols, rows, {
+      // Panel fotoğrafında karenin tamamı paneldir; zemin ayırma kameraya en
+      // yakın şeyi (yer, saksı) konu sanıp paneli siliyordu.
+      arkaPlan: !state.panelFoto,
       detay: num('p-faceDetail', 1),
       onProgress: ({ asama, oran }) => {
         if (is !== state.aiIs) return;
@@ -551,7 +583,7 @@ async function aiDerinlik() {
     });
     if (is !== state.aiIs || state.depthMode !== 'ai') return;
     state.aiHam = { ...g.ham, cols, rows };
-    state.uploadGrid = Object.assign(makeGrid(g.w, g.h), { data: g.data });
+    state.uploadGrid = Object.assign(makeGrid(g.w, g.h), { data: aiVerisi(g) });
     state.uploadKind = 'ai';
     composeSource();
     resetPaint();
@@ -562,9 +594,12 @@ async function aiDerinlik() {
     if (num('p-sharpen', 0) > 0) { els['p-sharpen'].value = 0; syncRangeOutputs(); saveSettings(); }
     syncAspect();
     scheduleRegen();
-    setSourceStatus(
-      `Yapay zekâ derinliği hazır: ${state.uploadName} — ${((performance.now() - t0) / 1000).toFixed(1)} sn`
-    );
+    const sure = `${((performance.now() - t0) / 1000).toFixed(1)} sn`;
+    setSourceStatus(state.panelFoto
+      ? `Panel fotoğrafından derinlik hazır: ${state.uploadName} — ${sure}. Fotoğraftaki panelde ` +
+        `~${state.panelFoto.lamel} lamel var; aynı görünüm için lamel adımını (kalınlık + boşluk) ` +
+        `panel boyu / ${state.panelFoto.lamel} civarında tutun.`
+      : `Yapay zekâ derinliği hazır: ${state.uploadName} — ${sure}`);
     if (state.presetBekliyor) {
       state.presetBekliyor = false;
       presetDurum('✓ Yüz paneli hazır — önizlemeye bakın.', true);
@@ -585,6 +620,17 @@ async function aiDerinlik() {
 }
 
 /**
+ * Yapay zekâ ızgarasının son hâli. Panel fotoğrafında arka düzlem (yandan
+ * çekimin eğimi) çıkarılır ve lamel izi bir lamel adımı genişliğinde silinir.
+ */
+function aiVerisi(g) {
+  const pf = state.panelFoto;
+  if (!pf) return g.data;
+  const adimHucre = pf.yon === 'vertical' ? pf.adim * g.w / pf.en : pf.adim * g.h / pf.boy;
+  return panelDerinligi(g.data, g.w, g.h, { adimHucre, yon: pf.yon });
+}
+
+/**
  * "Yüz detayı" değişti: model yeniden çalışmaz, saklanan ham çıktıdan
  * yükseklik haritası yeniden kurulur (~0,2 sn).
  */
@@ -595,8 +641,10 @@ function yuzDetayiUygula() {
   detayZamanlayici = setTimeout(async () => {
     const { sonIsle } = await import('./depth.js');
     const h = state.aiHam;
-    const g = sonIsle(h.cikti, h.cols, h.rows, { lum: h.lum, detay: num('p-faceDetail', 1) });
-    state.uploadGrid = Object.assign(makeGrid(g.w, g.h), { data: g.data });
+    const g = sonIsle(h.cikti, h.cols, h.rows, {
+      lum: h.lum, detay: num('p-faceDetail', 1), arkaPlan: !state.panelFoto,
+    });
+    state.uploadGrid = Object.assign(makeGrid(g.w, g.h), { data: aiVerisi(g) });
     composeSource();
     resetPaint();
     scheduleRegen();
@@ -654,6 +702,7 @@ async function loadMeshBuffer(buf, ad) {
   }
   state.tris = tris;
   state.uploadImage = null;
+  state.panelFoto = null;
   state.aiIs++;
   state.planFocus = -1;
   state.planView = { k: 1, px: 0, py: 0 };
