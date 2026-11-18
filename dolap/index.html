@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<meta name="description" content="Mutfak ve mobilya dolabı tasarlar; kesim listesi, levha yerleşimi ve delikli DXF çıkarır.">
+<title>Dolap Tasarım</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="stylesheet" href="../app.css">
+<link rel="stylesheet" href="dolap.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🗄️</text></svg>">
+<script type="importmap">
+{ "imports": {
+    "three": "../vendor/three/three.module.min.js",
+    "three/addons/": "../vendor/three/addons/"
+} }
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="ust-satir">
+    <h1>Dolap Tasarım</h1>
+    <a class="gecis" href="../index.html">Panel programı →</a>
+  </div>
+</header>
+
+<main class="dolap">
+  <!-- ---------------- ÖNİZLEME ---------------- -->
+  <section class="panel preview-panel sahne-panel">
+    <div class="tabs" role="tablist" aria-label="Önizleme">
+      <button class="tab active" data-view="3d" role="tab" aria-selected="true">3B</button>
+      <button class="tab" data-view="levha" role="tab" aria-selected="false">Levha</button>
+      <button class="tab" data-view="parca" role="tab" aria-selected="false">Parça</button>
+    </div>
+    <div class="stage">
+      <div id="view-3d" class="view active"></div>
+      <canvas id="view-levha" class="view"></canvas>
+      <canvas id="view-parca" class="view"></canvas>
+    </div>
+
+    <div id="ctl-3d" class="sahne-alt">
+      <label class="ac-kapak">Kapakları aç
+        <input type="range" id="ac" min="0" max="1" step="0.01" value="0">
+      </label>
+      <label class="check"><input type="checkbox" id="kapak-goster" checked> Kapaklar</label>
+      <button type="button" id="odakla" class="ghost kucuk">Ortala</button>
+    </div>
+    <div id="ctl-levha" class="sahne-alt" hidden>
+      <select id="levha-malzeme" aria-label="Malzeme"></select>
+      <button type="button" id="levha-onceki" class="ghost kucuk" aria-label="Önceki levha">◀</button>
+      <span id="levha-no" class="levha-no"></span>
+      <button type="button" id="levha-sonraki" class="ghost kucuk" aria-label="Sonraki levha">▶</button>
+      <button type="button" id="levha-dxf" class="primary kucuk">Bu levha DXF</button>
+    </div>
+    <div id="ctl-parca" class="sahne-alt lejant" hidden></div>
+
+    <div id="ozet" class="summary"></div>
+    <div id="uyarilar" class="warnings" hidden></div>
+  </section>
+
+  <div class="sag-kolon">
+    <!-- ---------------- MODÜLLER ---------------- -->
+    <section class="panel">
+      <h2>1 · Modüller</h2>
+      <div id="modul-listesi" class="modul-listesi"></div>
+      <div class="ekle-satir">
+        <button type="button" data-ekle="alt">+ Alt dolap</button>
+        <button type="button" data-ekle="ust">+ Üst dolap</button>
+        <button type="button" data-ekle="boy">+ Boy dolap</button>
+      </div>
+
+      <div id="modul-duzen" class="modul-duzen" hidden>
+        <div class="grid">
+          <label>Adı <input type="text" data-m="ad"></label>
+          <label>Tip
+            <select data-m="tip">
+              <option value="alt">Alt (tezgâh altı)</option>
+              <option value="ust">Üst (duvar)</option>
+              <option value="boy">Boy</option>
+            </select>
+          </label>
+          <label class="onemli">Genişlik (mm) <input type="number" data-m="w" min="150" max="1600" step="1"></label>
+          <label class="onemli">Yükseklik (mm) <input type="number" data-m="h" min="200" max="2600" step="1"></label>
+          <label class="onemli">Derinlik (mm) <input type="number" data-m="d" min="150" max="800" step="1">
+            <small>arkalık dâhil</small></label>
+          <label>Kapak
+            <select data-m="kapak">
+              <option value="otomatik">Otomatik (600 üstü çift)</option>
+              <option value="tek">Tek kapak</option>
+              <option value="cift">Çift kapak</option>
+              <option value="cekmece" data-sadece="alt">Çekmeceli</option>
+              <option value="yok">Kapaksız (açık raf)</option>
+            </select>
+          </label>
+          <label data-goster="tek">Menteşe tarafı
+            <select data-m="mentese">
+              <option value="sol">Solda</option>
+              <option value="sag">Sağda</option>
+            </select>
+          </label>
+          <label data-goster="cekmece">Çekmece sayısı <input type="number" data-m="cekmeceSayisi" min="1" max="6" step="1"></label>
+          <label data-goster="raf">Raf sayısı <input type="number" data-m="rafSayisi" min="0" max="8" step="1">
+            <small data-goster="boy">sabit rafın altında</small></label>
+          <label data-goster="boy">Sabit raf (mm) <input type="number" data-m="sabitRaf" min="300" max="2300" step="1">
+            <small>gövde altından</small></label>
+          <label data-goster="boy">Üst raf sayısı <input type="number" data-m="ustRafSayisi" min="0" max="6" step="1"></label>
+        </div>
+        <div class="modul-dugmeler">
+          <button type="button" id="m-sola" class="ghost" aria-label="Sola taşı">◀ Sola</button>
+          <button type="button" id="m-saga" class="ghost" aria-label="Sağa taşı">Sağa ▶</button>
+          <button type="button" id="m-kopya" class="ghost">Kopyala</button>
+          <button type="button" id="m-sil" class="ghost tehlike">Sil</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- PROJE AYARLARI ---------------- -->
+    <section class="panel">
+      <h2>2 · Malzeme ve yapım</h2>
+      <div class="grid">
+        <label class="onemli">Gövde kalınlığı (mm) <input type="number" data-yol="malzeme.govde.kalinlik" min="8" max="40" step="1"></label>
+        <label>Gövde rengi <select data-yol="malzeme.govde.renk" data-renk></select></label>
+        <label class="onemli">Kapak kalınlığı (mm) <input type="number" data-yol="malzeme.kapak.kalinlik" min="8" max="40" step="1"></label>
+        <label>Kapak rengi <select data-yol="malzeme.kapak.renk" data-renk></select></label>
+        <label>Arkalık kalınlığı (mm) <input type="number" data-yol="malzeme.arkalik.kalinlik" min="3" max="18" step="1">
+          <small>arkaya çakma</small></label>
+        <label class="onemli">Bağlantı
+          <select data-yol="baglanti">
+            <option value="minifix">Minifix</option>
+            <option value="minifix+kavela">Minifix + kavela</option>
+            <option value="kavela">Kavela (tutkallı)</option>
+            <option value="vida">Konfirmat vida</option>
+          </select>
+        </label>
+        <label>Kapak arası boşluk (mm) <input type="number" data-yol="kapakBosluk" min="0" max="10" step="0.5"></label>
+        <label>Kulp aralığı (mm) <input type="number" data-yol="kulpAraligi" min="0" max="640" step="32">
+          <small>0 = kulpsuz</small></label>
+        <label>Ayak yüksekliği (mm) <input type="number" data-yol="ayakYukseklik" min="0" max="200" step="5"></label>
+        <label>Üst dolap alt kotu (mm) <input type="number" data-yol="ustAltKot" min="1000" max="2000" step="10">
+          <small>yerden</small></label>
+        <label class="check"><input type="checkbox" data-yol="baza"> Baza</label>
+        <label class="check"><input type="checkbox" data-yol="tezgah"> Tezgâh (görsel)</label>
+      </div>
+      <details class="gelismis">
+        <summary>Malzeme adları</summary>
+        <div class="grid">
+          <label>Gövde <input type="text" data-yol="malzeme.govde.ad"></label>
+          <label>Kapak <input type="text" data-yol="malzeme.kapak.ad"></label>
+          <label>Arkalık <input type="text" data-yol="malzeme.arkalik.ad"></label>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>3 · Levha ve bant</h2>
+      <div class="grid">
+        <label>Hazır levha <select id="levha-hazir"></select></label>
+        <label class="onemli">Levha boyu (mm) <input type="number" data-yol="levha.w" min="500" max="5000" step="1"></label>
+        <label class="onemli">Levha eni (mm) <input type="number" data-yol="levha.h" min="500" max="5000" step="1"></label>
+        <label>Kenar payı (mm) <input type="number" data-yol="levha.kenarPay" min="0" max="50" step="1"></label>
+        <label>Parça arası (mm) <input type="number" data-yol="levha.aralik" min="0" max="40" step="1">
+          <small>freze çapı + pay</small></label>
+        <label class="check"><input type="checkbox" data-yol="levha.damar"> Damar yönü korunsun</label>
+        <label>Bant kalınlığı (mm) <input type="number" data-yol="bant.kalinlik" min="0" max="3" step="0.1"></label>
+        <label class="check"><input type="checkbox" data-yol="bant.kesimdenDus"> Bandı kesimden düş</label>
+      </div>
+    </section>
+
+    <!-- ---------------- KESİM LİSTESİ ---------------- -->
+    <section class="panel">
+      <h2>4 · Kesim listesi</h2>
+      <div class="segmented-buttons liste-mod">
+        <button type="button" class="seg active" data-liste="modul">Modül modül</button>
+        <button type="button" class="seg" data-liste="toplu">Toplu</button>
+      </div>
+      <div class="table-wrap"><table id="kesim-tablo"></table></div>
+      <p class="hint">Ölçüler <b>kesim ölçüsüdür</b> (bant düşülmüş). Satıra dokununca parça çizimi açılır.
+        Bant sütunları: kaç uzun kenar (boy) / kaç kısa kenar (en) bantlanacak.</p>
+      <div class="actions">
+        <button type="button" id="csv" class="primary">Kesim listesi (Excel CSV)</button>
+      </div>
+    </section>
+
+    <!-- ---------------- CNC ---------------- -->
+    <section class="panel">
+      <h2>5 · CNC çıktısı</h2>
+      <div id="levha-ozet" class="levha-ozet"></div>
+      <div class="grid">
+        <label class="check"><input type="checkbox" id="dxf-etiket" checked> Parça numaraları (ETIKET katmanı)</label>
+        <label class="check"><input type="checkbox" id="dxf-levha" checked> Levha sınırı (LEVHA katmanı)</label>
+      </div>
+      <div id="dxf-dugmeler" class="actions"></div>
+      <details>
+        <summary>Katmanlar</summary>
+        <ul class="katmanlar">
+          <li><code>KESIM</code> parça konturu, boydan boya</li>
+          <li><code>DELIK_D35_Z13</code> Ø35 mm, 13 mm derin; her çap/derinlik ayrı katman</li>
+          <li><code>DELIK_D5_GECER</code> boydan geçen delik (kulp, konfirmat)</li>
+          <li><code>KENAR_DELIK</code> kenardan delinecek yer işareti; 3 eksende delinmez, yatay matkapla açılır</li>
+          <li><code>ETIKET</code>, <code>LEVHA</code> bilgi amaçlı, kesilmez</li>
+        </ul>
+        <p class="hint">Parçalar delinen yüzü yukarı bakacak şekilde dizilir. Sol ve sağ yan aynı ölçüde ama
+          birbirinin aynasıdır; levhadaki numaraya göre yerleştirin.</p>
+      </details>
+    </section>
+
+    <!-- ---------------- HIRDAVAT & MALİYET ---------------- -->
+    <section class="panel">
+      <h2>6 · Hırdavat ve maliyet</h2>
+      <div class="iki-tablo">
+        <div class="table-wrap"><table id="hirdavat-tablo"></table></div>
+        <div class="table-wrap"><table id="maliyet-tablo"></table></div>
+      </div>
+      <details class="gelismis">
+        <summary>Fiyatlar <small>(₺, levha başına)</small></summary>
+        <div class="grid">
+          <label>Gövde levha <input type="number" data-yol="fiyat.levha" min="0" step="10"></label>
+          <label>Kapak levha <input type="number" data-yol="fiyat.kapakLevha" min="0" step="10"></label>
+          <label>Arkalık levha <input type="number" data-yol="fiyat.arkalikLevha" min="0" step="10"></label>
+          <label>Bant (₺/m) <input type="number" data-yol="fiyat.bantMetre" min="0" step="0.5"></label>
+        </div>
+      </details>
+    </section>
+
+    <!-- ---------------- PROJE ---------------- -->
+    <section class="panel">
+      <h2>7 · Proje</h2>
+      <div class="grid">
+        <label>Proje adı <input type="text" data-yol="ad"></label>
+      </div>
+      <div class="actions proje-dugmeler">
+        <button type="button" id="kaydet">Projeyi kaydet</button>
+        <label class="upload small ghost"><input type="file" id="ac-dosya" accept=".json,application/json"><span>Proje aç</span></label>
+        <button type="button" id="sifirla" class="ghost">Örnek mutfağa dön</button>
+      </div>
+      <p class="hint">Proje bu cihazda kendiliğinden saklanır. Başka bilgisayara taşımak için kaydedin.</p>
+    </section>
+  </div>
+</main>
+
+<footer>Ölçüler ve delik konumları bir öneridir. İlk kesimden önce bir parçayı deneyip hırdavat kataloğunuzla karşılaştırın.</footer>
+
+<script type="module" src="js/ana.js"></script>
+</body>
+</html>

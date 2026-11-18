@@ -229,6 +229,35 @@ katlama yok, tırnak yok. Low-poly hayvan/figür heykellerinin yapım yöntemi.
 
 ---
 
+## Dolap tasarım (`dolap/`)
+
+Aynı uygulamanın içinde ikinci bir program: mutfak ve mobilya dolabı
+tasarlar. Üst çubuktaki **Dolap tasarım →** bağlantısıyla (masaüstünde
+*Program* menüsü, `Ctrl+2`) açılır.
+
+- **Modüller:** alt (tezgâh altı), üst (duvar) ve boy dolap. Genişlik,
+  yükseklik, derinlik; tek / çift kapak, çekmeceli ya da açık raf; raf
+  sayısı; boy dolapta sabit raf ve iki kat kapak. Modüller duvar boyunca
+  sırayla dizilir. Boy dolap alt ve üst sırayı birlikte iter.
+- **3B önizleme:** kapaklar menteşesinden döner, çekmeceler kayar. Bir
+  modüle tıklayınca seçilir.
+- **Kesim listesi:** modül modül ya da toplu. Ölçüler kesim ölçüsüdür (bant
+  düşülmüş). Bant sütunu kaç uzun / kısa kenarın bantlanacağını söyler.
+  Excel'in Türkçe ayarında doğrudan açılan CSV verir.
+- **Levha yerleşimi:** dikdörtgenlere özel MaxRects yerleşimi. Gövde, kapak
+  ve arkalık ayrı levhalara dizilir. Damar yönü istenirse parçalar döndürülmez.
+- **CNC delikleri:** minifix (kam + cıvata), kavela, konfirmat, 35'lik
+  menteşe çanağı ve taban delikleri, raf pimi, kulp. DXF'te her çap/derinlik
+  ayrı katmandır (`DELIK_D35_Z13`, `DELIK_D5_GECER` …), CAM'de katmana işlem
+  atanır. Kenardan delinecek yerler `KENAR_DELIK` katmanında işaretlidir;
+  3 eksende delinmez. Parçalar delinen yüzü yukarı bakacak şekilde
+  çizilir, bu yüzden sol ve sağ yan birbirinin aynasıdır.
+- **Hırdavat ve maliyet:** minifix, menteşe, ray, kulp, ayak adetleri;
+  levha ve bant fiyatından kaba maliyet.
+
+Delik ölçüleri `dolap/js/model.js` içindeki `HIRDAVAT` tablosundadır.
+Kullandığınız markanın kataloğuna göre değiştirin.
+
 ## Windows uygulaması
 
 Aynı program Electron penceresinde masaüstü uygulaması olarak da çalışır
@@ -659,7 +688,17 @@ js/
   export/svg.js       mm ölçekli SVG yazıcı
   preview2d.js        plan / levha / kaynak önizlemeleri (canvas)
   preview3d.js        three.js ile 3B önizleme
-tests/                tarayıcısız doğrulama
+dolap/                dolap tasarım programı
+  index.html, dolap.css
+  js/model.js         proje, varsayılanlar, hırdavat ölçüleri, doğrulama
+  js/govde.js         modül → parçalar: ölçü, bant, delik, 3B kutu
+  js/yerlesim.js      dikdörtgen levha yerleşimi (MaxRects)
+  js/kesim.js         kesim listesi, CSV, levha planı, hırdavat, maliyet
+  js/dxf.js           delikli R12 DXF (katman = çap + derinlik)
+  js/cizim2d.js       parça ve levha çizimi (canvas)
+  js/onizleme3d.js    three.js önizleme: açılan kapak, kayan çekmece
+  js/ana.js           arayüz
+tests/                tarayıcısız doğrulama (pipeline + dolap)
 ```
 
 Üretim modülleri tarayıcıya bağımlı değildir; Node'dan doğrudan çağrılabilir.

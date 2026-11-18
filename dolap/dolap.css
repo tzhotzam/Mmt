@@ -1,0 +1,104 @@
+/* Dolap programına özel stiller; temel görünüm ../app.css'ten gelir. */
+
+.ust-satir { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ust-satir h1 { margin: 0; }
+.gecis { color: var(--accent-2); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.gecis:hover { text-decoration: underline; }
+
+main.dolap { max-width: 1500px; }
+
+@media (min-width: 1100px) {
+  main.dolap {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(380px, 1fr);
+    align-items: start;
+  }
+  .sahne-panel { position: sticky; top: 64px; }
+  .sag-kolon { display: flex; flex-direction: column; gap: 12px; }
+}
+@media (max-width: 1099px) {
+  .sag-kolon { display: contents; }
+}
+
+.bos { padding: 20px; color: var(--muted); font-size: 13px; text-align: center; }
+
+.sahne-alt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.sahne-alt .ac-kapak { flex: 1; min-width: 200px; flex-direction: row; align-items: center; gap: 10px; white-space: nowrap; }
+.sahne-alt label.check { padding-top: 0; }
+.sahne-alt select { width: auto; flex: 1; min-width: 140px; }
+button.kucuk { padding: 8px 12px; font-size: 12px; }
+.levha-no { font-size: 12.5px; color: var(--text); font-variant-numeric: tabular-nums; min-width: 56px; text-align: center; }
+
+.lejant { font-size: 11.5px; color: var(--muted); gap: 12px; }
+.lejant i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.lejant i.bant { border-radius: 2px; height: 4px; width: 14px; vertical-align: 2px; }
+
+/* Modül kartları */
+.modul-listesi {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+}
+.modul-kart {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 10px;
+  text-align: left;
+  border-radius: 10px;
+}
+.modul-kart b { font-size: 12.5px; }
+.modul-kart span { font-size: 11px; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.modul-kart .rozet { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-2); }
+.modul-kart.secili { border-color: var(--accent); background: rgba(245, 158, 11, 0.1); }
+
+.ekle-satir { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.ekle-satir button { padding: 10px 6px; font-size: 12.5px; }
+
+.modul-duzen {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.modul-duzen input, .modul-duzen select { background: var(--panel); }
+.modul-dugmeler { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+.modul-dugmeler button { padding: 9px 6px; font-size: 12px; }
+button.tehlike { color: #ff9fb0; border-color: rgba(244, 63, 94, 0.4); }
+
+.liste-mod { margin-bottom: 10px; }
+#kesim-tablo tbody tr { cursor: pointer; }
+#kesim-tablo tbody tr:hover td { background: rgba(255, 255, 255, 0.03); }
+#kesim-tablo tr.secili td { background: rgba(245, 158, 11, 0.12); }
+#kesim-tablo tr.grup td {
+  background: var(--panel-2);
+  color: var(--accent-2);
+  font-weight: 650;
+  cursor: default;
+}
+#kesim-tablo td.ad { white-space: normal; min-width: 120px; }
+#kesim-tablo .malz { font-size: 10px; color: var(--muted); }
+
+.levha-ozet { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.levha-ozet .satir { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+.levha-ozet .bar { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.levha-ozet .bar > i { display: block; height: 100%; background: var(--accent); }
+#dxf-dugmeler { margin-top: 10px; }
+
+.katmanlar { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+.katmanlar li { margin: 4px 0; }
+
+.iki-tablo { display: grid; gap: 12px; }
+@media (min-width: 560px) { .iki-tablo { grid-template-columns: 1fr 1fr; } }
+#maliyet-tablo tfoot td { font-weight: 700; color: var(--text); border-bottom: 0; }
+
+.proje-dugmeler { margin-top: 10px; }
+.proje-dugmeler .upload { padding: 12px 8px; }

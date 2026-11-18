@@ -6,7 +6,7 @@
 // APP_VERSION ile AYNI olmalı. Üçü ayrışırsa tarayıcı yeni HTML'i eski
 // JavaScript'le birleştirebilir; testler bu üçünü karşılaştırır.
 
-const VERSION = '2026-10-19-k';
+const VERSION = '2026-11-18-a';
 const CACHE = `cnc-panel-${VERSION}`;
 // Büyük ve değişmeyen dosyalar (yapay zekâ modeli ~26 MB, çalıştırıcı
 // ~14 MB) sürümden bağımsız, kalıcı bir önbellekte durur: her güncellemede
@@ -63,6 +63,17 @@ const ASSETS = [
   './js/export/svg.js',
   './vendor/three/three.module.min.js',
   './vendor/three/addons/controls/OrbitControls.js',
+  // Dolap tasarım programı (dolap/)
+  './dolap/index.html',
+  './dolap/dolap.css',
+  './dolap/js/ana.js',
+  './dolap/js/model.js',
+  './dolap/js/govde.js',
+  './dolap/js/yerlesim.js',
+  './dolap/js/kesim.js',
+  './dolap/js/dxf.js',
+  './dolap/js/cizim2d.js',
+  './dolap/js/onizleme3d.js',
 ];
 
 self.addEventListener('install', (e) => {

@@ -20,6 +20,7 @@ const path = require('node:path');
 
 const KOK = path.join(__dirname, '..');
 const ADRES = 'app://cnc/index.html';
+const DOLAP_ADRES = 'app://cnc/dolap/index.html';
 
 const TURLER = {
   '.html': 'text/html; charset=utf-8',
@@ -68,6 +69,12 @@ const acikDosyalar = new Map();   // numara → disk yolu
 let acikSayac = 0;
 
 function dosyaGonder(yol) {
+  // Dolap programı açıkken gelen STL/görsel panel programına aittir.
+  if (pencere && pencere.webContents.getURL().startsWith(DOLAP_ADRES)) {
+    bekleyen.push(yol);
+    pencere.loadURL(ADRES);
+    return;
+  }
   if (!sayfaHazir) { bekleyen.push(yol); return; }
   const no = String(++acikSayac);
   acikDosyalar.set(no, yol);
@@ -98,6 +105,13 @@ function menuKur() {
         { label: 'Aç…', accelerator: 'CmdOrCtrl+O', click: dosyaSec },
         { type: 'separator' },
         { label: 'Çıkış', role: 'quit' },
+      ],
+    },
+    {
+      label: 'Program',
+      submenu: [
+        { label: 'Duvar paneli', accelerator: 'CmdOrCtrl+1', click: () => pencere?.loadURL(ADRES) },
+        { label: 'Dolap tasarım', accelerator: 'CmdOrCtrl+2', click: () => pencere?.loadURL(DOLAP_ADRES) },
       ],
     },
     {
