@@ -252,6 +252,14 @@ tasarlar. Üst çubuktaki **Dolap tasarım →** bağlantısıyla (masaüstünde
   atanır. Kenardan delinecek yerler `KENAR_DELIK` katmanında işaretlidir;
   3 eksende delinmez. Parçalar delinen yüzü yukarı bakacak şekilde
   çizilir, bu yüzden sol ve sağ yan birbirinin aynasıdır.
+- **Camlı kapak:** MDF çerçeve + cam (CNC pencereyi boydan keser, arka yüze
+  cam lambası oyar: DXF'te `CEP_Z8`) ya da hazır alüminyum çerçeveli kapak.
+  Cam ölçüleri ve alüminyum kapaklar ayrı sipariş listesinde çıkar. Boy
+  dolapta yalnız üst kapaklar camlanır (vitrin).
+- **Alt dolap türleri:** evye dolabı (raf ve arkalık yok, alüminyum tepsi
+  hırdavata eklenir), ankastre bulaşık makinesi (yalnız ön panel ve baza
+  kesilir, panel 3B'de öne devrilir), solo bulaşık ve çamaşır makinesi
+  boşluğu (kesim yok, tezgâh üstten geçer).
 - **Kapak renkleri:** Kastamonu Entegre kartelası (Evogloss parlak / soft mat,
   MDFLam düz renk, ahşap ve fantazi dekorlar) renk kartı olarak seçilir. Tüm
   kapaklara ya da tek modüle uygulanır; farklı renkteki kapaklar ayrı levhaya

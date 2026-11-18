@@ -47,6 +47,26 @@ export function parcaCiz(canvas, p) {
   if (b.x0) kenar(0, 0, 0, p.kesimEn);
   if (b.x1) kenar(p.kesimBoy, 0, p.kesimBoy, p.kesimEn);
 
+  if (p.lamba) {
+    const r = p.lamba;
+    c.setLineDash([5, 4]);
+    c.strokeStyle = '#38bdf8';
+    c.lineWidth = 1.2;
+    c.strokeRect(X(r.x0 - p.dx), Y(r.y1 - p.dy), (r.x1 - r.x0) * s, (r.y1 - r.y0) * s);
+    c.setLineDash([]);
+  }
+  if (p.pencere) {
+    const r = p.pencere;
+    c.fillStyle = '#0b0e12';
+    c.strokeStyle = '#e6eaef';
+    c.lineWidth = 1.2;
+    c.fillRect(X(r.x0 - p.dx), Y(r.y1 - p.dy), (r.x1 - r.x0) * s, (r.y1 - r.y0) * s);
+    c.strokeRect(X(r.x0 - p.dx), Y(r.y1 - p.dy), (r.x1 - r.x0) * s, (r.y1 - r.y0) * s);
+    c.fillStyle = '#9aa5b1';
+    c.font = '11px system-ui, sans-serif';
+    c.textAlign = 'center';
+    c.fillText(`pencere ${fmt(r.x1 - r.x0)} × ${fmt(r.y1 - r.y0)} · cam lambası ${p.lamba.derinlik} mm`, X((r.x0 + r.x1) / 2 - p.dx), Y((r.y0 + r.y1) / 2 - p.dy));
+  }
   for (const d of p.delikler) {
     const x = X(d.x - p.dx), y = Y(d.y - p.dy);
     c.beginPath();
@@ -111,6 +131,14 @@ export function levhaCiz(canvas, levha, { seciliNo, baslik } = {}) {
     c.fillRect(rx, ry, rw, rh);
     c.strokeRect(rx, ry, rw, rh);
     kutular.push({ no: p.no, x: rx, y: ry, w: rw, h: rh });
+    if (p.pencere) {
+      const r = p.pencere;
+      const a = levhaNoktasi(yer, p, r.x0 - p.dx, r.y0 - p.dy), z = levhaNoktasi(yer, p, r.x1 - p.dx, r.y1 - p.dy);
+      const px = Math.min(a[0], z[0]), py = Math.max(a[1], z[1]);
+      c.fillStyle = '#0b0e12';
+      c.fillRect(X(px), Y(py), Math.abs(z[0] - a[0]) * s, Math.abs(z[1] - a[1]) * s);
+      c.strokeRect(X(px), Y(py), Math.abs(z[0] - a[0]) * s, Math.abs(z[1] - a[1]) * s);
+    }
     for (const d of p.delikler) {
       const [sx, sy] = levhaNoktasi(yer, p, d.x - p.dx, d.y - p.dy);
       c.beginPath();

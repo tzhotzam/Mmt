@@ -4,8 +4,10 @@ import { HIRDAVAT } from './model.js';
 import { bantUzunlugu, rayBoyu } from './govde.js';
 import { yerlestirLevha } from './yerlesim.js';
 import { renkAdi } from './renkler.js';
+import { CAM_TURU, makineMi, evyeMi } from './model.js';
 
-export const MALZEME_ADI = { govde: 'Gövde', kapak: 'Kapak', arkalik: 'Arkalık' };
+export const MALZEME_ADI = { govde: 'Gövde', kapak: 'Kapak', arkalik: 'Arkalık', cam: 'Cam', aluminyum: 'Alüminyum' };
+const LEVHALIK = new Set(['govde', 'kapak', 'arkalik']);
 
 /**
  * Aynı ölçü + malzeme + bant düzenindeki parçaları tek satırda toplar.
@@ -14,10 +16,11 @@ export const MALZEME_ADI = { govde: 'Gövde', kapak: 'Kapak', arkalik: 'Arkalık
 export function kesimListesi(parcalar, mod = 'modul') {
   const satirlar = new Map();
   for (const p of parcalar) {
+    if (!LEVHALIK.has(p.malzeme)) continue;     // cam ve alüminyum kapak ayrı listede
     const b = p.bant;
     const anahtar = [
       mod === 'modul' ? p.modulNo : '', p.malzeme, p.renk, p.kalinlik, p.kesimBoy, p.kesimEn,
-      +b.y0 + +b.y1, +b.x0 + +b.x1, mod === 'modul' ? p.grup : '',
+      +b.y0 + +b.y1, +b.x0 + +b.x1, mod === 'modul' ? p.grup : '', p.pencere ? 'cam' : '',
     ].join('|');
     let s = satirlar.get(anahtar);
     if (!s) {
@@ -29,6 +32,7 @@ export function kesimListesi(parcalar, mod = 'modul') {
         boy: p.kesimBoy, en: p.kesimEn, netBoy: p.boy, netEn: p.en,
         boyBant: +b.y0 + +b.y1, enBant: +b.x0 + +b.x1,
         delik: 0,
+        camli: !!p.pencere,
       };
       satirlar.set(anahtar, s);
     }
@@ -61,14 +65,15 @@ function genelAd(ad) {
 export function kesimCsv(satirlar, proje) {
   const sayi = (v) => String(v).replace('.', ',');
   const bas = ['No', 'Modül', 'Parça', 'Adet', 'Boy', 'En', 'Kalınlık', 'Malzeme', 'Renk',
-    'Boy bant', 'En bant', 'Net boy', 'Net en', 'Delikli', 'Parça no'];
+    'Boy bant', 'En bant', 'Net boy', 'Net en', 'Delikli', 'Not', 'Parça no'];
   const satir = satirlar.map((s, i) => [
     i + 1,
     s.modulNo ? `M${s.modulNo} ${s.modulAd}` : '',
     s.ad, s.adet, sayi(s.boy), sayi(s.en), sayi(s.kalinlik),
     proje.malzeme[s.malzeme].ad, s.renk ? renkAdi(s.renk) : '',
     s.boyBant, s.enBant, sayi(s.netBoy), sayi(s.netEn),
-    s.delik ? 'evet' : '', s.nolar.join(' '),
+    s.delik ? 'evet' : '', s.camli ? 'camlı: pencere boydan kesilir, arkada cam lambası, iç kenar bantlı' : '',
+    s.nolar.join(' '),
   ]);
   const kac = (v) => {
     const t = String(v);
@@ -136,7 +141,8 @@ export function hirdavatListesi(cozum, proje, hir = HIRDAVAT) {
   }
   for (const { m, parcalar } of cozum.moduller) {
     if (m.tip === 'ust') say.aski += 2;
-    else say.ayak += m.w > 600 ? 6 : 4;
+    else if (!makineMi(m)) say.ayak += m.w > 600 ? 6 : 4;
+    if (evyeMi(m)) say.tepsi = (say.tepsi || 0) + 1;
     const taban = parcalar.filter((p) => p.grup === 'cekmeceTaban').length;
     if (taban) {
       const L = rayBoyu(m.d - proje.malzeme.arkalik.kalinlik);
@@ -152,9 +158,30 @@ export function hirdavatListesi(cozum, proje, hir = HIRDAVAT) {
     ['Kulp' + (proje.kulpAraligi ? ` (${proje.kulpAraligi} mm)` : ''), Math.round(say.kulp)],
     ['Dolap ayağı', say.ayak],
     ['Üst dolap askı takımı', say.aski],
+    ['Evye altı alüminyum tepsi', say.tepsi || 0],
   ];
   for (const [L, n] of [...raylar].sort((a, b) => b[0] - a[0])) liste.push([`Çekmece rayı ${L} mm (çift)`, n]);
   return liste.filter(([, n]) => n > 0).map(([ad, adet]) => ({ ad, adet }));
+}
+
+/**
+ * Cam ve hazır alınacak kapaklar: camcıya / profilciye gidecek liste.
+ * Aynı ölçü ve türdekiler tek satırda toplanır.
+ */
+export function camListesi(parcalar, proje) {
+  const satir = new Map();
+  for (const p of parcalar) {
+    let tur, boy, en;
+    if (p.malzeme === 'cam') { tur = `${CAM_TURU[p.camTuru] || p.camTuru} cam ${p.kalinlik} mm`; boy = p.boy; en = p.en; }
+    else if (p.malzeme === 'aluminyum') { tur = `Alüminyum çerçeveli cam kapak (${CAM_TURU[proje.cam.tur]})`; boy = p.boy; en = p.en; }
+    else continue;
+    const k = `${p.malzeme}|${tur}|${boy}|${en}`;
+    let s = satir.get(k);
+    if (!s) { s = { malzeme: p.malzeme, tur, boy, en, adet: 0, nolar: [] }; satir.set(k, s); }
+    s.adet++;
+    s.nolar.push(p.no);
+  }
+  return [...satir.values()].map((s) => ({ ...s, m2: Math.round((s.boy * s.en * s.adet) / 1e4) / 100 }));
 }
 
 /** Bant metrajı (fire payı %10) ve kaba maliyet. */
@@ -169,5 +196,9 @@ export function maliyet(cozum, plan, proje) {
     kalemler.push({ ad: `${plan[k].ad} levha`, miktar: `${n} adet`, tutar: n * (fiyatlar[plan[k].malzeme] || 0) });
   }
   kalemler.push({ ad: `PVC bant ${proje.bant.kalinlik} mm`, miktar: `${bantM} m`, tutar: bantM * f.bantMetre });
+  for (const [malz, ad, fiyat] of [['cam', 'Cam', f.camM2 || 0], ['aluminyum', 'Alüminyum cam kapak', f.aluminyumM2 || 0]]) {
+    const m2 = camListesi(cozum.parcalar, proje).filter((s) => s.malzeme === malz).reduce((a, s) => a + s.m2, 0);
+    if (m2 > 0) kalemler.push({ ad, miktar: `${String(Math.round(m2 * 100) / 100).replace('.', ',')} m²`, tutar: Math.round(m2 * fiyat) });
+  }
   return { bantM, kalemler, toplam: kalemler.reduce((a, k) => a + k.tutar, 0) };
 }

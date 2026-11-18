@@ -69,6 +69,9 @@
         <button type="button" data-ekle="alt">+ Alt dolap</button>
         <button type="button" data-ekle="ust">+ Üst dolap</button>
         <button type="button" data-ekle="boy">+ Boy dolap</button>
+        <button type="button" data-ekle="alt:evye">+ Evye dolabı</button>
+        <button type="button" data-ekle="alt:bulasik">+ Bulaşık mak.</button>
+        <button type="button" data-ekle="alt:camasir">+ Çamaşır mak.</button>
       </div>
 
       <div id="modul-duzen" class="modul-duzen" hidden>
@@ -85,7 +88,16 @@
           <label class="onemli">Yükseklik (mm) <input type="number" data-m="h" min="200" max="2600" step="1"></label>
           <label class="onemli">Derinlik (mm) <input type="number" data-m="d" min="150" max="800" step="1">
             <small>arkalık dâhil</small></label>
-          <label>Kapak
+          <label data-goster="alt">Alt dolap türü
+            <select data-m="altTur">
+              <option value="normal">Normal dolap</option>
+              <option value="evye">Evye dolabı</option>
+              <option value="bulasik">Bulaşık makinesi (ankastre)</option>
+              <option value="bulasikSolo">Bulaşık makinesi (solo, boşluk)</option>
+              <option value="camasir">Çamaşır makinesi (boşluk)</option>
+            </select>
+          </label>
+          <label data-goster="govdeli">Kapak
             <select data-m="kapak">
               <option value="otomatik">Otomatik (600 üstü çift)</option>
               <option value="tek">Tek kapak</option>
@@ -94,8 +106,16 @@
               <option value="yok">Kapaksız (açık raf)</option>
             </select>
           </label>
-          <label>Kapak rengi
+          <label data-goster="renkli">Kapak rengi
             <select data-m="kapakRenk" data-renk data-bos="Proje rengi"></select>
+          </label>
+          <label data-goster="kapakli">Camlı kapak
+            <select data-m="cam">
+              <option value="yok">Camsız</option>
+              <option value="cerceve">MDF çerçeve + cam (CNC oyar)</option>
+              <option value="aluminyum">Alüminyum çerçeveli (hazır)</option>
+            </select>
+            <small data-goster="boy">yalnız üst kapaklar (vitrin)</small>
           </label>
           <label data-goster="tek">Menteşe tarafı
             <select data-m="mentese">
@@ -160,6 +180,25 @@
           müşteriye göstermeden önce gerçek numuneyle karşılaştırın.</p>
       </div>
       <details class="gelismis">
+        <summary>Camlı kapak ölçüleri</summary>
+        <div class="grid">
+          <label>Cam türü
+            <select data-yol="cam.tur">
+              <option value="seffaf">Şeffaf</option>
+              <option value="fume">Füme</option>
+              <option value="buzlu">Buzlu</option>
+            </select>
+          </label>
+          <label>Çerçeve eni (mm) <input type="number" data-yol="cam.cerceve" min="40" max="150" step="1"></label>
+          <label>Cam lambası eni (mm) <input type="number" data-yol="cam.lamba" min="5" max="20" step="1">
+            <small>camın çerçeveye bindiği pay</small></label>
+          <label>Lamba derinliği (mm) <input type="number" data-yol="cam.lambaDerinlik" min="4" max="14" step="0.5"></label>
+          <label>Cam kalınlığı (mm) <input type="number" data-yol="cam.kalinlik" min="3" max="8" step="1"></label>
+          <label>Cam boşluğu (mm) <input type="number" data-yol="cam.bosluk" min="0" max="4" step="0.5">
+            <small>her kenarda</small></label>
+        </div>
+      </details>
+      <details class="gelismis">
         <summary>Malzeme adları</summary>
         <div class="grid">
           <label>Gövde <input type="text" data-yol="malzeme.govde.ad"></label>
@@ -197,6 +236,12 @@
       <div class="actions">
         <button type="button" id="csv" class="primary">Kesim listesi (Excel CSV)</button>
       </div>
+      <div id="cam-kutu" hidden>
+        <h3 class="alt-baslik">Cam ve hazır kapak siparişi</h3>
+        <div class="table-wrap"><table id="cam-tablo"></table></div>
+        <p class="hint">Cam ölçüsü = pencere + 2 × lamba − 2 × boşluk. Alüminyum kapaklar dolap kapağının bitmiş ölçüsüdür;
+          menteşe çanaklarını profilciye ayrıca bildirin.</p>
+      </div>
     </section>
 
     <!-- ---------------- CNC ---------------- -->
@@ -214,6 +259,7 @@
           <li><code>KESIM</code> parça konturu, boydan boya</li>
           <li><code>DELIK_D35_Z13</code> Ø35 mm, 13 mm derin; her çap/derinlik ayrı katman</li>
           <li><code>DELIK_D5_GECER</code> boydan geçen delik (kulp, konfirmat)</li>
+          <li><code>CEP_Z8</code> camlı kapakta arka yüzdeki cam lambası (cep); pencere <code>KESIM</code> içinde iç kontur</li>
           <li><code>KENAR_DELIK</code> kenardan delinecek yer işareti; 3 eksende delinmez, yatay matkapla açılır</li>
           <li><code>ETIKET</code>, <code>LEVHA</code> bilgi amaçlı, kesilmez</li>
         </ul>
@@ -236,6 +282,8 @@
           <label>Kapak levha <input type="number" data-yol="fiyat.kapakLevha" min="0" step="10"></label>
           <label>Arkalık levha <input type="number" data-yol="fiyat.arkalikLevha" min="0" step="10"></label>
           <label>Bant (₺/m) <input type="number" data-yol="fiyat.bantMetre" min="0" step="0.5"></label>
+          <label>Cam (₺/m²) <input type="number" data-yol="fiyat.camM2" min="0" step="10"></label>
+          <label>Alüminyum cam kapak (₺/m²) <input type="number" data-yol="fiyat.aluminyumM2" min="0" step="10"></label>
         </div>
       </details>
     </section>

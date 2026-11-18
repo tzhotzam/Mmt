@@ -2,6 +2,7 @@
 // döner, çekmeceler kayar. Bir modüle tıklayınca seçilir.
 
 import { renkBul } from './renkler.js';
+import { makineMi } from './model.js';
 
 let THREE = null, OrbitControls = null;
 
@@ -176,6 +177,73 @@ export async function olustur3d(kap, { secince } = {}) {
     return m;
   }
 
+  const camMalz = {
+    seffaf: new THREE.MeshStandardMaterial({ color: 0xd8eef0, transparent: true, opacity: 0.22, roughness: 0.03, envMapIntensity: 1.8, depthWrite: false }),
+    fume: new THREE.MeshStandardMaterial({ color: 0x2e3236, transparent: true, opacity: 0.6, roughness: 0.03, envMapIntensity: 1.8, depthWrite: false }),
+    buzlu: new THREE.MeshStandardMaterial({ color: 0xe9eff1, transparent: true, opacity: 0.72, roughness: 0.85, envMapIntensity: 0.6, depthWrite: false }),
+  };
+  const aluMalz = new THREE.MeshStandardMaterial({ color: 0xb9bdc3, metalness: 0.85, roughness: 0.3 });
+
+  /**
+   * Camlı kapak: çerçeve dört çıta + ortada cam. Merkezi kutunun merkezinde
+   * olan bir grup döner; düz kapakla aynı yere oturur.
+   */
+  function camliKapak(p, k, malz, proje) {
+    const g = new THREE.Group();
+    const alu = p.cam.tur === 'aluminyum';
+    const c = alu ? 22 : proje.cam.cerceve;
+    const w = k.sx, h = k.sy, d = k.sz;
+    const cm = alu ? aluMalz : malz;
+    const cita = (sx, sy, x, y) => {
+      const m = kutu(sx, sy, d, cm);
+      m.position.set(x, y, 0);
+      g.add(m);
+    };
+    cita(w, c, 0, h / 2 - c / 2);                 // üst
+    cita(w, c, 0, -h / 2 + c / 2);                // alt
+    cita(c, h - 2 * c, -w / 2 + c / 2, 0);        // sol
+    cita(c, h - 2 * c, w / 2 - c / 2, 0);         // sağ
+    const camK = Math.max(3, proje.cam.kalinlik);
+    const cam = new THREE.Mesh(new THREE.BoxGeometry(w - 2 * c + 8, h - 2 * c + 8, camK), camMalz[proje.cam.tur] || camMalz.seffaf);
+    cam.position.set(0, 0, alu ? 0 : -d / 2 + proje.cam.lambaDerinlik - camK / 2);
+    cam.renderOrder = 2;
+    g.add(cam);
+    return g;
+  }
+
+  const beyazEsya = new THREE.MeshStandardMaterial({ color: 0xf2f3f4, roughness: 0.35 });
+  const inox = new THREE.MeshStandardMaterial({ color: 0xbfc3c8, metalness: 0.75, roughness: 0.32 });
+  const koyuCam = new THREE.MeshStandardMaterial({ color: 0x1d2329, roughness: 0.05, envMapIntensity: 1.6 });
+
+  /** Makine yerine temsili beyaz eşya (kesime girmez). */
+  function makine(m, proje) {
+    const g = new THREE.Group();
+    const a = proje.ayakYukseklik;
+    const w = m.w - 8, h = m.h + a - 8, d = Math.min(m.d, 580) - 10;
+    const camasir = m.altTur === 'camasir';
+    const govde = kutu(w, h, d, camasir ? beyazEsya : inox);
+    govde.position.set(m.w / 2, -a + h / 2, 10 + d / 2);
+    g.add(govde);
+    if (camasir) {
+      const r = w * 0.3;
+      const kapi = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 14, 48), inox);
+      kapi.rotation.x = Math.PI / 2;
+      kapi.position.set(m.w / 2, -a + h * 0.45, 10 + d + 7);
+      const cam = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.72, r * 0.72, 16, 48), koyuCam);
+      cam.rotation.x = Math.PI / 2;
+      cam.position.copy(kapi.position);
+      cam.position.z += 2;
+      const panel = kutu(w, 90, 6, beyazEsya);
+      panel.position.set(m.w / 2, -a + h - 55, 10 + d + 3);
+      g.add(kapi, cam, panel);
+    } else if (m.altTur === 'bulasikSolo') {
+      const serit = kutu(w, 70, 6, koyuCam);
+      serit.position.set(m.w / 2, -a + h - 45, 10 + d + 3);
+      g.add(serit);
+    }
+    return g;
+  }
+
   function temizle() {
     grup.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     sahne.remove(grup);
@@ -203,10 +271,20 @@ export async function olustur3d(kap, { secince } = {}) {
         const k = p.kutu;
         const kapakMi = p.grup === 'kapak' || p.grup === 'cekmeceOn';
         if (kapakMi && !kapaklarGorunur) continue;
-        const mesh = kutu(k.sx, k.sy, k.sz, p.renk ? renkMalz(p.renk) : mat[p.malzeme]);
+        if (p.malzeme === 'cam') continue;          // camı kapak kendisi çizer
+        const malz = p.renk ? renkMalz(p.renk) : mat[p.malzeme];
+        const mesh = p.cam ? camliKapak(p, k, malz, proje) : kutu(k.sx, k.sy, k.sz, malz);
         kayit.mesh.push(mesh);
         const h = p.hareket;
-        if (h?.tip === 'kapak') {
+        if (h?.tip === 'devril') {
+          // Bulaşık makinesi paneli alttan öne devrilir.
+          const pivot = new THREE.Object3D();
+          pivot.position.set(k.x + k.sx / 2, k.y, k.z);
+          mesh.position.set(0, k.sy / 2, k.sz / 2);
+          pivot.add(mesh);
+          mg.add(pivot);
+          hareketliler.push({ tip: 'devril', obj: pivot });
+        } else if (h?.tip === 'kapak') {
           // Menteşe ekseni: kapağın menteşe kenarı, arka yüzü.
           const pivot = new THREE.Object3D();
           const solMu = h.mentese === 'sol';
@@ -235,7 +313,9 @@ export async function olustur3d(kap, { secince } = {}) {
         mg.add(cer);
       }
 
-      if (m.tip !== 'ust' && proje.ayakYukseklik > 0) {
+      if (makineMi(m)) mg.add(makine(m, proje));
+
+      if (m.tip !== 'ust' && !makineMi(m) && proje.ayakYukseklik > 0) {
         const a = proje.ayakYukseklik;
         const xs = m.w > 600 ? [60, m.w / 2, m.w - 60] : [60, m.w - 60];
         for (const x of xs) {
@@ -289,6 +369,7 @@ export async function olustur3d(kap, { secince } = {}) {
   function uygula() {
     for (const h of hareketliler) {
       if (h.tip === 'kapak') h.obj.rotation.y = h.yon * oran * (Math.PI * 0.55);
+      else if (h.tip === 'devril') h.obj.rotation.x = oran * (Math.PI * 0.47);
       else h.obj.position.z = h.z0 + h.mesafe * oran;
     }
   }
@@ -303,8 +384,13 @@ export async function olustur3d(kap, { secince } = {}) {
     const v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     isin.setFromCamera(v, kamera);
     const hepsi = modulKutulari.flatMap((k) => k.mesh.map((m) => ({ m, id: k.id })));
-    const vur = isin.intersectObjects(hepsi.map((x) => x.m), false)[0];
-    if (vur && secince) secince(hepsi.find((x) => x.m === vur.object).id);
+    const vur = isin.intersectObjects(hepsi.map((x) => x.m), true)[0];
+    if (!vur || !secince) return;
+    // Camlı kapak bir grup: vurulan çocuktan kayıtlı nesneye çık.
+    for (let o = vur.object; o; o = o.parent) {
+      const h = hepsi.find((x) => x.m === o);
+      if (h) { secince(h.id); return; }
+    }
   });
 
   function boyut() {

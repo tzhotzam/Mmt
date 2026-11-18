@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { varsayilanProje, modul, HIRDAVAT, kapakTuru } from '../dolap/js/model.js';
+import { varsayilanProje, modul, HIRDAVAT, kapakTuru, ALT_TURLERI, makineMi } from '../dolap/js/model.js';
 import { projeyiCoz, yerlestir, menteseSayisi, baglantiNoktalari, bantUzunlugu } from '../dolap/js/govde.js';
 import { yerlestirLevha, levhaNoktasi } from '../dolap/js/yerlesim.js';
-import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet } from '../dolap/js/kesim.js';
+import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi } from '../dolap/js/kesim.js';
 import { levhaDxf, levhalarDxf, delikKatmani } from '../dolap/js/dxf.js';
 import { KATALOG, renkBul, renkAdi, renkCss } from '../dolap/js/renkler.js';
 
@@ -271,6 +271,103 @@ test('dönen parçanın delikleri yerleştiği dikdörtgenin içinde kalıyor', 
   assert.ok(donen > 0, 'örnekte hiç dönen parça yok; test anlamsız');
 });
 
+console.log('camlı kapak');
+
+test('MDF çerçeve: pencere ve lamba çerçevede, cam ölçüsü doğru, menteşeye değmiyor', () => {
+  const p = tekModul('ust', { w: 500, h: 720, kapak: 'tek', cam: 'cerceve' });
+  const c = projeyiCoz(p);
+  const k = bul(c.parcalar, 'Kapak');
+  const { cerceve, lamba, bosluk } = p.cam;
+  assert.deepEqual([k.pencere.x0, k.pencere.y0], [cerceve, cerceve]);
+  assert.equal(k.pencere.x1, k.boy - cerceve);
+  assert.equal(k.pencere.y1, k.en - cerceve);
+  assert.equal(k.lamba.x0, cerceve - lamba);
+  const cam = c.parcalar.find((q) => q.malzeme === 'cam');
+  assert.equal(cam.boy, k.boy - 2 * cerceve + 2 * lamba - 2 * bosluk);
+  assert.equal(cam.en, k.en - 2 * cerceve + 2 * lamba - 2 * bosluk);
+  // Cam lambanın içinde, pencereden büyük.
+  assert.ok(cam.boy < k.lamba.x1 - k.lamba.x0 && cam.boy > k.pencere.x1 - k.pencere.x0);
+  for (const d of k.delikler) {
+    const r = d.cap / 2;
+    const ic = d.x + r > k.lamba.x0 && d.x - r < k.lamba.x1 && d.y + r > k.lamba.y0 && d.y - r < k.lamba.y1;
+    assert.ok(!ic, `${d.tur} deliği cam lambasına giriyor`);
+  }
+  assert.deepEqual(c.uyarilar, []);
+});
+
+test('camlı kapak: DXF iç kontur + cep, cam ayrı listede, levhaya girmiyor', () => {
+  const p = tekModul('ust', { w: 800, cam: 'cerceve' });
+  const c = projeyiCoz(p);
+  const plan = levhaPlani(c.parcalar, p);
+  assert.ok(Object.values(plan).every((x) => x.levhalar.every((lv) => lv.yerlesim.every((y) => y.parca.malzeme !== 'cam'))));
+  const lv = plan.kapak.levhalar[0];
+  const dxf = levhaDxf(lv);
+  const kesim = (dxf.match(/\r\nKESIM\r\n66\r\n/g) || []).length;
+  assert.equal(kesim, lv.yerlesim.length + lv.yerlesim.filter((y) => y.parca.pencere).length);
+  assert.ok(dxf.includes(`CEP_Z${p.cam.lambaDerinlik}`));
+  const cl = camListesi(c.parcalar, p);
+  assert.equal(cl.length, 1);
+  assert.equal(cl[0].adet, 2);
+  assert.ok(cl[0].m2 > 0);
+  assert.ok(maliyet(c, plan, p).kalemler.some((x) => x.ad === 'Cam'));
+  // Pencerenin iç kenarı bant metrajına girer.
+  const k = c.parcalar.find((q) => q.pencere);
+  assert.ok(bantUzunlugu(k) > 2 * (k.boy + k.en));
+});
+
+test('alüminyum camlı kapak levhaya girmiyor, sipariş listesinde', () => {
+  const p = tekModul('ust', { w: 600, kapak: 'tek', cam: 'aluminyum' });
+  const c = projeyiCoz(p);
+  const plan = levhaPlani(c.parcalar, p);
+  assert.ok(!plan.kapak, 'kapak levhası açılmamalı');
+  const cl = camListesi(c.parcalar, p);
+  assert.equal(cl[0].malzeme, 'aluminyum');
+  assert.equal(c.parcalar.filter((q) => q.malzeme === 'cam').length, 0);
+});
+
+test('boy dolapta cam yalnız üst kapaklarda', () => {
+  const c = projeyiCoz(tekModul('boy', { cam: 'cerceve' }));
+  assert.ok(bul(c.parcalar, 'Üst kapak').pencere);
+  assert.ok(!bul(c.parcalar, 'Alt kapak').pencere);
+});
+
+console.log('alt dolap türleri');
+
+test('evye dolabı: raf ve arkalık yok, tepsi hırdavatta', () => {
+  const p = tekModul('alt', ALT_TURLERI.evye.ozel);
+  const c = projeyiCoz(p);
+  assert.equal(c.parcalar.filter((q) => q.grup === 'raf').length, 0);
+  assert.ok(!bul(c.parcalar, 'Arkalık'));
+  assert.ok(bul(c.parcalar, 'Alt tabla') && bul(c.parcalar, 'Ön kuşak'));
+  assert.equal(c.parcalar.filter((q) => q.grup === 'kapak').length, 2);
+  assert.ok(hirdavatListesi(c, p).some((x) => x.ad === 'Evye altı alüminyum tepsi' && x.adet === 1));
+});
+
+test('bulaşık makinesi: yalnız panel + baza, menteşesiz, ayaksız', () => {
+  const p = tekModul('alt', ALT_TURLERI.bulasik.ozel);
+  const c = projeyiCoz(p);
+  assert.ok(makineMi(c.moduller[0].m));
+  assert.deepEqual(c.parcalar.map((q) => q.ad).sort(), ['Baza', 'Bulaşık makinesi paneli']);
+  const panel = bul(c.parcalar, 'Bulaşık makinesi paneli');
+  assert.equal(panel.delikler.filter((d) => d.tur === 'mentese').length, 0);
+  assert.equal(panel.en, 600 - p.kapakBosluk);
+  assert.equal(panel.hareket.tip, 'devril');
+  const h = Object.fromEntries(hirdavatListesi(c, p).map((x) => [x.ad, x.adet]));
+  assert.equal(h['Dolap ayağı'], undefined);
+  assert.equal(h['Menteşe (bindirme, frenli)'], undefined);
+});
+
+test('çamaşır makinesi: parça yok, dizilimde yer tutuyor, standart dışı ölçüde uyarı', () => {
+  const p = varsayilanProje();
+  p.moduller = [modul('alt', { w: 600 }), modul('alt', ALT_TURLERI.camasir.ozel), modul('alt', { w: 400 })];
+  const c = projeyiCoz(p);
+  assert.equal(c.moduller[1].parcalar.length, 0);
+  assert.deepEqual(c.moduller.map((x) => x.konum.x), [0, 600, 1200]);
+  assert.deepEqual(c.uyarilar, []);
+  p.moduller[1].w = 550;
+  assert.ok(projeyiCoz(p).uyarilar.some((u) => u.includes('makine yeri')));
+});
+
 console.log('renkler');
 
 test('katalog: kimlikler tekil, hex geçerli, eski renk adları hâlâ bulunuyor', () => {
@@ -346,9 +443,10 @@ test('DXF: her delik bir CIRCLE, katmanlar tanımlı, dosya EOF ile bitiyor', ()
 test('kesim listesi: adetler parça sayısını tutuyor, CSV Excel uyumlu', () => {
   const p = varsayilanProje();
   const c = projeyiCoz(p);
+  const levhalik = c.parcalar.filter((q) => ['govde', 'kapak', 'arkalik'].includes(q.malzeme));
   for (const mod of ['modul', 'toplu']) {
     const l = kesimListesi(c.parcalar, mod);
-    assert.equal(l.reduce((a, s) => a + s.adet, 0), c.parcalar.length);
+    assert.equal(l.reduce((a, s) => a + s.adet, 0), levhalik.length);
   }
   assert.ok(kesimListesi(c.parcalar, 'toplu').length < kesimListesi(c.parcalar, 'modul').length);
   const csv = kesimCsv(kesimListesi(c.parcalar), p);

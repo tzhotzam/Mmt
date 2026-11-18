@@ -14,7 +14,7 @@
 //
 // Bu dosya tarayıcıya bağlı değildir; Node'dan doğrudan çağrılabilir.
 
-import { HIRDAVAT, kapakTuru, dogrula } from './model.js';
+import { HIRDAVAT, kapakTuru, dogrula, makineMi, evyeMi } from './model.js';
 
 const RAY_BOSLUK = 13;                       // bilyalı ray, her yanda
 const RAY_BOYLARI = [600, 550, 500, 450, 400, 350, 300, 250];
@@ -81,10 +81,12 @@ export function kesimOlcusu(p, bant) {
   return p;
 }
 
-/** Kenar bandının uzunluğu (mm). */
+/** Kenar bandının uzunluğu (mm). Camlı kapakta pencerenin iç kenarı da bantlanır. */
 export function bantUzunlugu(p) {
   const b = p.bant;
-  return ((b.y0 ? 1 : 0) + (b.y1 ? 1 : 0)) * p.boy + ((b.x0 ? 1 : 0) + (b.x1 ? 1 : 0)) * p.en;
+  let L = ((b.y0 ? 1 : 0) + (b.y1 ? 1 : 0)) * p.boy + ((b.x0 ? 1 : 0) + (b.x1 ? 1 : 0)) * p.en;
+  if (p.pencere) L += 2 * (p.pencere.x1 - p.pencere.x0 + p.pencere.y1 - p.pencere.y0);
+  return L;
 }
 
 /** Bağlantı noktaları: kısa parçada ortada bir, normalde iki, derinde üç. */
@@ -118,6 +120,27 @@ function modulParcalari(m, proje, hir) {
   const parcalar = [];
 
   const ekle = (p) => { parcalar.push(p); return p; };
+
+  // ---- makine yerleri: gövde yok ----
+  if (makineMi(m)) {
+    if (m.altTur === 'bulasik') {
+      // Ankastre: makinenin kapağına vidalanan panel; menteşe yok, kulp üstte yatay.
+      const dw = yuvarla(W - g), dh = yuvarla(H - g);
+      const p = ekle(parca('Bulaşık makinesi paneli', 'kapak', 'kapak', tk, dh, dw,
+        { x0: true, x1: true, y0: true, y1: true }, 'Arka yüz',
+        { x: g / 2, y: 0, z: D, sx: dw, sy: dh, sz: tk }));
+      p.hareket = { tip: 'devril' };
+      const K = proje.kulpAraligi;
+      if (K > 0) for (const s of [-1, 1]) p.delikler.push(delik(dh - 60, yuvarla(dw / 2 + (s * K) / 2), hir.kulp.cap, 'gecer', 'kulp'));
+      if (proje.baza && proje.ayakYukseklik > 30) {
+        const bh = proje.ayakYukseklik;
+        ekle(parca('Baza', 'baza', 'kapak', tk, W, bh,
+          { x0: false, x1: false, y0: false, y1: false }, 'Fark etmez',
+          { x: 0, y: -bh, z: D - 50 - tk, sx: W, sy: bh, sz: tk }));
+      }
+    }
+    return parcalar;
+  }
 
   // ---- yanlar ----
   const yanBant = (sol) => {
@@ -208,12 +231,32 @@ function modulParcalari(m, proje, hir) {
   };
 
   /** Menteşeli kapak; menteşe tabanı deliklerini ilgili yana ekler. */
-  const kapak = (ad, x0, x1, y0, y1, mentese, kulpYeri) => {
+  const kapak = (ad, x0, x1, y0, y1, mentese, kulpYeri, cam) => {
     const dw = yuvarla(x1 - x0), dh = yuvarla(y1 - y0);
     const p = ekle(parca(ad, 'kapak', 'kapak', tk, dh, dw,
       { x0: true, x1: true, y0: true, y1: true }, 'Arka yüz',
       { x: x0, y: y0, z: D, sx: dw, sy: dh, sz: tk }));
     p.hareket = { tip: 'kapak', mentese };
+    if (cam === 'aluminyum') {
+      // Hazır alınır: levhaya girmez, bantlanmaz.
+      p.malzeme = 'aluminyum';
+      p.ad = `${ad} (alüminyum cam)`;
+      p.bant = { x0: false, x1: false, y0: false, y1: false };
+      p.cam = { tur: 'aluminyum' };
+    } else if (cam === 'cerceve') {
+      const c = proje.cam.cerceve, L = proje.cam.lamba, b = proje.cam.bosluk;
+      if (dh - 2 * c >= 60 && dw - 2 * c >= 60) {
+        // Çizimde x = kapak yüksekliği, y = genişlik (arka yüzden).
+        p.pencere = { x0: c, y0: c, x1: yuvarla(dh - c), y1: yuvarla(dw - c) };
+        p.lamba = { x0: c - L, y0: c - L, x1: yuvarla(dh - c + L), y1: yuvarla(dw - c + L), derinlik: proje.cam.lambaDerinlik };
+        p.cam = { tur: 'cerceve' };
+        const cb = yuvarla(dh - 2 * c + 2 * L - 2 * b), ce = yuvarla(dw - 2 * c + 2 * L - 2 * b);
+        const camP = ekle(parca(`Cam · ${ad}`, 'cam', 'cam', proje.cam.kalinlik, cb, ce,
+          { x0: false, x1: false, y0: false, y1: false }, '—',
+          { x: x0 + c - L + b, y: y0 + c - L + b, z: D, sx: ce, sy: cb, sz: proje.cam.kalinlik }));
+        camP.camTuru = proje.cam.tur;
+      }
+    }
     const mh = hir.mentese;
     const n = menteseSayisi(dh);
     const yan = mentese === 'sol' ? solYan : sagYan;
@@ -238,14 +281,15 @@ function modulParcalari(m, proje, hir) {
   };
 
   /** Bir aralığa tek ya da çift kapak. */
-  const kapaklar = (y0, y1, ad, kulpYeri) => {
+  const kapaklar = (y0, y1, ad, kulpYeri, camli = true) => {
     const tur = kapakTuru(m);
     if (tur === 'yok') return;
+    const cam = camli && m.cam && m.cam !== 'yok' ? m.cam : null;
     if (tur === 'cift') {
-      kapak(`${ad} sol`, g / 2, W / 2 - g / 2, y0, y1, 'sol', kulpYeri);
-      kapak(`${ad} sağ`, W / 2 + g / 2, W - g / 2, y0, y1, 'sag', kulpYeri);
+      kapak(`${ad} sol`, g / 2, W / 2 - g / 2, y0, y1, 'sol', kulpYeri, cam);
+      kapak(`${ad} sağ`, W / 2 + g / 2, W - g / 2, y0, y1, 'sag', kulpYeri, cam);
     } else {
-      kapak(ad, g / 2, W - g / 2, y0, y1, m.mentese === 'sag' ? 'sag' : 'sol', kulpYeri);
+      kapak(ad, g / 2, W - g / 2, y0, y1, m.mentese === 'sag' ? 'sag' : 'sol', kulpYeri, cam);
     }
   };
 
@@ -256,7 +300,8 @@ function modulParcalari(m, proje, hir) {
     yatay('Arka kuşak', 'kusak', H - t, 0, KUSAK, 'ust', false);
     if (kapakTuru(m) === 'cekmece') cekmeceler();
     else {
-      raflar(m.rafSayisi, t, H - t);
+      // Evye dolabında raf yok (sifon, tesisat).
+      if (!evyeMi(m)) raflar(m.rafSayisi, t, H - t);
       kapaklar(0, H - g, 'Kapak', 'ust');
     }
   } else if (m.tip === 'ust') {
@@ -272,12 +317,12 @@ function modulParcalari(m, proje, hir) {
     raflar(m.rafSayisi, t, sY, 'Alt raf');
     raflar(m.ustRafSayisi ?? 0, sY + t, H - t, 'Üst raf');
     const bol = sY + t / 2;
-    kapaklar(0, bol - g / 2, 'Alt kapak', 'ust');
+    kapaklar(0, bol - g / 2, 'Alt kapak', 'ust', false);
     kapaklar(bol + g / 2, H - g / 2, 'Üst kapak', 'alt');
   }
 
-  // ---- arkalık ----
-  ekle(parca('Arkalık', 'arkalik', 'arkalik', ta, W, H,
+  // ---- arkalık (evye dolabında yok: tesisat arkadan gelir) ----
+  if (!evyeMi(m)) ekle(parca('Arkalık', 'arkalik', 'arkalik', ta, W, H,
     { x0: false, x1: false, y0: false, y1: false }, '—',
     { x: 0, y: 0, z: 0, sx: W, sy: H, sz: ta }));
 

@@ -35,6 +35,27 @@ export const RENK_VARSAYILAN = {
   ustKapak: 'Kastamonu Entegre|Beyaz|parlak',   // Evogloss Beyaz
 };
 
+/**
+ * Alt dolap türleri. Makine yerlerinde gövde yoktur: tezgâh üstten geçer.
+ * Ankastre bulaşık makinesine yalnız ön panel kesilir (makineye vidalanır).
+ */
+export const ALT_TURLERI = {
+  normal: { ad: 'Normal dolap', ozel: {} },
+  evye: { ad: 'Evye dolabı', ozel: { ad: 'Evye dolabı', w: 800, altTur: 'evye', rafSayisi: 0 } },
+  bulasik: { ad: 'Bulaşık makinesi (ankastre)', ozel: { ad: 'Bulaşık makinesi', w: 600, altTur: 'bulasik' } },
+  bulasikSolo: { ad: 'Bulaşık makinesi (solo, boşluk)', ozel: { ad: 'Bulaşık makinesi', w: 600, altTur: 'bulasikSolo' } },
+  camasir: { ad: 'Çamaşır makinesi (boşluk)', ozel: { ad: 'Çamaşır makinesi', w: 600, altTur: 'camasir' } },
+};
+
+/** Gövdesi olmayan makine yeri mi? */
+export function makineMi(m) {
+  return m.tip === 'alt' && ['bulasik', 'bulasikSolo', 'camasir'].includes(m.altTur);
+}
+
+export function evyeMi(m) {
+  return m.tip === 'alt' && m.altTur === 'evye';
+}
+
 export function varsayilanProje() {
   return {
     ad: 'Mutfak',
@@ -52,13 +73,15 @@ export function varsayilanProje() {
     baza: true,
     ustAltKot: 1450,                // üst dolapların yerden alt kotu
     tezgah: true,
-    fiyat: { levha: 1650, kapakLevha: 2400, arkalikLevha: 650, bantMetre: 9 },
+    // Camlı kapak: MDF çerçevede pencere boydan kesilir, arkaya cam lambası oyulur.
+    cam: { tur: 'seffaf', cerceve: 60, lamba: 10, lambaDerinlik: 8, kalinlik: 4, bosluk: 1.5 },
+    fiyat: { levha: 1650, kapakLevha: 2400, arkalikLevha: 650, bantMetre: 9, camM2: 650, aluminyumM2: 3200 },
     moduller: [
       modul('alt', { ad: 'Çekmeceli', w: 450, kapak: 'cekmece', cekmeceSayisi: 3 }),
-      modul('alt', { ad: 'Evye altı', w: 800, rafSayisi: 0 }),
-      modul('alt', { ad: 'Alt dolap', w: 600 }),
+      modul('alt', ALT_TURLERI.evye.ozel),
+      modul('alt', ALT_TURLERI.bulasik.ozel),
       modul('ust', { ad: 'Üst dolap', w: 450, kapakRenk: RENK_VARSAYILAN.ustKapak }),
-      modul('ust', { ad: 'Üst dolap', w: 800, kapakRenk: RENK_VARSAYILAN.ustKapak }),
+      modul('ust', { ad: 'Vitrin', w: 800, kapakRenk: RENK_VARSAYILAN.ustKapak, cam: 'cerceve' }),
       modul('ust', { ad: 'Üst dolap', w: 600, kapakRenk: RENK_VARSAYILAN.ustKapak }),
       modul('boy', { ad: 'Kiler', w: 600 }),
     ],
@@ -76,6 +99,8 @@ export function modul(tip, ozel = {}) {
     kapak: 'otomatik',             // otomatik | tek | cift | cekmece | yok
     mentese: 'sol',                // tek kapakta menteşe tarafı
     kapakRenk: '',                 // boş = projenin kapak rengi
+    cam: 'yok',                    // yok | cerceve (MDF + cam, CNC) | aluminyum (hazır)
+    altTur: 'normal',              // alt dolapta: normal | evye | bulasik | bulasikSolo | camasir
     cekmeceSayisi: 3,
   };
   const tipler = {
@@ -94,16 +119,38 @@ export function kapakTuru(m) {
 }
 
 /** Modül ölçülerini mantıklı aralıkta tutar, uyarıları döner. */
+export const CAM_TURU = { seffaf: 'Şeffaf', fume: 'Füme', buzlu: 'Buzlu' };
+
 export function dogrula(proje) {
   const uyarilar = [];
   const t = proje.malzeme.govde.kalinlik;
+  const cam = proje.cam;
+  const mh = HIRDAVAT.mentese;
+  if (proje.moduller.some((m) => m.cam === 'cerceve')) {
+    if (cam.cerceve - cam.lamba < mh.kapMerkez + mh.kapCap / 2 + 3) {
+      uyarilar.push(`Camlı kapak: ${cam.cerceve} mm çerçevede cam lambası menteşe çanağına çok yakın; çerçeve en az ${mh.kapMerkez + mh.kapCap / 2 + 3 + cam.lamba} mm olmalı.`);
+    }
+    if (cam.lambaDerinlik >= proje.malzeme.kapak.kalinlik - 4) {
+      uyarilar.push(`Camlı kapak: ${cam.lambaDerinlik} mm lamba ${proje.malzeme.kapak.kalinlik} mm kapakta çerçeveyi zayıflatır.`);
+    }
+  }
   for (const m of proje.moduller) {
     const ad = `${m.ad} (${m.w})`;
+    if (makineMi(m)) {
+      const std = m.altTur === 'camasir' ? [600] : [450, 600];
+      if (!std.includes(m.w)) uyarilar.push(`${ad}: makine yeri genelde ${std.join(' ya da ')} mm; makinenin ölçüsünü kontrol edin.`);
+      if (m.h + proje.ayakYukseklik < 820) uyarilar.push(`${ad}: tezgâh altı ${m.h + proje.ayakYukseklik} mm; çoğu makine 820 mm ister.`);
+      continue;
+    }
     if (m.w < 4 * t + 100) uyarilar.push(`${ad}: genişlik çok dar.`);
     if (m.d < 150) uyarilar.push(`${ad}: derinlik çok az.`);
     const ic = m.w - 2 * t;
     if (m.rafSayisi > 0 && ic > 900 && kapakTuru(m) !== 'cekmece') {
       uyarilar.push(`${ad}: ${ic} mm açıklıkta raf sehim yapar; ara dikme ya da 25 mm raf düşünün.`);
+    }
+    if (m.cam === 'cerceve' && ['tek', 'cift'].includes(kapakTuru(m))) {
+      const kw = (kapakTuru(m) === 'cift' ? m.w / 2 : m.w) - 2 * cam.cerceve;
+      if (kw < 80) uyarilar.push(`${ad}: kapak camlı çerçeve için dar; pencere ${Math.round(kw)} mm kalıyor.`);
     }
     if (kapakTuru(m) === 'tek' && m.w > 600) {
       uyarilar.push(`${ad}: ${m.w} mm tek kapak ağır olur; çift kapak önerilir.`);

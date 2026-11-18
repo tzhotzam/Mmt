@@ -64,6 +64,13 @@ function levhaCiz(b, levha, ox, oy, opts) {
       const [x, y] = nokta(d.x - p.dx, d.y - p.dy);
       b.daire(x, y, d.cap / 2, b.kat(delikKatmani(d), RENK[d.tur] || 7));
     }
+    // Camlı kapak: pencere boydan kesilir (KESIM içinde iç kontur), arka
+    // yüzde cam lambası cep olarak oyulur. Parça arka yüzü yukarı dizildiği
+    // için ikisi de aynı kurulumda işlenir.
+    const dikdortgen = (r) => [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]]
+      .map(([px, py]) => nokta(px - p.dx, py - p.dy));
+    if (p.lamba) b.cizgi(dikdortgen(p.lamba), b.kat(`CEP_Z${p.lamba.derinlik}`, 5), true);
+    if (p.pencere) b.cizgi(dikdortgen(p.pencere), b.kat('KESIM', 1), true);
     for (const k of p.kenarDelik) {
       const L = 15;
       let a, c;

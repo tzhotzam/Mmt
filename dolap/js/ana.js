@@ -1,9 +1,9 @@
 // Dolap programının arayüzü: proje durumu → hesap → çizim.
 
-import { varsayilanProje, modul, LEVHA_HAZIR, kapakTuru } from './model.js';
+import { varsayilanProje, modul, LEVHA_HAZIR, kapakTuru, ALT_TURLERI, makineMi } from './model.js';
 import { gruplar as renkGruplari, renkAdi, renkCss, renkBul } from './renkler.js';
 import { projeyiCoz } from './govde.js';
-import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, MALZEME_ADI } from './kesim.js';
+import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi, MALZEME_ADI } from './kesim.js';
 import { levhaDxf, levhalarDxf } from './dxf.js';
 import { olustur3d } from './onizleme3d.js';
 import { parcaCiz, levhaCiz, DELIK_RENK, DELIK_AD } from './cizim2d.js';
@@ -105,8 +105,17 @@ function modulListesi() {
     b.type = 'button';
     b.className = 'modul-kart' + (m.id === durum.modulId ? ' secili' : '');
     const kt = kapakTuru(m);
-    b.innerHTML = `<span class="rozet">M${i + 1} · ${TIP_AD[m.tip]}</span><b></b>` +
-      `<span>${m.w} × ${m.h} × ${m.d}</span><span>${KAPAK_AD[kt]}${kt === 'cekmece' ? ` (${m.cekmeceSayisi})` : ''}</span>`;
+    if (makineMi(m)) {
+      b.innerHTML = `<span class="rozet">M${i + 1} · Makine</span><b></b><span>${m.w} × ${m.h + proje.ayakYukseklik} yer</span>` +
+        `<span>${m.altTur === 'bulasik' ? 'ankastre panel' : 'boşluk'}</span>`;
+      b.querySelector('b').textContent = m.ad;
+      b.addEventListener('click', () => modulSec(m.id));
+      kap.appendChild(b);
+      return;
+    }
+    b.innerHTML = `<span class="rozet">M${i + 1} · ${TIP_AD[m.tip]}${m.tip === 'alt' && m.altTur === 'evye' ? ' · evye' : ''}</span><b></b>` +
+      `<span>${m.w} × ${m.h} × ${m.d}</span><span>${KAPAK_AD[kt]}${kt === 'cekmece' ? ` (${m.cekmeceSayisi})` : ''}` +
+      `${m.cam && m.cam !== 'yok' && (kt === 'tek' || kt === 'cift') ? ` · camlı${m.cam === 'aluminyum' ? ' (alü.)' : ''}` : ''}</span>`;
     b.querySelector('b').textContent = m.ad;
     const rk = document.createElement('i');
     rk.className = 'kart-renk';
@@ -139,10 +148,15 @@ function gorunurluk() {
   const m = seciliModul();
   if (!m) return;
   const kt = kapakTuru(m);
+  const govdeli = !makineMi(m);
   const goster = {
-    tek: kt === 'tek',
-    cekmece: kt === 'cekmece',
-    raf: kt !== 'cekmece',
+    alt: m.tip === 'alt',
+    govdeli,
+    renkli: govdeli || m.altTur === 'bulasik',
+    tek: govdeli && kt === 'tek',
+    cekmece: govdeli && kt === 'cekmece',
+    raf: govdeli && kt !== 'cekmece' && m.altTur !== 'evye',
+    kapakli: govdeli && (kt === 'tek' || kt === 'cift'),
     boy: m.tip === 'boy',
   };
   for (const el of $$('#modul-duzen [data-goster]')) el.hidden = !goster[el.dataset.goster];
@@ -177,7 +191,8 @@ for (const el of $$('[data-m]')) {
 
 for (const b of $$('[data-ekle]')) {
   b.addEventListener('click', () => {
-    const m = modul(b.dataset.ekle);
+    const [tip, tur] = b.dataset.ekle.split(':');
+    const m = modul(tip, tur ? ALT_TURLERI[tur].ozel : {});
     const i = proje.moduller.findIndex((x) => x.id === durum.modulId);
     proje.moduller.splice(i >= 0 ? i + 1 : proje.moduller.length, 0, m);
     durum.modulId = m.id;
@@ -331,7 +346,10 @@ const sayi = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
 
 function ozet() {
   const m = maliyet(cozum, plan, proje);
-  const levhalar = Object.values(plan).map((x) => `${MALZEME_ADI[x.malzeme].toLowerCase()} ${x.levhalar.length}`).join(' · ');
+  const levhalar = Object.values(plan).map((x) => {
+    const ad = x.anahtar !== x.malzeme ? `kapak (${renkBul(x.renk).ad})` : MALZEME_ADI[x.malzeme].toLowerCase();
+    return `${ad} ${x.levhalar.length}`;
+  }).join(' · ');
   const chip = (a, b) => `<span class="chip">${a} <b>${b}</b></span>`;
   $('#ozet').innerHTML =
     chip('Modül', proje.moduller.length) +
@@ -364,11 +382,18 @@ function kesimTablosu() {
     const sec = s.nolar.includes(durum.parcaNo) ? ' secili' : '';
     html += `<tr data-no="${s.nolar[0]}" class="${sec}"><td class="ad">${kac(s.ad)}` +
       (durum.liste === 'toplu' || s.malzeme !== 'govde' ? ` <span class="malz">${MALZEME_ADI[s.malzeme]}</span>` : '') +
+      (s.camli ? '<span class="cam-etiket">camlı</span>' : '') +
       (s.malzeme === 'kapak' && s.renk ? `<br><span class="malz"><i class="renk-nokta" style="background:${renkBul(s.renk).hex}"></i>${kac(renkAdi(s.renk))}</span>` : '') +
       `</td><td>${s.adet}</td><td>${sayi(s.boy)}</td><td>${sayi(s.en)}</td><td>${s.kalinlik}</td>` +
       `<td>${s.boyBant}/${s.enBant}</td></tr>`;
   }
   t.innerHTML = html + '</tbody>';
+
+  const cam = camListesi(cozum.parcalar, proje);
+  $('#cam-kutu').hidden = !cam.length;
+  $('#cam-tablo').innerHTML = '<thead><tr><th>Ne</th><th>Adet</th><th>Boy</th><th>En</th><th>m²</th></tr></thead><tbody>' +
+    cam.map((s) => `<tr><td class="ad">${kac(s.tur)}<br><span class="malz">${s.nolar.join(' ')}</span></td><td>${s.adet}</td>` +
+      `<td>${sayi(s.boy)}</td><td>${sayi(s.en)}</td><td>${sayi(s.m2)}</td></tr>`).join('') + '</tbody>';
 }
 
 $('#kesim-tablo').addEventListener('click', (e) => {
