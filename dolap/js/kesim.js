@@ -3,6 +3,7 @@
 import { HIRDAVAT } from './model.js';
 import { bantUzunlugu, rayBoyu } from './govde.js';
 import { yerlestirLevha } from './yerlesim.js';
+import { renkAdi } from './renkler.js';
 
 export const MALZEME_ADI = { govde: 'Gövde', kapak: 'Kapak', arkalik: 'Arkalık' };
 
@@ -15,7 +16,7 @@ export function kesimListesi(parcalar, mod = 'modul') {
   for (const p of parcalar) {
     const b = p.bant;
     const anahtar = [
-      mod === 'modul' ? p.modulNo : '', p.malzeme, p.kalinlik, p.kesimBoy, p.kesimEn,
+      mod === 'modul' ? p.modulNo : '', p.malzeme, p.renk, p.kalinlik, p.kesimBoy, p.kesimEn,
       +b.y0 + +b.y1, +b.x0 + +b.x1, mod === 'modul' ? p.grup : '',
     ].join('|');
     let s = satirlar.get(anahtar);
@@ -24,7 +25,7 @@ export function kesimListesi(parcalar, mod = 'modul') {
         modulNo: mod === 'modul' ? p.modulNo : null,
         modulAd: mod === 'modul' ? p.modulAd : null,
         adlar: [], nolar: [], adet: 0,
-        malzeme: p.malzeme, kalinlik: p.kalinlik,
+        malzeme: p.malzeme, renk: p.renk, kalinlik: p.kalinlik,
         boy: p.kesimBoy, en: p.kesimEn, netBoy: p.boy, netEn: p.en,
         boyBant: +b.y0 + +b.y1, enBant: +b.x0 + +b.x1,
         delik: 0,
@@ -59,13 +60,13 @@ function genelAd(ad) {
 /** Excel'in Türkçe ayarında doğrudan açılan CSV (noktalı virgül, virgüllü sayı, BOM). */
 export function kesimCsv(satirlar, proje) {
   const sayi = (v) => String(v).replace('.', ',');
-  const bas = ['No', 'Modül', 'Parça', 'Adet', 'Boy', 'En', 'Kalınlık', 'Malzeme',
+  const bas = ['No', 'Modül', 'Parça', 'Adet', 'Boy', 'En', 'Kalınlık', 'Malzeme', 'Renk',
     'Boy bant', 'En bant', 'Net boy', 'Net en', 'Delikli', 'Parça no'];
   const satir = satirlar.map((s, i) => [
     i + 1,
     s.modulNo ? `M${s.modulNo} ${s.modulAd}` : '',
     s.ad, s.adet, sayi(s.boy), sayi(s.en), sayi(s.kalinlik),
-    proje.malzeme[s.malzeme].ad,
+    proje.malzeme[s.malzeme].ad, s.renk ? renkAdi(s.renk) : '',
     s.boyBant, s.enBant, sayi(s.netBoy), sayi(s.netEn),
     s.delik ? 'evet' : '', s.nolar.join(' '),
   ]);
@@ -82,9 +83,21 @@ export function kesimCsv(satirlar, proje) {
  */
 export function levhaPlani(parcalar, proje) {
   const sonuc = {};
+  // Her malzeme ayrı levha; kapakta her renk ayrı levha.
+  const gruplar = [];
   for (const malzeme of ['govde', 'kapak', 'arkalik']) {
     const liste = parcalar.filter((p) => p.malzeme === malzeme);
     if (!liste.length) continue;
+    if (malzeme !== 'kapak') { gruplar.push({ anahtar: malzeme, malzeme, renk: '', liste }); continue; }
+    const renkler = [...new Set(liste.map((p) => p.renk))];
+    for (const renk of renkler) {
+      gruplar.push({
+        anahtar: renkler.length > 1 ? `kapak:${renk}` : 'kapak',
+        malzeme, renk, liste: liste.filter((p) => p.renk === renk),
+      });
+    }
+  }
+  for (const { anahtar, malzeme, renk, liste } of gruplar) {
     const donebilir = !(proje.levha.damar && malzeme !== 'arkalik');
     const r = yerlestirLevha(
       liste.map((p) => ({ id: p.no, w: p.kesimBoy, h: p.kesimEn, donebilir })),
@@ -92,9 +105,11 @@ export function levhaPlani(parcalar, proje) {
     );
     const bul = new Map(liste.map((p) => [p.no, p]));
     for (const lv of r.levhalar) for (const y of lv.yerlesim) y.parca = bul.get(y.id);
-    sonuc[malzeme] = {
+    sonuc[anahtar] = {
+      anahtar,
       malzeme,
-      ad: proje.malzeme[malzeme].ad,
+      renk,
+      ad: proje.malzeme[malzeme].ad + (malzeme === 'kapak' && renk ? ` · ${renkAdi(renk)}` : ''),
       kalinlik: proje.malzeme[malzeme].kalinlik,
       levhalar: r.levhalar,
       sigmayan: r.sigmayan.map((x) => bul.get(x.id)),
@@ -151,7 +166,7 @@ export function maliyet(cozum, plan, proje) {
   const kalemler = [];
   for (const k of Object.keys(plan)) {
     const n = plan[k].levhalar.length;
-    kalemler.push({ ad: `${plan[k].ad} levha`, miktar: `${n} adet`, tutar: n * (fiyatlar[k] || 0) });
+    kalemler.push({ ad: `${plan[k].ad} levha`, miktar: `${n} adet`, tutar: n * (fiyatlar[plan[k].malzeme] || 0) });
   }
   kalemler.push({ ad: `PVC bant ${proje.bant.kalinlik} mm`, miktar: `${bantM} m`, tutar: bantM * f.bantMetre });
   return { bantM, kalemler, toplam: kalemler.reduce((a, k) => a + k.tutar, 0) };

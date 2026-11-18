@@ -252,6 +252,10 @@ tasarlar. Üst çubuktaki **Dolap tasarım →** bağlantısıyla (masaüstünde
   atanır. Kenardan delinecek yerler `KENAR_DELIK` katmanında işaretlidir;
   3 eksende delinmez. Parçalar delinen yüzü yukarı bakacak şekilde
   çizilir, bu yüzden sol ve sağ yan birbirinin aynasıdır.
+- **Kapak renkleri:** Kastamonu Entegre kartelası (Evogloss parlak / soft mat,
+  MDFLam düz renk, ahşap ve fantazi dekorlar) renk kartı olarak seçilir. Tüm
+  kapaklara ya da tek modüle uygulanır; farklı renkteki kapaklar ayrı levhaya
+  dizilir. Dekor adları bayi listelerinden derlendi, ekrandaki ton yaklaşıktır.
 - **Hırdavat ve maliyet:** minifix, menteşe, ray, kulp, ayak adetleri;
   levha ve bant fiyatından kaba maliyet.
 
@@ -691,6 +695,7 @@ js/
 dolap/                dolap tasarım programı
   index.html, dolap.css
   js/model.js         proje, varsayılanlar, hırdavat ölçüleri, doğrulama
+  js/renkler.js       renk kataloğu (Kastamonu Entegre dekorları + genel)
   js/govde.js         modül → parçalar: ölçü, bant, delik, 3B kutu
   js/yerlesim.js      dikdörtgen levha yerleşimi (MaxRects)
   js/kesim.js         kesim listesi, CSV, levha planı, hırdavat, maliyet

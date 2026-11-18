@@ -35,6 +35,10 @@ export function projeyiCoz(proje, hir = HIRDAVAT) {
       p.modulNo = no;
       p.modulId = m.id;
       p.modulAd = m.ad;
+      // Kapak rengi modülden gelebilir; renk değişince levha da değişir.
+      if (p.malzeme === 'kapak') p.renk = m.kapakRenk || proje.malzeme.kapak.renk;
+      else if (p.malzeme === 'govde') p.renk = proje.malzeme.govde.renk;
+      else p.renk = '';
     });
     return { m, no, konum: konumlar[i], parcalar };
   });

@@ -1,6 +1,7 @@
 // Dolap programının arayüzü: proje durumu → hesap → çizim.
 
-import { varsayilanProje, modul, LEVHA_HAZIR, RENKLER, kapakTuru } from './model.js';
+import { varsayilanProje, modul, LEVHA_HAZIR, kapakTuru } from './model.js';
+import { gruplar as renkGruplari, renkAdi, renkCss, renkBul } from './renkler.js';
 import { projeyiCoz } from './govde.js';
 import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, MALZEME_ADI } from './kesim.js';
 import { levhaDxf, levhalarDxf } from './dxf.js';
@@ -82,6 +83,7 @@ function hesapla() {
   kesimTablosu();
   levhaOzeti();
   hirdavatTablosu();
+  kartelaCiz();
   gorunumCiz();
   uc?.guncelle(cozum, proje, durum.modulId);
   sakla();
@@ -106,6 +108,11 @@ function modulListesi() {
     b.innerHTML = `<span class="rozet">M${i + 1} · ${TIP_AD[m.tip]}</span><b></b>` +
       `<span>${m.w} × ${m.h} × ${m.d}</span><span>${KAPAK_AD[kt]}${kt === 'cekmece' ? ` (${m.cekmeceSayisi})` : ''}</span>`;
     b.querySelector('b').textContent = m.ad;
+    const rk = document.createElement('i');
+    rk.className = 'kart-renk';
+    rk.style.background = renkCss(m.kapakRenk || proje.malzeme.kapak.renk);
+    rk.title = renkAdi(m.kapakRenk || proje.malzeme.kapak.renk);
+    b.appendChild(rk);
     b.addEventListener('click', () => modulSec(m.id));
     kap.appendChild(b);
   });
@@ -116,6 +123,7 @@ function modulSec(id) {
   durum.modulId = id;
   formuDoldur();
   modulListesi();
+  kartelaCiz();
   uc?.guncelle(cozum, proje, durum.modulId);
 }
 
@@ -215,7 +223,66 @@ function yolYaz(yol, v) {
 }
 
 for (const sel of $$('select[data-renk]')) {
-  for (const ad of Object.keys(RENKLER)) sel.add(new Option(ad, ad));
+  if (sel.dataset.bos) sel.add(new Option(sel.dataset.bos, ''));
+  for (const { grup, renkler } of renkGruplari()) {
+    const og = document.createElement('optgroup');
+    og.label = grup;
+    for (const r of renkler) og.appendChild(new Option(renkAdi(r.id), r.id));
+    sel.appendChild(og);
+  }
+}
+
+// ------------------------------------------------------------ renk kartelası
+
+let kartelaHedef = 'hepsi';
+function kartelaCiz() {
+  const kap = $('#kartela');
+  kap.innerHTML = '';
+  const m = seciliModul();
+  const secili = kartelaHedef === 'govde' ? proje.malzeme.govde.renk
+    : kartelaHedef === 'modul' && m ? (m.kapakRenk || proje.malzeme.kapak.renk)
+    : proje.malzeme.kapak.renk;
+  const kullanilan = new Set(proje.moduller.map((x) => x.kapakRenk || proje.malzeme.kapak.renk));
+  for (const { grup, renkler } of renkGruplari()) {
+    const bolum = document.createElement('div');
+    bolum.innerHTML = `<h3>${kac(grup)}</h3><div class="satir"></div>`;
+    const satir = bolum.querySelector('.satir');
+    for (const r of renkler) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'renk-kart' + (r.id === secili ? ' secili' : '') + (kullanilan.has(r.id) ? ' kullanimda' : '');
+      b.title = renkAdi(r.id);
+      b.innerHTML = `<span class="ornek" style="background:${renkCss(r.id)}"></span>` +
+        `<span class="ad">${kac(r.ad)}</span><span class="kod">${kac(r.kod || (r.yuzey === 'parlak' ? 'parlak' : 'mat'))}</span>`;
+      b.addEventListener('click', () => renkUygula(r.id));
+      satir.appendChild(b);
+    }
+    kap.appendChild(bolum);
+  }
+}
+
+function renkUygula(id) {
+  if (kartelaHedef === 'govde') proje.malzeme.govde.renk = id;
+  else if (kartelaHedef === 'modul') {
+    const m = seciliModul();
+    if (!m) return;
+    m.kapakRenk = id === proje.malzeme.kapak.renk ? '' : id;
+  } else {
+    // Tüm kapaklar: projenin rengi olur, modüllere özel renkler silinir.
+    proje.malzeme.kapak.renk = id;
+    for (const m of proje.moduller) m.kapakRenk = '';
+  }
+  ayarlariDoldur();
+  formuDoldur();
+  hesapla();
+}
+
+for (const b of $$('[data-hedef]')) {
+  b.addEventListener('click', () => {
+    kartelaHedef = b.dataset.hedef;
+    for (const x of $$('[data-hedef]')) x.classList.toggle('active', x === b);
+    kartelaCiz();
+  });
 }
 const hazir = $('#levha-hazir');
 hazir.add(new Option('Özel', ''));
@@ -297,6 +364,7 @@ function kesimTablosu() {
     const sec = s.nolar.includes(durum.parcaNo) ? ' secili' : '';
     html += `<tr data-no="${s.nolar[0]}" class="${sec}"><td class="ad">${kac(s.ad)}` +
       (durum.liste === 'toplu' || s.malzeme !== 'govde' ? ` <span class="malz">${MALZEME_ADI[s.malzeme]}</span>` : '') +
+      (s.malzeme === 'kapak' && s.renk ? `<br><span class="malz"><i class="renk-nokta" style="background:${renkBul(s.renk).hex}"></i>${kac(renkAdi(s.renk))}</span>` : '') +
       `</td><td>${s.adet}</td><td>${sayi(s.boy)}</td><td>${sayi(s.en)}</td><td>${s.kalinlik}</td>` +
       `<td>${s.boyBant}/${s.enBant}</td></tr>`;
   }
@@ -355,15 +423,18 @@ function levhaOzeti() {
     kap.appendChild(d);
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = `${MALZEME_ADI[x.malzeme]} · ${x.levhalar.length} levha DXF`;
+    b.textContent = `${x.anahtar !== x.malzeme ? renkAdi(x.renk) : MALZEME_ADI[x.malzeme]} · ${x.levhalar.length} levha DXF`;
     b.addEventListener('click', () => {
-      indir(`${dosyaAdi()}_${x.malzeme}_tum_levhalar.dxf`, levhalarDxf(x.levhalar, dxfSecenek()), 'application/dxf');
+      indir(`${dosyaAdi()}_${dosyaParcasi(x)}_tum_levhalar.dxf`, levhalarDxf(x.levhalar, dxfSecenek()), 'application/dxf');
     });
     dug.appendChild(b);
   }
   const sel = $('#levha-malzeme');
   sel.innerHTML = '';
-  for (const x of Object.values(plan)) sel.add(new Option(`${MALZEME_ADI[x.malzeme]} (${x.kalinlik} mm)`, x.malzeme));
+  for (const x of Object.values(plan)) {
+    const ad = x.malzeme === 'kapak' && x.renk ? `Kapak · ${renkAdi(x.renk)}` : MALZEME_ADI[x.malzeme];
+    sel.add(new Option(`${ad} (${x.kalinlik} mm)`, x.anahtar));
+  }
   sel.value = durum.levhaMalzeme;
 }
 
@@ -382,7 +453,7 @@ $('#levha-sonraki').addEventListener('click', () => {
 });
 $('#levha-dxf').addEventListener('click', () => {
   const lv = plan[durum.levhaMalzeme]?.levhalar[durum.levhaNo];
-  if (lv) indir(`${dosyaAdi()}_${durum.levhaMalzeme}_levha${durum.levhaNo + 1}.dxf`, levhaDxf(lv, dxfSecenek()), 'application/dxf');
+  if (lv) indir(`${dosyaAdi()}_${dosyaParcasi(plan[durum.levhaMalzeme])}_levha${durum.levhaNo + 1}.dxf`, levhaDxf(lv, dxfSecenek()), 'application/dxf');
 });
 $('#view-levha').addEventListener('click', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
@@ -506,6 +577,18 @@ function indir(ad, metin, tur) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/** Levha grubu için dosya adı parçası: govde, arkalik, kapak, kapak_antrasit … */
+function dosyaParcasi(x) {
+  if (x.anahtar === x.malzeme) return x.malzeme;
+  return 'kapak_' + sade(renkBul(x.renk).ad);
+}
+
+function sade(s) {
+  return String(s).toLocaleLowerCase('tr-TR')
+    .replace(/[çğıöşü]/g, (c) => ({ ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' })[c])
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
 function dosyaAdi() {

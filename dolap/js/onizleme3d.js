@@ -1,7 +1,7 @@
 // three.js ile dolap önizlemesi: her parça bir kutu, kapaklar menteşesinden
 // döner, çekmeceler kayar. Bir modüle tıklayınca seçilir.
 
-import { RENKLER } from './model.js';
+import { renkBul } from './renkler.js';
 
 let THREE = null, OrbitControls = null;
 
@@ -31,13 +31,14 @@ export async function olustur3d(kap, { secince } = {}) {
 
   const sahne = new THREE.Scene();
   sahne.background = new THREE.Color(0x0b0e12);
+  sahne.environment = ortam();
   const kamera = new THREE.PerspectiveCamera(38, 16 / 9, 10, 40000);
   const kontrol = new OrbitControls(kamera, renderer.domElement);
   kontrol.enableDamping = true;
   kontrol.dampingFactor = 0.08;
   kontrol.maxPolarAngle = Math.PI * 0.52;
 
-  sahne.add(new THREE.HemisphereLight(0xf6f8fb, 0x4a443c, 2.1));
+  sahne.add(new THREE.HemisphereLight(0xf6f8fb, 0x4a443c, 1.5));
   const gunes = new THREE.DirectionalLight(0xfff3e2, 2.4);
   gunes.castShadow = true;
   gunes.shadow.mapSize.set(2048, 2048);
@@ -65,11 +66,101 @@ export async function olustur3d(kap, { secince } = {}) {
 
   const kenarMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 });
 
+  /**
+   * Yansımalar için basit bir oda ortamı: parlak kapaklar ancak etraflarını
+   * yansıtınca parlak görünür. Dışarıdan HDR dosyası yüklenmez (çevrimdışı).
+   */
+  function ortam() {
+    const oda = new THREE.Scene();
+    const duvarlar = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 10), new THREE.MeshBasicMaterial({ color: 0x55585e, side: THREE.BackSide }));
+    oda.add(duvarlar);
+    const isik = (x, y, z, w, h, g) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(g, g, g), side: THREE.DoubleSide }));
+      m.position.set(x, y, z);
+      m.lookAt(0, 0, 0);
+      oda.add(m);
+    };
+    isik(0, 2.9, 0, 6, 2, 3.2);      // tavan lambası
+    isik(4.9, 0.6, 0, 3, 2.2, 2.2);  // pencere
+    isik(0, 0.8, 4.9, 4, 1.6, 1.6);  // karşı duvar
+    const pm = new THREE.PMREMGenerator(renderer);
+    const tex = pm.fromScene(oda, 0.03).texture;
+    pm.dispose();
+    return tex;
+  }
+
+  const dokuOnbellek = new Map();
+  /** Ahşap damarı ya da mermer damarı: tuvalde bir kez çizilir. */
+  function doku(r) {
+    const anahtar = `${r.doku}|${r.hex}`;
+    if (dokuOnbellek.has(anahtar)) return dokuOnbellek.get(anahtar);
+    const n = 512;
+    const tv = document.createElement('canvas');
+    tv.width = tv.height = n;
+    const c = tv.getContext('2d');
+    c.fillStyle = r.hex;
+    c.fillRect(0, 0, n, n);
+    let tohum = 11;
+    const rnd = () => ((tohum = (tohum * 16807) % 2147483647) / 2147483647);
+    if (r.doku === 'ahsap') {
+      // Dikey damar: koyu ve açık ince çizgiler, hafif dalgalı.
+      for (let i = 0; i < 140; i++) {
+        const x0 = rnd() * n, gen = 0.6 + rnd() * 2.2, faz = rnd() * 6, gen2 = 3 + rnd() * 8;
+        c.strokeStyle = rnd() < 0.7 ? `rgba(40,22,8,${0.05 + rnd() * 0.12})` : `rgba(255,240,220,${0.04 + rnd() * 0.08})`;
+        c.lineWidth = gen;
+        c.beginPath();
+        for (let y = 0; y <= n; y += 8) {
+          const x = x0 + Math.sin(y / (40 + gen2 * 10) + faz) * gen2;
+          if (y === 0) c.moveTo(x, y); else c.lineTo(x, y);
+        }
+        c.stroke();
+      }
+    } else if (r.doku === 'mermer') {
+      // Rastgele yürüyen gri damarlar.
+      c.filter = 'blur(1px)';
+      for (let k = 0; k < 9; k++) {
+        let x = rnd() * n, y = 0;
+        const a0 = 0.6 + rnd() * 0.8;
+        c.strokeStyle = `rgba(110,110,118,${0.15 + rnd() * 0.3})`;
+        c.lineWidth = 0.6 + rnd() * 2;
+        c.beginPath();
+        c.moveTo(x, y);
+        while (y < n) {
+          x += Math.cos(a0 + (rnd() - 0.5) * 1.6) * 10;
+          y += 6 + rnd() * 8;
+          c.lineTo(x, y);
+        }
+        c.stroke();
+      }
+    }
+    const t = new THREE.CanvasTexture(tv);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    dokuOnbellek.set(anahtar, t);
+    return t;
+  }
+
+  const malzOnbellek = new Map();
+  /** Katalogdaki renkten malzeme: parlak ise düşük pürüz ve güçlü yansıma. */
+  function renkMalz(id) {
+    if (malzOnbellek.has(id)) return malzOnbellek.get(id);
+    const r = renkBul(id);
+    const parlak = r.yuzey === 'parlak';
+    const m = new THREE.MeshStandardMaterial({
+      color: r.doku ? 0xffffff : new THREE.Color(r.hex),
+      map: r.doku ? doku(r) : null,
+      roughness: parlak ? 0.08 : r.doku === 'mermer' ? 0.35 : 0.62,
+      metalness: 0,
+      envMapIntensity: parlak ? 1.6 : 0.35,
+    });
+    malzOnbellek.set(id, m);
+    return m;
+  }
+
   function malzemeler(proje) {
-    const renk = (ad, yedek) => RENKLER[ad] ?? yedek;
     return {
-      govde: new THREE.MeshStandardMaterial({ color: renk(proje.malzeme.govde.renk, 0xeeeeea), roughness: 0.7 }),
-      kapak: new THREE.MeshStandardMaterial({ color: renk(proje.malzeme.kapak.renk, 0x3c4046), roughness: 0.45 }),
+      govde: renkMalz(proje.malzeme.govde.renk),
+      kapak: renkMalz(proje.malzeme.kapak.renk),
       arkalik: new THREE.MeshStandardMaterial({ color: 0xcfcac0, roughness: 0.9 }),
       tezgah: new THREE.MeshStandardMaterial({ color: 0x9a948a, roughness: 0.35 }),
       ayak: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 }),
@@ -112,7 +203,7 @@ export async function olustur3d(kap, { secince } = {}) {
         const k = p.kutu;
         const kapakMi = p.grup === 'kapak' || p.grup === 'cekmeceOn';
         if (kapakMi && !kapaklarGorunur) continue;
-        const mesh = kutu(k.sx, k.sy, k.sz, mat[p.malzeme]);
+        const mesh = kutu(k.sx, k.sy, k.sz, p.renk ? renkMalz(p.renk) : mat[p.malzeme]);
         kayit.mesh.push(mesh);
         const h = p.hareket;
         if (h?.tip === 'kapak') {

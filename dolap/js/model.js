@@ -28,22 +28,19 @@ export const LEVHA_HAZIR = [
   { ad: '2100 × 2800 (dik)', w: 2100, h: 2800 },
 ];
 
-export const RENKLER = {
-  'Beyaz': 0xeeeeea,
-  'Krem': 0xe9dfc8,
-  'Açık meşe': 0xc9a46c,
-  'Ceviz': 0x7a5234,
-  'Antrasit': 0x3c4046,
-  'Adaçayı': 0x8da38a,
-  'Lacivert': 0x24324d,
+/** Örnek projede kullanılan renkler (kimlikler renkler.js'ten). */
+export const RENK_VARSAYILAN = {
+  govde: 'Kastamonu Entegre|D152|mat',          // D152 Opak Beyaz
+  kapak: 'Kastamonu Entegre|Antrasit|parlak',   // Evogloss Antrasit
+  ustKapak: 'Kastamonu Entegre|Beyaz|parlak',   // Evogloss Beyaz
 };
 
 export function varsayilanProje() {
   return {
     ad: 'Mutfak',
     malzeme: {
-      govde: { ad: '18 mm beyaz sunta', kalinlik: 18, renk: 'Beyaz' },
-      kapak: { ad: '18 mm MDF-lam', kalinlik: 18, renk: 'Antrasit' },
+      govde: { ad: '18 mm beyaz sunta', kalinlik: 18, renk: RENK_VARSAYILAN.govde },
+      kapak: { ad: '18 mm MDF-lam', kalinlik: 18, renk: RENK_VARSAYILAN.kapak },
       arkalik: { ad: '8 mm sunta', kalinlik: 8 },
     },
     levha: { w: 2800, h: 2070, kenarPay: 10, aralik: 10, damar: false },
@@ -60,9 +57,9 @@ export function varsayilanProje() {
       modul('alt', { ad: 'Çekmeceli', w: 450, kapak: 'cekmece', cekmeceSayisi: 3 }),
       modul('alt', { ad: 'Evye altı', w: 800, rafSayisi: 0 }),
       modul('alt', { ad: 'Alt dolap', w: 600 }),
-      modul('ust', { ad: 'Üst dolap', w: 450 }),
-      modul('ust', { ad: 'Üst dolap', w: 800 }),
-      modul('ust', { ad: 'Üst dolap', w: 600 }),
+      modul('ust', { ad: 'Üst dolap', w: 450, kapakRenk: RENK_VARSAYILAN.ustKapak }),
+      modul('ust', { ad: 'Üst dolap', w: 800, kapakRenk: RENK_VARSAYILAN.ustKapak }),
+      modul('ust', { ad: 'Üst dolap', w: 600, kapakRenk: RENK_VARSAYILAN.ustKapak }),
       modul('boy', { ad: 'Kiler', w: 600 }),
     ],
   };
@@ -78,6 +75,7 @@ export function modul(tip, ozel = {}) {
     ad: { alt: 'Alt dolap', ust: 'Üst dolap', boy: 'Boy dolap' }[tip],
     kapak: 'otomatik',             // otomatik | tek | cift | cekmece | yok
     mentese: 'sol',                // tek kapakta menteşe tarafı
+    kapakRenk: '',                 // boş = projenin kapak rengi
     cekmeceSayisi: 3,
   };
   const tipler = {

@@ -94,6 +94,9 @@
               <option value="yok">Kapaksız (açık raf)</option>
             </select>
           </label>
+          <label>Kapak rengi
+            <select data-m="kapakRenk" data-renk data-bos="Proje rengi"></select>
+          </label>
           <label data-goster="tek">Menteşe tarafı
             <select data-m="mentese">
               <option value="sol">Solda</option>
@@ -142,6 +145,19 @@
           <small>yerden</small></label>
         <label class="check"><input type="checkbox" data-yol="baza"> Baza</label>
         <label class="check"><input type="checkbox" data-yol="tezgah"> Tezgâh (görsel)</label>
+      </div>
+      <div class="kartela-kutu">
+        <div class="kartela-bas">
+          <b>Kapak rengi kartelası</b>
+          <div class="segmented-buttons kartela-hedef" role="group" aria-label="Rengi nereye uygula">
+            <button type="button" class="seg active" data-hedef="hepsi">Tüm kapaklar</button>
+            <button type="button" class="seg" data-hedef="modul">Seçili modül</button>
+            <button type="button" class="seg" data-hedef="govde">Gövde</button>
+          </div>
+        </div>
+        <div id="kartela" class="kartela"></div>
+        <p class="hint">Kastamonu Entegre dekor adları bayi listelerinden derlendi. Ekrandaki ton yaklaşıktır;
+          müşteriye göstermeden önce gerçek numuneyle karşılaştırın.</p>
       </div>
       <details class="gelismis">
         <summary>Malzeme adları</summary>

@@ -9,6 +9,7 @@ import { projeyiCoz, yerlestir, menteseSayisi, baglantiNoktalari, bantUzunlugu }
 import { yerlestirLevha, levhaNoktasi } from '../dolap/js/yerlesim.js';
 import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet } from '../dolap/js/kesim.js';
 import { levhaDxf, levhalarDxf, delikKatmani } from '../dolap/js/dxf.js';
+import { KATALOG, renkBul, renkAdi, renkCss } from '../dolap/js/renkler.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -242,9 +243,9 @@ test('damar açıkken gövde parçası dönmüyor, sığmayan raporlanıyor', ()
   p.levha.damar = true;
   const c = projeyiCoz(p);
   const plan = levhaPlani(c.parcalar, p);
-  for (const k of ['govde', 'kapak']) {
-    for (const lv of plan[k].levhalar) for (const y of lv.yerlesim) assert.equal(y.dondu, false);
-    cakismaYok({ levhalar: plan[k].levhalar.map((lv) => ({ ...lv, yerlesim: lv.yerlesim })) }, p.levha);
+  for (const x of Object.values(plan).filter((g) => g.malzeme !== 'arkalik')) {
+    for (const lv of x.levhalar) for (const y of lv.yerlesim) assert.equal(y.dondu, false);
+    cakismaYok(x, p.levha);
   }
   const r = yerlestirLevha([{ id: 'x', w: 3000, h: 100, donebilir: true }], p.levha);
   assert.equal(r.sigmayan.length, 1);
@@ -268,6 +269,57 @@ test('dönen parçanın delikleri yerleştiği dikdörtgenin içinde kalıyor', 
     }
   }
   assert.ok(donen > 0, 'örnekte hiç dönen parça yok; test anlamsız');
+});
+
+console.log('renkler');
+
+test('katalog: kimlikler tekil, hex geçerli, eski renk adları hâlâ bulunuyor', () => {
+  assert.equal(new Set(KATALOG.map((r) => r.id)).size, KATALOG.length);
+  for (const r of KATALOG) assert.match(r.hex, /^#[0-9a-f]{6}$/i, r.id);
+  for (const eski of ['Beyaz', 'Krem', 'Açık meşe', 'Ceviz', 'Antrasit', 'Adaçayı', 'Lacivert']) {
+    assert.equal(renkBul(eski).id, eski);
+  }
+  assert.ok(KATALOG.some((r) => r.marka === 'Kastamonu Entegre' && r.yuzey === 'parlak'));
+  assert.equal(renkAdi('Kastamonu Entegre|A339|mat'), 'A339 Yenice Meşe');
+  assert.equal(renkAdi('Kastamonu Entegre|Antrasit|parlak'), 'Evogloss Antrasit (parlak)');
+  assert.ok(renkCss('Kastamonu Entegre|A339|mat').includes('repeating-linear-gradient'));
+  assert.equal(renkBul('yok-boyle-renk').id, 'Beyaz');
+});
+
+test('modül kapak rengi parçalara geçiyor, her renk ayrı levhaya diziliyor', () => {
+  const p = varsayilanProje();
+  const c = projeyiCoz(p);
+  const ustId = c.moduller.find((x) => x.m.tip === 'ust').m.id;
+  for (const q of c.parcalar.filter((x) => x.malzeme === 'kapak')) {
+    const m = p.moduller.find((x) => x.id === q.modulId);
+    assert.equal(q.renk, m.kapakRenk || p.malzeme.kapak.renk);
+  }
+  assert.ok(c.parcalar.some((q) => q.modulId === ustId && q.renk === 'Kastamonu Entegre|Beyaz|parlak'));
+  const plan = levhaPlani(c.parcalar, p);
+  const kapakGrup = Object.values(plan).filter((x) => x.malzeme === 'kapak');
+  assert.equal(kapakGrup.length, 2);
+  for (const g of kapakGrup) {
+    for (const lv of g.levhalar) for (const y of lv.yerlesim) assert.equal(y.parca.renk, g.renk);
+    assert.equal(plan[g.anahtar], g);
+  }
+  // Tek renkte anahtar sade 'kapak'.
+  for (const m of p.moduller) m.kapakRenk = '';
+  const tek = levhaPlani(projeyiCoz(p).parcalar, p);
+  assert.ok(tek.kapak && Object.values(tek).filter((x) => x.malzeme === 'kapak').length === 1);
+  // Maliyette iki kapak levhası da kapak fiyatından.
+  const m = maliyet(c, plan, p);
+  const kapakTutar = m.kalemler.filter((k) => k.ad.startsWith(p.malzeme.kapak.ad)).reduce((a, k) => a + k.tutar, 0);
+  assert.equal(kapakTutar, kapakGrup.reduce((a, g) => a + g.levhalar.length, 0) * p.fiyat.kapakLevha);
+});
+
+test('kesim listesinde renk ayrı satır ve CSV sütunu', () => {
+  const p = varsayilanProje();
+  const c = projeyiCoz(p);
+  const l = kesimListesi(c.parcalar, 'toplu').filter((s) => s.malzeme === 'kapak');
+  assert.ok(new Set(l.map((s) => s.renk)).size === 2);
+  const csv = kesimCsv(kesimListesi(c.parcalar), p);
+  assert.ok(csv.includes(';Malzeme;Renk;'));
+  assert.ok(csv.includes('Evogloss Beyaz (parlak)'));
 });
 
 console.log('çıktılar');
