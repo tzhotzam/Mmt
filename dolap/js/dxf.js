@@ -11,6 +11,7 @@
 // çevirir.
 
 import { levhaNoktasi } from './yerlesim.js';
+import { kesimKonturu } from './kertme.js';
 
 const RENK = { mentese: 4, minifix: 30, raf: 5, kavela: 3, kulp: 6, vida: 6 };
 
@@ -55,7 +56,8 @@ function levhaCiz(b, levha, ox, oy, opts) {
   for (const yer of levha.yerlesim) {
     const p = yer.parca;
     const x0 = ox + yer.x, y0 = oy + yer.y;
-    b.cizgi([[x0, y0], [x0 + yer.w, y0], [x0 + yer.w, y0 + yer.h], [x0, y0 + yer.h]], b.kat('KESIM', 1), true);
+    const nk = (px, py) => { const [sx, sy] = levhaNoktasi(yer, p, px, py); return [ox + sx, oy + sy]; };
+    b.cizgi(kesimKonturu(p).map(([px, py]) => nk(px, py)), b.kat('KESIM', 1), true);
     const nokta = (px, py) => {
       const [sx, sy] = levhaNoktasi(yer, p, px, py);
       return [ox + sx, oy + sy];

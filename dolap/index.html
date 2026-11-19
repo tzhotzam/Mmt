@@ -65,7 +65,7 @@
     <ul id="kesim-sirasi" class="kesim-sirasi" hidden></ul>
     <div id="ctl-parca" class="sahne-alt lejant" hidden></div>
     <div id="ctl-cizim" class="sahne-alt" hidden>
-      <select id="cizim-duvar" aria-label="Duvar"><option value="A">A duvarı</option><option value="B">B duvarı</option></select>
+      <select id="cizim-duvar" aria-label="Duvar"><option value="A">A · arka duvar</option><option value="B">B · sol duvar</option></select>
       <button type="button" id="cizim-svg" class="ghost kucuk">SVG indir</button>
       <button type="button" id="cizim-yazdir" class="primary kucuk">Yazdır / PDF</button>
     </div>
@@ -86,10 +86,10 @@
             <option value="L">L (köşeli, iki duvar)</option>
           </select>
         </label>
-        <label class="onemli">A duvarı (mm) <input type="number" data-yol="mekan.duvarA" min="500" max="12000" step="1">
-          <small data-mekan="L">köşeden sağa</small></label>
-        <label class="onemli" data-mekan="L">B duvarı (mm) <input type="number" data-yol="mekan.duvarB" min="500" max="12000" step="1">
-          <small>köşeden, A'ya dik</small></label>
+        <label class="onemli">A · arka duvar (mm) <input type="number" data-yol="mekan.duvarA" min="500" max="12000" step="1">
+          <small data-mekan="L">köşeden sağa doğru</small></label>
+        <label class="onemli" data-mekan="L">B · sol duvar (mm) <input type="number" data-yol="mekan.duvarB" min="500" max="12000" step="1">
+          <small>köşeden size doğru</small></label>
         <label>Tavan (mm) <input type="number" data-yol="mekan.tavan" min="2000" max="4000" step="1"></label>
       </div>
       <h3 class="alt-baslik">Kolon, pencere, kapı, tesisat</h3>
@@ -111,6 +111,10 @@
       <div class="katalog">
         <div class="katalog-bas">
           <b>Modül kütüphanesi</b>
+          <div class="segmented-buttons" id="katalog-duvar" role="group" aria-label="Hangi duvara" data-mekan="L">
+            <button type="button" class="seg active" data-hedef-duvar="A">A · arka</button>
+            <button type="button" class="seg" data-hedef-duvar="B">B · sol</button>
+          </div>
           <div class="segmented-buttons" id="katalog-sekme" role="tablist" aria-label="Kütüphane">
             <button type="button" class="seg active" data-katalog="Alt">Alt</button>
             <button type="button" class="seg" data-katalog="Üst">Üst</button>
@@ -118,8 +122,11 @@
             <button type="button" class="seg" data-katalog="benim">Benim</button>
           </div>
         </div>
+        <p id="katalog-kalan" class="katalog-kalan"></p>
         <div id="katalog-liste" class="katalog-liste"></div>
-        <p class="hint">Genişliğe dokununca modül seçili modülün ardına eklenir (60 = 600 mm).</p>
+        <p id="katalog-mesaj" class="katalog-mesaj" hidden></p>
+        <p class="hint">Genişliğe dokununca modül seçili duvara, seçili modülün ardına eklenir (60 = 600 mm).
+          Duvara sığmayan genişlikler soluk görünür.</p>
       </div>
 
       <div id="modul-duzen" class="modul-duzen" hidden>
@@ -134,8 +141,8 @@
           </label>
           <label data-goster="L">Duvar
             <select data-m="duvar">
-              <option value="A">A duvarı</option>
-              <option value="B">B duvarı</option>
+              <option value="A">A · arka duvar</option>
+              <option value="B">B · sol duvar</option>
             </select>
           </label>
           <label class="check" data-goster="koseOlabilir"><input type="checkbox" data-m="kose"> Köşe dolabı (kör köşe)</label>

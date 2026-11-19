@@ -31,10 +31,26 @@ function dikey(m, proje) {
   return [0, a + m.h + (proje.tezgah ? TEZGAH : 0)];
 }
 
-/** Bu modülün yolunu kesen engel (tesisat kesmez, "önüne" işaretli kolon kesmez). */
-function engelBul(engeller, duvar, s, w, dy) {
-  return engeller.find((e) => e.duvar === duvar && e.tip !== 'tesisat' && !(e.tip === 'kolon' && e.onune) &&
-    s < e.x + e.w - 1e-6 && s + w > e.x + 1e-6 &&
+/**
+ * Kolonun önüne gelen dolaba ne olacağı:
+ *   atla  — dolap kolonun yanından devam eder (varsayılan)
+ *   onune — dolap kolonun önünden geçer, derinliği kolon kadar kısalır
+ *   kert  — dolap yerinde kalır, parçaları kolonun etrafından oyulur (kertme)
+ */
+export function kolonModu(e) {
+  return e.yerlesim || (e.onune ? 'onune' : 'atla');
+}
+
+/** Kertme bu dolapta yapılabilir mi? Kolon dolabın neredeyse tamamını yiyorsa hayır. */
+function kertilebilir(e, m) {
+  return kolonModu(e) === 'kert' && e.d < m.d - 100;
+}
+
+/** Bu modülün yolunu kesen engel (tesisat, "önüne" ve kertilecek kolon kesmez). */
+function engelBul(engeller, duvar, s, m, dy) {
+  return engeller.find((e) => e.duvar === duvar && e.tip !== 'tesisat' &&
+    !(e.tip === 'kolon' && (kolonModu(e) === 'onune' || kertilebilir(e, m))) &&
+    s < e.x + e.w - 1e-6 && s + m.w > e.x + 1e-6 &&
     dy[0] < e.y + e.h - 1e-6 && dy[1] > e.y + 1e-6);
 }
 
@@ -56,21 +72,30 @@ export function yerlestir(proje) {
     const dy = dikey(m, proje);
     let s = Math.max(...sr.map((r) => imlec[duvar][r]));
     for (let k = 0; k < 50; k++) {
-      const e = engelBul(engeller, duvar, s, m.w, dy);
+      const e = engelBul(engeller, duvar, s, m, dy);
       if (!e) break;
       s = e.x + e.w;
     }
-    // Önüne dolap konan kolon: dolabın derinliği kolon kadar kısalır.
+    const y = m.tip === 'ust' ? proje.ustAltKot : proje.ayakYukseklik;
+    // Önüne dolap konan kolon: derinlik kısalır. Kertilecek kolon: modül
+    // içi koordinatta bir kutu olarak kaydedilir; parçalar ondan oyulur.
     let dAzalt = 0;
+    const kertikler = [];
     for (const e of engeller) {
-      if (e.duvar === duvar && e.tip === 'kolon' && e.onune && s < e.x + e.w && s + m.w > e.x &&
-        dy[0] < e.y + e.h && dy[1] > e.y) dAzalt = Math.max(dAzalt, e.d);
+      if (e.duvar !== duvar || e.tip !== 'kolon' || !(s < e.x + e.w && s + m.w > e.x && dy[0] < e.y + e.h && dy[1] > e.y)) continue;
+      if (kolonModu(e) === 'onune') dAzalt = Math.max(dAzalt, e.d);
+      else if (kertilebilir(e, m)) {
+        // B duvarında modülün sol ucu köşeden uzaktadır: yerel x ters akar.
+        const x0 = duvar === 'A' ? e.x - s : s + m.w - (e.x + e.w);
+        kertikler.push({ x0, x1: x0 + e.w, y0: e.y - y, y1: e.y + e.h - y, z0: -1, z1: e.d, id: e.id });
+      }
     }
     for (const r of sr) imlec[duvar][r] = s + m.w;
-    const y = m.tip === 'ust' ? proje.ustAltKot : proje.ayakYukseklik;
+    // Önüne geçen dolap kolon derinliği kadar öne kayar (arkası kolonun yüzüne
+    // dayanır, önü öteki dolaplarla aynı hizada kalır).
     const k = duvar === 'A'
-      ? { duvar, s, x: s, y, z: 0, rotY: 0, kor: 0, dAzalt }
-      : { duvar, s, x: 0, y, z: s + m.w, rotY: Math.PI / 2, kor: 0, dAzalt };
+      ? { duvar, s, x: s, y, z: dAzalt, rotY: 0, kor: 0, dAzalt, kertikler }
+      : { duvar, s, x: dAzalt, y, z: s + m.w, rotY: Math.PI / 2, kor: 0, dAzalt, kertikler };
     sonuc[i] = k;
     yerlesen[duvar].push({ m, k, i });
   };
@@ -78,18 +103,25 @@ export function yerlestir(proje) {
   proje.moduller.forEach((m, i) => { if (duvarOf(m, proje) === 'A') yerlestirBir(m, i, 'A'); });
 
   if (mekan.tip === 'L') {
-    // B duvarı, A'nın köşedeki dolabının önünden başlar.
+    // B duvarı, köşe bölgesine giren HER A dolabının önünden başlar (yalnız
+    // s = 0'daki değil: kolon ya da kapı A'nın ilk dolabını köşeden
+    // uzaklaştırmış olabilir; o dolap hâlâ B dolaplarının yolundadır).
     for (const r of ['alt', 'ust']) {
-      const kose = yerlesen.A.find(({ m, k }) => k.s === 0 && siralar(m).includes(r));
-      imlec.B[r] = kose ? kose.m.d - kose.k.dAzalt + tk : 0;
+      const bDerin = Math.max(0, ...proje.moduller.filter((m) => duvarOf(m, proje) === 'B' && siralar(m).includes(r)).map((m) => m.d + tk));
+      const koseler = yerlesen.A.filter(({ m, k }) => siralar(m).includes(r) && k.s < bDerin);
+      imlec.B[r] = Math.max(0, ...koseler.map(({ m, k }) => m.d - k.dAzalt + tk));
     }
     proje.moduller.forEach((m, i) => { if (duvarOf(m, proje) === 'B') yerlestirBir(m, i, 'B'); });
     // Kör köşe: A'daki köşe dolabının B dolaplarının arkasında kalan kısmı.
+    // Köşedeki normal dolap işaretlenmemiş olsa da kör köşe yapılır; yoksa
+    // kapağı / çekmecesi B dolabının içine açılırdı.
     for (const { m, k } of yerlesen.A) {
-      if (!m.kose || k.s !== 0 || m.tip === 'boy') continue;
+      if (m.tip === 'boy' || makineMi(m) || dolguMu(m)) continue;
       const r = siralar(m)[0];
       const ilkB = yerlesen.B.filter(({ m: b }) => siralar(b).includes(r)).sort((a, b) => a.k.s - b.k.s)[0];
-      if (ilkB) k.kor = ilkB.m.d - ilkB.k.dAzalt + tk + KOSE_DOLGU;
+      if (!ilkB) continue;
+      const kor = ilkB.m.d - ilkB.k.dAzalt + tk + KOSE_DOLGU - k.s;    // köşeden uzak dolapta kör kısım azalır
+      if (kor > 0 && (m.kose || k.s < ilkB.m.d + tk)) k.kor = kor;
     }
   }
   return sonuc;
@@ -100,9 +132,9 @@ export function yerlestir(proje) {
  * @returns {{ uyarilar: string[], notlar: string[] }}
  */
 export function mekanNotlari(proje, konumlar) {
-  const uyarilar = [], notlar = [], bosluklar = [];
+  const uyarilar = [], notlar = [], bosluklar = [], tasmalar = [];
   const mekan = proje.mekan;
-  if (!mekan) return { uyarilar, notlar, bosluklar };
+  if (!mekan) return { uyarilar, notlar, bosluklar, tasmalar };
   const duvarlar = mekan.tip === 'L' ? ['A', 'B'] : ['A'];
   const uzunluk = { A: mekan.duvarA, B: mekan.duvarB };
   const engeller = (mekan.engeller || []).map((e) => ({ ...e, duvar: mekan.tip === 'L' ? e.duvar : 'A' }));
@@ -112,26 +144,36 @@ export function mekanNotlari(proje, konumlar) {
     const k = konumlar[i];
     const no = `M${i + 1} ${m.ad}`;
     const L = uzunluk[k.duvar];
-    if (k.s + m.w > L + 0.5) uyarilar.push(`${no}: ${k.duvar} duvarından ${Math.round(k.s + m.w - L)} mm taşıyor (duvar ${L} mm).`);
+    if (k.s + m.w > L + 0.5) {
+      const metin = `${no}: ${k.duvar} duvarından ${Math.round(k.s + m.w - L)} mm taşıyor (duvar ${L} mm).`;
+      uyarilar.push(metin);
+      tasmalar.push({ i, id: m.id, metin, fazla: Math.round(k.s + m.w - L), yer: Math.max(0, Math.floor(L - k.s)) });
+    }
+    if (k.kertikler?.length) {
+      notlar.push(`${no}: kolon için kertildi (${k.kertikler.map((q) => `${Math.round(q.x1 - q.x0)} × ${Math.round(q.z1)} mm`).join(', ')}); parçalar kolonun etrafından oyulur.`);
+    }
     const ust = dikey(m, proje)[1];
     if (ust > mekan.tavan + 0.5) uyarilar.push(`${no}: tavanı ${Math.round(ust - mekan.tavan)} mm aşıyor (tavan ${mekan.tavan} mm).`);
     if (k.dAzalt) notlar.push(`${no}: kolonun önünde; derinlik ${k.dAzalt} mm kısaltıldı (${m.d - k.dAzalt} mm).`);
-    if (m.kose && !(mekan.tip === 'L' && k.duvar === 'A' && k.s === 0 && m.tip !== 'boy')) {
-      uyarilar.push(`${no}: köşe dolabı L mutfakta A duvarının ilk (köşedeki) alt ya da üst dolabı olmalı.`);
+    if (m.kose && !(mekan.tip === 'L' && k.duvar === 'A' && m.tip !== 'boy')) {
+      uyarilar.push(`${no}: köşe dolabı L mutfakta A duvarının köşedeki alt ya da üst dolabı olmalı.`);
     } else if (m.kose && !k.kor) {
       uyarilar.push(`${no}: köşe dolabı ama B duvarında aynı sırada dolap yok; kör kısım hesaplanamadı.`);
     }
-  });
-
-  if (mekan.tip === 'L') {
-    for (const r of ['alt', 'ust']) {
-      const a = proje.moduller.findIndex((m, i) => konumlar[i].duvar === 'A' && konumlar[i].s === 0 && siralar(m).includes(r));
-      const bVar = proje.moduller.some((m, i) => konumlar[i].duvar === 'B' && siralar(m).includes(r));
-      if (a >= 0 && bVar && !proje.moduller[a].kose && !makineMi(proje.moduller[a]) && !dolguMu(proje.moduller[a]) && proje.moduller[a].tip !== 'boy') {
-        notlar.push(`M${a + 1} ${proje.moduller[a].ad}: köşede; önü B duvarındaki dolaplarla kapanıyor. "Köşe dolabı" işaretlerseniz kapağı açık kısma alınır.`);
+    if (k.kor > 0) {
+      const enAz = Math.ceil((k.kor + 250) / 50) * 50;
+      if (m.w < k.kor + 250) {
+        const metin = `${no}: köşede, ${Math.round(k.kor)} mm'si B dolaplarının arkasında kalıyor; kapağa yer kalmıyor. Dolabı en az ${enAz} mm yapın.`;
+        uyarilar.push(metin);
+        tasmalar.push({ i, id: m.id, metin, koseGenislik: enAz });
+      } else if (!m.kose) {
+        notlar.push(`${no}: köşede; B dolaplarının arkasında kalan ${Math.round(k.kor)} mm kör panel yapıldı, kapak açık kısımda.`);
       }
     }
-  }
+    if (mekan.tip === 'L' && k.duvar === 'A' && makineMi(m) && k.s < 700 && proje.moduller.some((b, j) => konumlar[j].duvar === 'B' && b.tip !== 'ust')) {
+      uyarilar.push(`${no}: makine köşede; kapağı B duvarındaki dolaba çarpar. Köşeden uzağa alın.`);
+    }
+  });
 
   // Boşluklar: duvar boyunca, engellerin ve dolapların dışında kalan yerler.
   for (const d of duvarlar) {
@@ -143,7 +185,7 @@ export function mekanNotlari(proje, konumlar) {
       if (!dolu.length) continue;
       const yer = r === 'ust' ? [proje.ustAltKot, proje.ustAltKot + 720] : [0, proje.ayakYukseklik + 760];
       for (const e of engeller) {
-        if (e.duvar === d && e.tip !== 'tesisat' && !(e.tip === 'kolon' && e.onune) && yer[0] < e.y + e.h && yer[1] > e.y) {
+        if (e.duvar === d && e.tip !== 'tesisat' && !(e.tip === 'kolon' && kolonModu(e) !== 'atla') && yer[0] < e.y + e.h && yer[1] > e.y) {
           dolu.push([e.x, e.x + e.w]);
         }
       }
@@ -151,8 +193,9 @@ export function mekanNotlari(proje, konumlar) {
       // B duvarında köşedeki A dolabının önü dolu sayılır.
       let imlec = 0;
       if (d === 'B') {
-        const kose = proje.moduller.findIndex((m, i) => konumlar[i].duvar === 'A' && konumlar[i].s === 0 && siralar(m).includes(r));
-        if (kose >= 0) imlec = proje.moduller[kose].d + proje.malzeme.kapak.kalinlik;
+        // B sırasının ilk modülü köşe bölgesinden sonra başlar (yerleşimle aynı kural).
+        imlec = Math.min(...proje.moduller.map((m, i) => (konumlar[i].duvar === 'B' && siralar(m).includes(r) ? konumlar[i].s : Infinity)));
+        if (!Number.isFinite(imlec)) imlec = 0;
       }
       const son = Math.max(...proje.moduller.map((m, i) => (konumlar[i].duvar === d && siralar(m).includes(r) ? konumlar[i].s + m.w : 0)));
       const araliklar = [];
@@ -177,5 +220,31 @@ export function mekanNotlari(proje, konumlar) {
       }
     }
   }
-  return { uyarilar, notlar, bosluklar };
+  return { uyarilar, notlar, bosluklar, tasmalar };
+}
+
+/**
+ * Bu modül eklenirse duvardan taşan modül sayısı artar mı? (Kütüphanede
+ * sığmayan genişlikleri kapatmak için.) Yalnız yerleşim hesaplanır.
+ */
+export function eklenirseTasar(proje, yeni, sonraIndex) {
+  const say = (p) => {
+    const k = yerlestir(p);
+    const L = { A: p.mekan?.duvarA ?? Infinity, B: p.mekan?.duvarB ?? Infinity };
+    return p.moduller.reduce((a, m, i) => a + (k[i].s + m.w > L[k[i].duvar] + 0.5 ? 1 : 0), 0);
+  };
+  const once = say(proje);
+  const moduller = [...proje.moduller];
+  moduller.splice(sonraIndex + 1, 0, yeni);
+  return say({ ...proje, moduller }) > once;
+}
+
+/** Bir duvarın bir sırasında son modülden duvar sonuna kalan yer (mm). */
+export function kalanYer(proje, konumlar, duvar, sira) {
+  const L = duvar === 'B' ? proje.mekan.duvarB : proje.mekan.duvarA;
+  let son = 0;
+  proje.moduller.forEach((m, i) => {
+    if (konumlar[i].duvar === duvar && siralar(m).includes(sira)) son = Math.max(son, konumlar[i].s + m.w);
+  });
+  return Math.round(L - son);
 }

@@ -79,6 +79,7 @@ const ASSETS = [
   './dolap/js/teknik.js',
   './dolap/js/gcode.js',
   './dolap/js/katalog.js',
+  './dolap/js/kertme.js',
 ];
 
 self.addEventListener('install', (e) => {

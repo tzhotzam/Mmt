@@ -16,6 +16,7 @@
 
 import { HIRDAVAT, kapakTuru, dogrula, makineMi, evyeMi, dolguMu, bolumler } from './model.js';
 import { yerlestir, mekanNotlari } from './mekan.js';
+import { kertUygula } from './kertme.js';
 
 const RAY_BOSLUK = 13;                       // bilyalı ray, her yanda
 const RAY_BOYLARI = [600, 550, 500, 450, 400, 350, 300, 250];
@@ -47,7 +48,7 @@ export function projeyiCoz(proje, hir = HIRDAVAT) {
   });
   const parcalar = moduller.flatMap((x) => x.parcalar);
   for (const p of parcalar) kesimOlcusu(p, proje.bant);
-  return { moduller, parcalar, uyarilar, notlar: mn.notlar, bosluklar };
+  return { moduller, parcalar, uyarilar, notlar: mn.notlar, bosluklar, tasmalar: mn.tasmalar };
 }
 
 export { yerlestir };
@@ -100,7 +101,7 @@ function modulParcalari(m0, proje, hir, konum = {}) {
   let m = m0;
   if (konum.dAzalt) m = { ...m, d: m.d - konum.dAzalt };
   // Kör köşe dolabı tek bölümlü ve kapaklıdır.
-  if (m.kose && konum.kor > 0) m = { ...m, bolme: 0, kapak: m.kapak === 'cekmece' ? 'otomatik' : m.kapak };
+  if (konum.kor > 0) m = { ...m, bolme: 0, kapak: m.kapak === 'cekmece' ? 'otomatik' : m.kapak };
   const cihazlar = [];
   const parcalar = [];
   const ekle = (p) => { parcalar.push(p); return p; };
@@ -322,7 +323,7 @@ function modulParcalari(m0, proje, hir, konum = {}) {
     const tur = kapakTuru(m);
     if (tur === 'yok') return;
     const cam = camli && m.cam && m.cam !== 'yok' ? m.cam : null;
-    if (m.kose && konum.kor > 0) {
+    if (konum.kor > 0) {
       // Kör köşe: köşe tarafı sabit panel, kapak açık kısımda, menteşe dış yanda.
       const kor = Math.min(konum.kor, W - 150);
       sabitPanel('Kör panel', 0, kor - g / 2, y0, y1);
@@ -409,7 +410,7 @@ function modulParcalari(m0, proje, hir, konum = {}) {
         if (b.icerik === 'cekmece') cekmeceler(b);
         else if (!evyeMi(m)) raflar(m.rafSayisi, t, H - t, b);
       }
-      if (m.kose && konum.kor > 0) kapaklar(0, H - g, 'Kapak', 'ust');
+      if (konum.kor > 0) kapaklar(0, H - g, 'Kapak', 'ust');
       else if (kapakli.length) kapaklar(0, H - g, 'Kapak', 'ust', true, kapakli);
       if (evyeMi(m)) arkaliklar = [];
     }
@@ -472,6 +473,12 @@ function modulParcalari(m0, proje, hir, konum = {}) {
   if (m.tip !== 'ust' && boyTur !== 'buzdolabi') baza();
 
   if (yKaydir) for (const p of parcalar) p.kutu.y += yKaydir;
+  // Kolon kertmesi: kolonun içine giren parçalar oyulur, kısalır ya da bölünür.
+  if (konum.kertikler?.length) {
+    const kertilmis = kertUygula(parcalar, konum.kertikler);
+    parcalar.length = 0;
+    parcalar.push(...kertilmis);
+  }
   return sonuc();
 
   // --------------------------------------------------------------------------

@@ -18,6 +18,7 @@
 // Bu dosya tarayıcıya bağlı değildir.
 
 import { levhaNoktasi } from './yerlesim.js';
+import { kesimKonturu, poligonOfset } from './kertme.js';
 
 export const POSTLAR = {
   ncstudio: { ad: 'NcStudio (Weihong)', yorum: 'parantez', satirNo: false, yuzde: false, program: false, uzanti: 'nc' },
@@ -102,7 +103,8 @@ export function levhaGcode(levha, kalinlik, cncIn = {}, bilgi = {}) {
     if (p.lamba) cepler.push({ tip: 'halka', dis: dikd(p.lamba), ic: dikd(p.pencere), derinlik: p.lamba.derinlik });
     if (p.pencere) icKontur.push(dikd(p.pencere));
     const rect = { x0: yer.x, y0: yer.y, x1: yer.x + yer.w, y1: yer.y + yer.h };
-    disKontur.push({ rect, no: p.no, alan: yer.w * yer.h, kucuk: Math.min(yer.w, yer.h) < c.kopruKucuk });
+    const poli = kesimKonturu(p).map(([px, py]) => levhaNoktasi(yer, p, px, py));
+    disKontur.push({ rect, poli, no: p.no, alan: yer.w * yer.h, kucuk: Math.min(yer.w, yer.h) < c.kopruKucuk });
   }
   for (const [cap, n] of eksik) {
     uyarilar.push(`Ø${cap} için ${n} delik atlandı: takım listesine Ø${cap} matkap ekleyin (freze Ø${freze.cap} bu deliğe girmez).`);
@@ -244,9 +246,8 @@ export function levhaGcode(levha, kalinlik, cncIn = {}, bilgi = {}) {
   // Dış kontur: küçükler önce, dışa telafi, saat yönü tersine (tırmanma).
   const siraliDis = [...disKontur].sort((a, b) => (a.kucuk === b.kucuk ? a.alan - b.alan : a.kucuk ? -1 : 1));
   for (const d of siraliDis) {
-    const rr = { x0: d.rect.x0 - r, y0: d.rect.y0 - r, x1: d.rect.x1 + r, y1: d.rect.y1 + r };
     yorum(`Parca ${d.no}`);
-    profil(rr, true, c.kopru && d.kucuk);
+    profilPoli(poligonOfset(d.poli, r), c.kopru && d.kucuk);
   }
 
   // ---- bitiş ----
@@ -286,6 +287,27 @@ export function levhaGcode(levha, kalinlik, cncIn = {}, bilgi = {}) {
     g1(...ara(b), Math.max(z, zK), c.ilerleme);
     g1(undefined, undefined, z, c.dalis);
     g1(x1, y1, z, c.ilerleme);
+  }
+
+  /** Dış kontur (saat yönü tersi çokgen): rampalı giriş, kademeli paso, son pasoda köprü. */
+  function profilPoli(poli, kopruVar) {
+    const bas = poli[0];
+    yaklas(bas[0], bas[1]);
+    g1(undefined, undefined, 0, c.dalis);
+    const p = pasolar(kesimDerin, c.pasoDerinlik);
+    p.forEach((z, i) => {
+      const ilk = poli[1];
+      const kenar = Math.hypot(ilk[0] - konum.x, ilk[1] - konum.y);
+      const t = Math.min(c.rampa, kenar) / Math.max(kenar, 1e-6);
+      g1(konum.x + (ilk[0] - konum.x) * t, konum.y + (ilk[1] - konum.y) * t, -z, c.dalis * 2);
+      g1(bas[0], bas[1], -z, c.ilerleme);
+      for (let j = 1; j <= poli.length; j++) {
+        const [x, y] = poli[j % poli.length];
+        if (kopruVar && i === p.length - 1) kenarKopru(konum.x, konum.y, x, y, -z);
+        else g1(x, y, -z, c.ilerleme);
+      }
+    });
+    yukari();
   }
 
   /** Kademeli profil: her pasoda rampalı giriş, son pasoda köprü. */

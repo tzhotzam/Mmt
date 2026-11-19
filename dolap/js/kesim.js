@@ -20,7 +20,7 @@ export function kesimListesi(parcalar, mod = 'modul') {
     const b = p.bant;
     const anahtar = [
       mod === 'modul' ? p.modulNo : '', p.malzeme, p.renk, p.kalinlik, p.kesimBoy, p.kesimEn,
-      +b.y0 + +b.y1, +b.x0 + +b.x1, mod === 'modul' ? p.grup : '', p.pencere ? 'cam' : '',
+      +b.y0 + +b.y1, +b.x0 + +b.x1, mod === 'modul' ? p.grup : '', p.pencere ? 'cam' : '', p.kontur ? JSON.stringify(p.kontur) : '',
     ].join('|');
     let s = satirlar.get(anahtar);
     if (!s) {
@@ -33,6 +33,7 @@ export function kesimListesi(parcalar, mod = 'modul') {
         boyBant: +b.y0 + +b.y1, enBant: +b.x0 + +b.x1,
         delik: 0,
         camli: !!p.pencere,
+        kertikli: !!p.kontur,
       };
       satirlar.set(anahtar, s);
     }
@@ -72,7 +73,7 @@ export function kesimCsv(satirlar, proje) {
     s.ad, s.adet, sayi(s.boy), sayi(s.en), sayi(s.kalinlik),
     proje.malzeme[s.malzeme].ad, s.renk ? renkAdi(s.renk) : '',
     s.boyBant, s.enBant, sayi(s.netBoy), sayi(s.netEn),
-    s.delik ? 'evet' : '', s.camli ? 'camlı: pencere boydan kesilir, arkada cam lambası, iç kenar bantlı' : '',
+    s.delik ? 'evet' : '', [s.camli ? 'camlı: pencere boydan kesilir, arkada cam lambası, iç kenar bantlı' : '', s.kertikli ? 'kolon kertmeli: kontur DXF\'te' : ''].filter(Boolean).join('; '),
     s.nolar.join(' '),
   ]);
   const kac = (v) => {

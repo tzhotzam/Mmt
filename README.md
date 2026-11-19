@@ -240,6 +240,14 @@ tasarlar. Üst çubuktaki **Dolap tasarım →** bağlantısıyla (masaüstünde
   sırayı, kolon ve kapı iki sırayı iter). Kolonda "önüne dolap" seçilirse
   dolabın derinliği kolon kadar kısalır. Duvardan / tavandan taşma uyarılır,
   kalan boşluklar dolgu ya da dolap önerisiyle not edilir.
+- **Kolon kertme:** her kolon için önüne gelen dolap "atlasın", "kertilsin"
+  ya da "önüne geçsin" seçilir. Kertmede kolonun içine giren yan, tabla,
+  raf, kuşak ve arkalık oyulur, kısalır ya da bölünür; oyuktaki delikler
+  silinir. Oyuk DXF / G-code konturunda, levha planında, 3B'de ve tezgâhta
+  görünür. Önüne geçen dolap kolon derinliği kadar öne kayar.
+- **Duvara sığdırma:** kütüphanede duvara sığmayan genişlikler kapalıdır,
+  kalan yer yazılır; taşan modül için "Sığdır", "B · sol duvara taşı",
+  "Kaldır" düğmeleri.
 - **Köşe dolap (kör köşe):** L mutfakta A duvarının köşedeki alt / üst
   dolabı. B duvarı bu dolabın önünden başlar; kör kısım B dolaplarının
   derinliği + kapak + 50 mm dolgudan hesaplanır, önüne sabit kör panel gelir.
@@ -742,6 +750,7 @@ dolap/                dolap tasarım programı
   js/teknik.js        ölçülü önden görünüş (SVG), barkodlu etiket, teklif
   js/gcode.js         levhadan G-code (post işlemciler, takım listesi)
   js/katalog.js       modül kütüphanesi ve boşluk doldurma
+  js/kertme.js        kolon kertmesi: parça oyma / kısaltma / bölme, kontur
   js/renkler.js       renk kataloğu (Kastamonu Entegre dekorları + genel)
   js/govde.js         modül → parçalar: ölçü, bant, delik, 3B kutu
   js/yerlesim.js      dikdörtgen levha yerleşimi (MaxRects)

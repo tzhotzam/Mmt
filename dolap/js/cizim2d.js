@@ -1,6 +1,7 @@
 // Canvas çizimleri: tek parçanın delik planı ve levha yerleşimi.
 
 import { levhaNoktasi } from './yerlesim.js';
+import { kesimKonturu } from './kertme.js';
 
 export const DELIK_RENK = {
   mentese: '#38bdf8', minifix: '#f59e0b', raf: '#a78bfa', kavela: '#34d399', kulp: '#f472b6', vida: '#f472b6',
@@ -34,8 +35,11 @@ export function parcaCiz(canvas, p) {
   c.fillStyle = '#1e242c';
   c.strokeStyle = '#e6eaef';
   c.lineWidth = 1.2;
-  c.fillRect(X(0), Y(p.kesimEn), p.kesimBoy * s, p.kesimEn * s);
-  c.strokeRect(X(0), Y(p.kesimEn), p.kesimBoy * s, p.kesimEn * s);
+  c.beginPath();
+  kesimKonturu(p).forEach(([x, y], i) => (i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y))));
+  c.closePath();
+  c.fill();
+  c.stroke();
 
   // Bantlı kenarlar
   c.strokeStyle = BANT_RENK;
@@ -102,7 +106,7 @@ export function parcaCiz(canvas, p) {
   c.fillText(`${p.no} · ${p.ad}`, 12, 20);
   c.fillStyle = '#9aa5b1';
   c.font = '12px system-ui, sans-serif';
-  c.fillText(`Delinen yüz yukarı: ${p.yuz} · damar → yatay`, 12, 37);
+  c.fillText(`Delinen yüz yukarı: ${p.yuz} · damar → yatay${p.kontur ? ' · kolon kertmeli' : ''}`, 12, 37);
 }
 
 /** Levha: parçalar, etiketler, delikler (nokta). */
@@ -128,8 +132,19 @@ export function levhaCiz(canvas, levha, { seciliNo, baslik } = {}) {
     c.strokeStyle = sec ? '#f59e0b' : '#5a6573';
     c.lineWidth = sec ? 2 : 1;
     const rx = X(yer.x), ry = Y(yer.y + yer.h), rw = yer.w * s, rh = yer.h * s;
-    c.fillRect(rx, ry, rw, rh);
-    c.strokeRect(rx, ry, rw, rh);
+    if (p.kontur) {
+      c.beginPath();
+      kesimKonturu(p).forEach(([px, py], i) => {
+        const [sx, sy] = levhaNoktasi(yer, p, px, py);
+        if (i) c.lineTo(X(sx), Y(sy)); else c.moveTo(X(sx), Y(sy));
+      });
+      c.closePath();
+      c.fill();
+      c.stroke();
+    } else {
+      c.fillRect(rx, ry, rw, rh);
+      c.strokeRect(rx, ry, rw, rh);
+    }
     kutular.push({ no: p.no, x: rx, y: ry, w: rw, h: rh });
     if (p.pencere) {
       const r = p.pencere;

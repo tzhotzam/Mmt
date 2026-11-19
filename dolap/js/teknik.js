@@ -242,7 +242,7 @@ export function etiketlerHtml(cozum, proje) {
       <div class="et-ust"><b>${esc(p.no)}</b><span>${esc(MALZEME_ADI[p.malzeme])} ${p.kalinlik} mm</span></div>
       <div class="et-ad">${esc(p.ad)}</div>
       <div class="et-olcu">${sayi(p.kesimBoy)} × ${sayi(p.kesimEn)}</div>
-      <div class="et-alt">M${p.modulNo} ${esc(p.modulAd)} · ${esc(bantYaz(p))}${p.delikler.length ? ` · delik: ${esc(p.yuz)}` : ''}${p.pencere ? ' · camlı' : ''}</div>
+      <div class="et-alt">M${p.modulNo} ${esc(p.modulAd)} · ${esc(bantYaz(p))}${p.delikler.length ? ` · delik: ${esc(p.yuz)}` : ''}${p.pencere ? ' · camlı' : ''}${p.kontur ? ' · kertmeli' : ''}</div>
       ${p.renk ? `<div class="et-alt">${esc(renkAdi(p.renk))}</div>` : ''}
       ${barkodSvg(p.no)}
     </div>`).join('');

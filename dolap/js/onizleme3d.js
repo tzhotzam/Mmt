@@ -3,6 +3,7 @@
 
 import { renkBul } from './renkler.js';
 import { makineMi, dolguMu } from './model.js';
+import { izgara } from './kertme.js';
 
 let THREE = null, OrbitControls = null;
 
@@ -375,7 +376,17 @@ export async function olustur3d(kap, { secince } = {}) {
         if (kapakMi && !kapaklarGorunur) continue;
         if (p.malzeme === 'cam') continue;          // camı kapak kendisi çizer
         const malz = p.renk ? renkMalz(p.renk) : mat[p.malzeme];
-        const mesh = p.cam ? camliKapak(p, k, malz, proje) : kutu(k.sx, k.sy, k.sz, malz);
+        let mesh;
+        if (p.cam) mesh = camliKapak(p, k, malz, proje);
+        else if (p.kutular) {
+          // Kertilmiş parça: oyuk dışındaki dilimler, kutunun merkezine göre.
+          mesh = new THREE.Group();
+          for (const b of p.kutular) {
+            const d = kutu(b.sx, b.sy, b.sz, malz);
+            d.position.set(b.x + b.sx / 2 - (k.x + k.sx / 2), b.y + b.sy / 2 - (k.y + k.sy / 2), b.z + b.sz / 2 - (k.z + k.sz / 2));
+            mesh.add(d);
+          }
+        } else mesh = kutu(k.sx, k.sy, k.sz, malz);
         kayit.mesh.push(mesh);
         const h = p.hareket;
         if (h?.tip === 'devril') {
@@ -429,9 +440,18 @@ export async function olustur3d(kap, { secince } = {}) {
         }
       }
       if (m.tip === 'alt' && proje.tezgah) {
-        const tz = kutu(m.w, 38, m.d + 20, mat.tezgah);
-        tz.position.set(m.w / 2, m.h + 19, (m.d + 20) / 2);
-        mg.add(tz);
+        // Tezgâh da kolonun etrafından oyulur; önüne geçen dolapta kısalır.
+        const td = m.d - (konum.dAzalt || 0) + 20;
+        const oyuk = (konum.kertikler || [])
+          .filter((q) => q.y0 < m.h + 38 && q.y1 > m.h)
+          .map((q) => ({ x0: Math.max(0, q.x0), x1: Math.min(m.w, q.x1), y0: 0, y1: Math.min(td, q.z1) }))
+          .filter((q) => q.x1 - q.x0 > 0.5 && q.y1 > 0.5);
+        const parcalar = oyuk.length ? izgara(m.w, td, oyuk).hucreler : [{ x0: 0, x1: m.w, y0: 0, y1: td }];
+        for (const h of parcalar) {
+          const tz = kutu(h.x1 - h.x0, 38, h.y1 - h.y0, mat.tezgah);
+          tz.position.set((h.x0 + h.x1) / 2, m.h + 19, (h.y0 + h.y1) / 2);
+          mg.add(tz);
+        }
       }
     }
 

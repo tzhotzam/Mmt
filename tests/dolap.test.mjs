@@ -8,6 +8,7 @@ import { varsayilanProje, modul, engel, HIRDAVAT, kapakTuru, ALT_TURLERI, BOY_TU
 import { cepheSvg, etiketlerHtml, barkodSvg, teklifHtml } from '../dolap/js/teknik.js';
 import { levhaGcode, pasolar, CNC_VARSAYILAN } from '../dolap/js/gcode.js';
 import { KATALOG as MODUL_KATALOG, katalogOzel, boslukDoldur } from '../dolap/js/katalog.js';
+import { eklenirseTasar, kalanYer } from '../dolap/js/mekan.js';
 import { projeyiCoz, yerlestir, menteseSayisi, baglantiNoktalari, bantUzunlugu } from '../dolap/js/govde.js';
 import { yerlestirLevha, levhaNoktasi } from '../dolap/js/yerlesim.js';
 import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi, teklifHesapla, stokAnahtari } from '../dolap/js/kesim.js';
@@ -398,6 +399,7 @@ test('kolonun önüne dolap: derinlik kolon kadar kısalır, parçalar da kısa'
   const c = projeyiCoz(p);
   assert.equal(c.moduller[0].konum.s, 0);
   assert.equal(c.moduller[0].konum.dAzalt, 120);
+  assert.equal(c.moduller[0].konum.z, 120, 'dolap kolonun önüne kaymadı');
   assert.equal(bul(c.parcalar, 'Sol yan').en, 560 - 120 - 8);
   assert.ok(c.notlar.some((n) => n.includes('kolonun önünde')));
 });
@@ -438,13 +440,81 @@ test('L mutfak: B duvarı köşe dolabının önünden başlar, kör kısım B d
   assert.ok(!c.uyarilar.some((u) => u.includes('köşe')), c.uyarilar.join(' | '));
 });
 
-test('L mutfak: köşedeki düz dolap için not, düz mutfakta köşe işareti uyarı', () => {
+test('L mutfak: köşedeki düz dolap kendiliğinden kör köşe olur, dar ise uyarır', () => {
   const p = bosProje({ tip: 'L' });
   p.moduller = [modul('alt', { w: 1000 }), modul('alt', { w: 600, duvar: 'B' })];
-  assert.ok(projeyiCoz(p).notlar.some((n) => n.includes('Köşe dolabı')));
+  const c = projeyiCoz(p);
+  assert.ok(c.notlar.some((n) => n.includes('kör panel')));
+  assert.ok(c.parcalar.some((q) => q.ad === 'Kör panel' && q.modulNo === 1));
+  // Kapak B dolabının arkasına açılmaz.
+  for (const k of c.moduller[0].parcalar.filter((q) => q.hareket?.tip === 'kapak')) assert.ok(k.kutu.x >= 560 + 18);
+  p.moduller[0].w = 600;
+  const dar = projeyiCoz(p);
+  const t = dar.tasmalar.find((x) => x.koseGenislik);
+  assert.ok(t && t.koseGenislik >= 628 + 250, 'dar köşe dolabı uyarısı yok');
   const q = bosProje();
   q.moduller = [modul('alt', { w: 1000, kose: true })];
   assert.ok(projeyiCoz(q).uyarilar.some((u) => u.includes('köşe dolabı')));
+});
+
+test('L mutfak: köşede kolon / kapı olsa da dolaplar üst üste binmez', () => {
+  const kutular = (p, c) => c.moduller.map(({ m, konum: k }) => {
+    const d = m.d - (k.dAzalt || 0) + 18;
+    const y = m.tip === 'ust' ? [p.ustAltKot, p.ustAltKot + m.h] : [0, p.ayakYukseklik + m.h];
+    return k.duvar === 'A' ? { x: [k.s, k.s + m.w], y, z: [0, d] } : { x: [0, d], y, z: [k.s, k.s + m.w] };
+  });
+  const senaryolar = [
+    [engel('kolon', { x: 0, w: 200, d: 200 })],
+    [engel('kapi', { x: 0, w: 300 })],
+    [],
+  ];
+  for (const eng of senaryolar) {
+    const p = bosProje({ tip: 'L', engeller: eng });
+    p.moduller = [modul('alt', { w: 600 }), modul('ust', { w: 600 }), modul('alt', { w: 600, duvar: 'B' }),
+      modul('ust', { w: 600, duvar: 'B' }), modul('boy', { w: 600, duvar: 'B' })];
+    const c = projeyiCoz(p);
+    const K = kutular(p, c);
+    for (let i = 0; i < K.length; i++) for (let j = i + 1; j < K.length; j++) {
+      const ic = ['x', 'y', 'z'].every((e) => Math.min(K[i][e][1], K[j][e][1]) - Math.max(K[i][e][0], K[j][e][0]) > 1);
+      assert.ok(!ic, `M${i + 1} ile M${j + 1} çakışıyor (${eng.map((e) => e.tip).join(',') || 'engelsiz'})`);
+    }
+  }
+});
+
+test('kolon kertmesi: yan kısalır, tabla oyulur, arkalık kesilir, oyukta delik kalmaz', () => {
+  const p = bosProje({ engeller: [engel('kolon', { x: 450, w: 300, d: 150, yerlesim: 'kert' })] });
+  p.moduller = [modul('alt', { w: 600 }), modul('alt', { w: 600 })];
+  const c = projeyiCoz(p);
+  assert.deepEqual(c.moduller.map((x) => x.konum.s), [0, 600]);       // kolon atlanmadı
+  const m1 = c.moduller[0].parcalar;
+  const sag = m1.find((q) => q.ad === 'Sağ yan');
+  assert.equal(sag.en, 552 - (150 - 8));
+  const tabla = m1.find((q) => q.ad === 'Alt tabla');
+  assert.ok(tabla.kontur && tabla.kontur.length === 6, 'tabla L biçimli değil');
+  for (const d of tabla.delikler) assert.ok(!(d.x > 432 && d.y < 142), 'oyukta delik kaldı');
+  assert.equal(m1.find((q) => q.ad === 'Arkalık').boy, 450);
+  // DXF ve G-code oyuğu izliyor.
+  const plan = levhaPlani(c.parcalar, p);
+  const lv = plan.govde.levhalar.find((l) => l.yerlesim.some((y) => y.parca === tabla));
+  const dxf = levhaDxf(lv);
+  assert.ok(dxf.includes('KESIM'));
+  const gc = levhaGcode(lv, 18, p.cnc);
+  assert.ok(gc.metin.includes(`(Parca ${tabla.no})`));
+  // Kolon dolabın neredeyse tamamını yiyorsa kertilmez, atlanır.
+  const q = bosProje({ engeller: [engel('kolon', { x: 450, w: 300, d: 500, yerlesim: 'kert' })] });
+  q.moduller = [modul('alt', { w: 600 }), modul('alt', { w: 600 })];
+  assert.deepEqual(projeyiCoz(q).moduller.map((x) => x.konum.s), [750, 1350]);
+});
+
+test('taşma: eklenirse taşar mı, kalan yer', () => {
+  const p = bosProje({ duvarA: 1300 });
+  p.moduller = [modul('alt', { w: 600 }), modul('alt', { w: 600 })];
+  const c = projeyiCoz(p);
+  const k = c.moduller.map((x) => x.konum);
+  assert.equal(kalanYer(p, k, 'A', 'alt'), 100);
+  assert.equal(eklenirseTasar(p, modul('alt', { w: 300 }), 1), true);
+  assert.equal(eklenirseTasar(p, modul('alt', { w: 100, altTur: 'dolgu' }), 1), false);
+  assert.equal(eklenirseTasar(p, modul('ust', { w: 600 }), 1), false);
 });
 
 console.log('bölme ve cihaz yerleri');

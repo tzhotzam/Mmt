@@ -7,6 +7,7 @@ import { projeyiCoz } from './govde.js';
 import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi, teklifHesapla, stokAnahtari, MALZEME_ADI } from './kesim.js';
 import { levhaGcode, POSTLAR, CNC_VARSAYILAN, sureYaz } from './gcode.js';
 import { KATALOG, katalogOzel, boslukDoldur, STANDART } from './katalog.js';
+import { eklenirseTasar, kalanYer, kolonModu } from './mekan.js';
 import { levhaDxf, levhalarDxf } from './dxf.js';
 import { olustur3d } from './onizleme3d.js';
 import { parcaCiz, levhaCiz, DELIK_RENK, DELIK_AD } from './cizim2d.js';
@@ -95,6 +96,7 @@ function hesapla() {
   hirdavatTablosu();
   kartelaCiz();
   artikCiz();
+  katalogCiz();
   gcodeCiz();
   teklifCiz();
   gorunumCiz();
@@ -149,9 +151,41 @@ let katalogSekme = 'Alt';
 const benimOku = () => { try { return JSON.parse(localStorage.getItem(BENIM) || '[]'); } catch { return []; } };
 const benimYaz = (l) => { try { localStorage.setItem(BENIM, JSON.stringify(l)); } catch { /* yer yok */ } };
 
+let hedefDuvar = 'A';
+const DUVAR_AD = { A: 'A · arka', B: 'B · sol' };
+
+/** Yeni modül nereye eklenir: seçili modül o duvardaysa onun ardına, değilse o duvarın son modülünün ardına. */
+function eklemeYeri(duvar) {
+  const L = proje.mekan?.tip === 'L';
+  const d = L ? duvar : 'A';
+  const sec = proje.moduller.findIndex((x) => x.id === durum.modulId);
+  if (sec >= 0 && (!L || (proje.moduller[sec].duvar || 'A') === d)) return sec;
+  let son = -1;
+  proje.moduller.forEach((m, i) => { if ((m.duvar || 'A') === d) son = i; });
+  return son >= 0 ? son : proje.moduller.length - 1;
+}
+
+function hedefModul(tip, ozel) {
+  const { id: _yok, ...temiz } = ozel;
+  const m = modul(tip, temiz);
+  if (proje.mekan?.tip === 'L') m.duvar = hedefDuvar;
+  return m;
+}
+
 function katalogCiz() {
   const kap = $('#katalog-liste');
   kap.innerHTML = '';
+  const L = proje.mekan?.tip === 'L';
+  if (!L) hedefDuvar = 'A';
+  for (const b of $$('[data-hedef-duvar]')) b.classList.toggle('active', b.dataset.hedefDuvar === hedefDuvar);
+  if (cozum) {
+    const k = cozum.moduller.map((x) => x.konum);
+    const a = kalanYer(proje, k, hedefDuvar, 'alt'), u = kalanYer(proje, k, hedefDuvar, 'ust');
+    const yaz = (v) => (v >= 0 ? `${v} mm` : `${-v} mm taşıyor`);
+    $('#katalog-kalan').textContent = `${L ? DUVAR_AD[hedefDuvar] + ' duvar' : 'Duvar'} sonuna kalan yer — alt sıra: ${yaz(a)} · üst sıra: ${yaz(u)}`;
+  }
+  const sonra = eklemeYeri(hedefDuvar);
+  const sigarMi = (tip, ozel) => !eklenirseTasar(proje, hedefModul(tip, ozel), sonra);
   if (katalogSekme === 'benim') {
     const l = benimOku();
     if (!l.length) {
@@ -163,6 +197,7 @@ function katalogCiz() {
       d.className = 'katalog-oge';
       d.innerHTML = `<span></span><button type="button">${k.w / 10}</button><button type="button" class="sil" aria-label="Sil">✕</button>`;
       d.querySelector('span').textContent = k.ad;
+      if (!sigarMi(k.tip, k)) { d.children[1].disabled = true; d.children[1].title = 'Bu duvara sığmıyor'; }
       d.children[1].addEventListener('click', () => modulEkle(k.tip, { ...k, id: undefined }));
       d.children[2].addEventListener('click', () => { const y = benimOku(); y.splice(i, 1); benimYaz(y); katalogCiz(); });
       kap.appendChild(d);
@@ -181,6 +216,7 @@ function katalogCiz() {
       b.type = 'button';
       b.textContent = String(w / 10);
       b.title = `${oge.ad} ${w} mm`;
+      if (!sigarMi(oge.tip, katalogOzel(oge, w))) { b.disabled = true; b.title = `${w} mm bu duvara sığmıyor`; }
       b.addEventListener('click', () => modulEkle(oge.tip, katalogOzel(oge, w)));
       d.appendChild(b);
     }
@@ -195,13 +231,24 @@ for (const b of $$('[data-katalog]')) {
   });
 }
 
-/** Seçili modülün ardına ekle (L mutfakta onun duvarına). */
+for (const b of $$('[data-hedef-duvar]')) {
+  b.addEventListener('click', () => { hedefDuvar = b.dataset.hedefDuvar; katalogCiz(); });
+}
+
+/** Kütüphaneden ekle: hedef duvara; duvardan taşacaksa eklemez, söyler. */
 function modulEkle(tip, ozel, sonraIndex = null) {
-  const { id: _yok, ...temiz } = ozel;
-  const m = modul(tip, temiz);
-  const sec = seciliModul();
-  if (proje.mekan?.tip === 'L' && !ozel.duvar) m.duvar = sec?.duvar || 'A';
-  const i = sonraIndex ?? proje.moduller.findIndex((x) => x.id === durum.modulId);
+  const m = hedefModul(tip, ozel);
+  const i = sonraIndex ?? eklemeYeri(hedefDuvar);
+  const mesaj = $('#katalog-mesaj');
+  if (sonraIndex === null && eklenirseTasar(proje, m, i)) {
+    const k = cozum.moduller.map((x) => x.konum);
+    const sira = m.tip === 'ust' ? 'ust' : 'alt';
+    mesaj.hidden = false;
+    mesaj.textContent = `${m.w} mm sığmıyor: ${DUVAR_AD[m.duvar || 'A']} duvarda ${sira === 'ust' ? 'üst' : 'alt'} sırada ${Math.max(0, kalanYer(proje, k, m.duvar || 'A', sira))} mm yer kaldı.` +
+      (proje.mekan?.tip === 'L' && (m.duvar || 'A') === 'A' ? ' Daha dar bir genişlik seçin ya da B · sol duvara ekleyin.' : ' Daha dar bir genişlik seçin.');
+    return null;
+  }
+  mesaj.hidden = true;
   proje.moduller.splice(i >= 0 ? i + 1 : proje.moduller.length, 0, m);
   durum.modulId = m.id;
   formuDoldur();
@@ -449,6 +496,8 @@ function modulListesi() {
 
 function modulSec(id) {
   durum.modulId = id;
+  const sm = proje.moduller.find((m) => m.id === id);
+  if (sm && proje.mekan?.tip === 'L') { hedefDuvar = sm.duvar || 'A'; katalogCiz(); }
   formuDoldur();
   modulListesi();
   kartelaCiz();
@@ -736,7 +785,43 @@ function ozet() {
   }
   const kutu = $('#uyarilar');
   kutu.hidden = !u.length;
-  kutu.innerHTML = u.length ? `<ul>${u.map((x) => `<li>${kac(x)}</li>`).join('')}</ul>` : '';
+  kutu.innerHTML = '';
+  if (u.length) {
+    const ul = document.createElement('ul');
+    for (const x of u) {
+      const li = document.createElement('li');
+      li.textContent = x;
+      const t = (cozum.tasmalar || []).find((q) => q.metin === x);
+      if (t) {
+        const m = proje.moduller.find((q) => q.id === t.id);
+        const dugme = (yazi, is) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'duzelt';
+          b.textContent = yazi;
+          b.addEventListener('click', is);
+          li.appendChild(b);
+        };
+        // Sığacak en büyük standart ölçü; yoksa kalan yerin kendisi.
+        if (t.koseGenislik) {
+          dugme(`Genişliği ${t.koseGenislik} mm yap`, () => { m.w = t.koseGenislik; formuDoldur(); hesapla(); });
+        } else {
+          const std = [1200, 1000, 900, 800, 600, 500, 450, 400, 300].find((w) => w <= t.yer);
+          const yeni = std ?? (t.yer >= 150 ? Math.floor(t.yer / 10) * 10 : 0);
+          if (yeni) dugme(`Sığdır: ${yeni} mm'ye daralt`, () => { m.w = yeni; formuDoldur(); hesapla(); });
+          if (proje.mekan?.tip === 'L' && (m.duvar || 'A') === 'A') dugme('B · sol duvara taşı', () => { m.duvar = 'B'; formuDoldur(); hesapla(); });
+        }
+        dugme('Kaldır', () => {
+          proje.moduller = proje.moduller.filter((q) => q.id !== m.id);
+          if (durum.modulId === m.id) durum.modulId = proje.moduller[0]?.id ?? null;
+          formuDoldur();
+          hesapla();
+        });
+      }
+      ul.appendChild(li);
+    }
+    kutu.appendChild(ul);
+  }
 
   const n = cozum.notlar || [];
   const nk = $('#notlar');
@@ -792,13 +877,19 @@ function mekanCiz() {
     d.className = 'engel';
     d.dataset.id = e.id;
     let html = `<div class="engel-bas"><span>${i + 1}. ${ENGEL_TURLERI[e.tip].ad}</span><button type="button" class="ghost tehlike" data-sil>Sil</button></div>`;
-    if (L) html += `<label>Duvar<select data-e="duvar"><option value="A">A</option><option value="B">B</option></select></label>`;
+    if (L) html += `<label>Duvar<select data-e="duvar"><option value="A">A · arka</option><option value="B">B · sol</option></select></label>`;
     for (const [k, ad] of ENGEL_ALAN[e.tip]) html += `<label>${ad} <input type="number" data-e="${k}" min="0" step="1"></label>`;
-    if (e.tip === 'kolon') html += `<label class="check"><input type="checkbox" data-e="onune"> Önüne dolap</label>`;
+    if (e.tip === 'kolon') {
+      html += `<label class="kolon-mod">Önüne gelen dolap<select data-e="yerlesim">
+        <option value="atla">Atlasın (kolonun yanından devam)</option>
+        <option value="kert">Kertilsin (kolonun etrafından oyulur)</option>
+        <option value="onune">Önüne geçsin (derinlik kısalır)</option></select></label>`;
+    }
     d.innerHTML = html;
     for (const el of d.querySelectorAll('[data-e]')) {
       const k = el.dataset.e;
       if (el.type === 'checkbox') el.checked = !!e[k];
+      else if (k === 'yerlesim') el.value = kolonModu(e);
       else el.value = k === 'h' && e[k] > 5000 ? '' : e[k];
       if (k === 'h' && e.tip === 'kolon') el.placeholder = 'tavana kadar';
     }

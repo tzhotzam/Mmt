@@ -225,3 +225,11 @@ body.baski-etiket-sayfa { }
 #teklif-tablo td:first-child { white-space: normal; }
 .kesim-sirasi { list-style: none; padding-left: 12px; }
 .kesim-sirasi li.a0 { margin-left: 0; }
+
+#katalog-duvar .seg { padding: 7px 10px; }
+.katalog-kalan { margin: 0 0 8px; font-size: 12px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
+.katalog-oge button:disabled { opacity: 0.3; text-decoration: line-through; }
+.katalog-mesaj { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; color: #ffc9d2; background: rgba(244, 63, 94, 0.09); border: 1px solid rgba(244, 63, 94, 0.3); }
+.warnings li { margin: 3px 0; }
+.warnings .duzelt { margin-left: 8px; padding: 3px 9px; font-size: 11.5px; border-color: rgba(255, 201, 210, 0.5); color: #ffc9d2; background: transparent; }
+.engel .kolon-mod { grid-column: span 2; }
