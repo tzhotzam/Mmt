@@ -14,7 +14,7 @@
 //
 // Bu dosya tarayıcıya bağlı değildir; Node'dan doğrudan çağrılabilir.
 
-import { HIRDAVAT, kapakTuru, dogrula, makineMi, evyeMi, bolumler } from './model.js';
+import { HIRDAVAT, kapakTuru, dogrula, makineMi, evyeMi, dolguMu, bolumler } from './model.js';
 import { yerlestir, mekanNotlari } from './mekan.js';
 
 const RAY_BOSLUK = 13;                       // bilyalı ray, her yanda
@@ -29,6 +29,7 @@ export function projeyiCoz(proje, hir = HIRDAVAT) {
   const konumlar = yerlestir(proje);
   const mn = mekanNotlari(proje, konumlar);
   const uyarilar = [...dogrula(proje), ...mn.uyarilar];
+  const bosluklar = mn.bosluklar;
   const moduller = proje.moduller.map((m, i) => {
     const no = i + 1;
     const { parcalar, cihazlar } = modulParcalari(m, proje, hir, konumlar[i]);
@@ -46,7 +47,7 @@ export function projeyiCoz(proje, hir = HIRDAVAT) {
   });
   const parcalar = moduller.flatMap((x) => x.parcalar);
   for (const p of parcalar) kesimOlcusu(p, proje.bant);
-  return { moduller, parcalar, uyarilar, notlar: mn.notlar };
+  return { moduller, parcalar, uyarilar, notlar: mn.notlar, bosluklar };
 }
 
 export { yerlestir };
@@ -122,6 +123,17 @@ function modulParcalari(m0, proje, hir, konum = {}) {
 
   const W = m.w, H = m.h, D = m.d;
   const Dg = D - ta;              // gövde parçalarının derinliği (arkalık çakma)
+
+  // ---- dolgu: duvara / yan dolaba vidalanan ön panel ----
+  if (dolguMu(m)) {
+    const y0 = m.tip === 'ust' ? g / 2 : 0;
+    const y1 = m.tip === 'ust' ? H - g / 2 : H - g;
+    ekle(parca('Dolgu paneli', 'dolgu', 'kapak', tk, yuvarla(y1 - y0), W,
+      { x0: true, x1: true, y0: false, y1: false }, 'Fark etmez',
+      { x: 0, y: y0, z: D, sx: W, sy: yuvarla(y1 - y0), sz: tk }));
+    if (m.tip === 'alt') baza();
+    return sonuc();
+  }
 
   // ---- makine yerleri: gövde yok ----
   if (makineMi(m)) {

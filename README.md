@@ -280,6 +280,25 @@ tasarlar. Üst çubuktaki **Dolap tasarım →** bağlantısıyla (masaüstünde
   MDFLam düz renk, ahşap ve fantazi dekorlar) renk kartı olarak seçilir. Tüm
   kapaklara ya da tek modüle uygulanır; farklı renkteki kapaklar ayrı levhaya
   dizilir. Dekor adları bayi listelerinden derlendi, ekrandaki ton yaklaşıktır.
+- **Modül kütüphanesi:** alt / üst / boy için standart genişlikte hazır
+  modüller (30'luk, 45'lik, 60'lık, 80'lik, 90'lık…): kapaklı, çekmeceli,
+  raf + çekmece, evye, fırın, kör köşe, vitrin, açık raf, davlumbaz, kiler,
+  fırın kolonu, buzdolabı, dolgu. Kendi modüllerinizi "Benim" sekmesine
+  kaydedersiniz. Duvarda boşluk kalırsa "Doldur" en uygun standart
+  modülleri (60 + 45 + dolgu gibi) ekler.
+- **G-code:** levha başına doğrudan makine programı. NcStudio, Syntec,
+  Mach3, GRBL, Fanuc. Önce delikler (matkap), sonra menteşe / minifix
+  cepleri (frezeyle helisel), cam lambası, pencere, en son küçükten büyüğe
+  parça kesimi (takım telafili, rampalı giriş, kademeli paso, küçük parçaya
+  köprü). Tek iş milli makinede takım değişiminde M0 ile durur; ATC'de T M6.
+- **Ebatlama:** daire testere / ebatlama makinesi için 3 aşamalı giyotin
+  kesim planı ve adım adım kesim sırası (boyuna şerit → enine → parça).
+- **Artık stoğu:** önceki işlerden kalan levha parçaları aynı malzeme ve
+  renkte tam levhadan önce kullanılır, maliyete girmez; işin artıkları tek
+  tuşla stoğa eklenir.
+- **Etiket ve teklif:** barkodlu (Code 39) parça etiketleri; işçilik, kâr ve
+  KDV ile müşteri teklifi (önden görünüş ve modül listesiyle yazdırılır).
+- **Geri al / yinele:** Ctrl+Z, Ctrl+Y.
 - **Hırdavat ve maliyet:** minifix, menteşe, ray, kulp, ayak adetleri;
   levha ve bant fiyatından kaba maliyet.
 
@@ -720,7 +739,9 @@ dolap/                dolap tasarım programı
   index.html, dolap.css
   js/model.js         proje, varsayılanlar, hırdavat ölçüleri, doğrulama
   js/mekan.js         duvarlar, engeller, L köşe, boşluk / taşma notları
-  js/teknik.js        ölçülü önden görünüş (SVG) ve parça etiketleri
+  js/teknik.js        ölçülü önden görünüş (SVG), barkodlu etiket, teklif
+  js/gcode.js         levhadan G-code (post işlemciler, takım listesi)
+  js/katalog.js       modül kütüphanesi ve boşluk doldurma
   js/renkler.js       renk kataloğu (Kastamonu Entegre dekorları + genel)
   js/govde.js         modül → parçalar: ölçü, bant, delik, 3B kutu
   js/yerlesim.js      dikdörtgen levha yerleşimi (MaxRects)

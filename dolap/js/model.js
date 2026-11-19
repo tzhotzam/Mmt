@@ -1,6 +1,8 @@
 // Proje modeli: malzeme, levha, hırdavat ölçüleri ve modül şablonları.
 // Bütün ölçüler milimetredir. Bu dosya tarayıcıya bağlı değildir.
 
+import { CNC_VARSAYILAN } from './gcode.js';
+
 /** Hırdavat delme ölçüleri. Üretici kataloğuna göre değiştirilebilir. */
 let sayac = 0;
 
@@ -48,6 +50,7 @@ export const ALT_TURLERI = {
   bulasik: { ad: 'Bulaşık makinesi (ankastre)', ozel: { ad: 'Bulaşık makinesi', w: 600, altTur: 'bulasik' } },
   bulasikSolo: { ad: 'Bulaşık makinesi (solo, boşluk)', ozel: { ad: 'Bulaşık makinesi', w: 600, altTur: 'bulasikSolo' } },
   camasir: { ad: 'Çamaşır makinesi (boşluk)', ozel: { ad: 'Çamaşır makinesi', w: 600, altTur: 'camasir' } },
+  dolgu: { ad: 'Dolgu / pervaz (yalnız ön panel)', ozel: { ad: 'Dolgu', w: 100, altTur: 'dolgu' } },
 };
 
 /** Boy dolap türleri. */
@@ -61,6 +64,7 @@ export const BOY_TURLERI = {
 export const UST_TURLERI = {
   normal: { ad: 'Normal üst dolap', ozel: {} },
   davlumbaz: { ad: 'Davlumbaz yeri (+ üstte kısa dolap)', ozel: { ad: 'Davlumbaz', w: 600, ustTur: 'davlumbaz' } },
+  dolgu: { ad: 'Dolgu / pervaz (yalnız ön panel)', ozel: { ad: 'Dolgu', w: 100, ustTur: 'dolgu' } },
 };
 
 /** Duvardaki engeller: dolaplar bunlara çarpmadan dizilir. */
@@ -79,6 +83,11 @@ export function engel(tip, ozel = {}) {
 /** Gövdesi olmayan makine yeri mi? */
 export function makineMi(m) {
   return m.tip === 'alt' && ['bulasik', 'bulasikSolo', 'camasir'].includes(m.altTur);
+}
+
+/** Gövdesiz dolgu (pervaz) paneli mi? */
+export function dolguMu(m) {
+  return (m.tip === 'alt' && m.altTur === 'dolgu') || (m.tip === 'ust' && m.ustTur === 'dolgu');
 }
 
 export function evyeMi(m) {
@@ -119,7 +128,7 @@ export function varsayilanProje() {
       kapak: { ad: '18 mm MDF-lam', kalinlik: 18, renk: RENK_VARSAYILAN.kapak },
       arkalik: { ad: '8 mm sunta', kalinlik: 8 },
     },
-    levha: { w: 2800, h: 2070, kenarPay: 10, aralik: 10, damar: false },
+    levha: { w: 2800, h: 2070, kenarPay: 10, aralik: 10, damar: false, yontem: 'cnc', testere: 4.4 },
     bant: { kalinlik: 0.8, kesimdenDus: true },
     baglanti: 'minifix',           // minifix | kavela | minifix+kavela | vida
     kapakBosluk: 3,
@@ -130,7 +139,15 @@ export function varsayilanProje() {
     tezgah: true,
     // Camlı kapak: MDF çerçevede pencere boydan kesilir, arkaya cam lambası oyulur.
     cam: { tur: 'seffaf', cerceve: 60, lamba: 10, lambaDerinlik: 8, kalinlik: 4, bosluk: 1.5 },
-    fiyat: { levha: 1650, kapakLevha: 2400, arkalikLevha: 650, bantMetre: 9, camM2: 650, aluminyumM2: 3200 },
+    fiyat: {
+      levha: 1650, kapakLevha: 2400, arkalikLevha: 650, bantMetre: 9, camM2: 650, aluminyumM2: 3200,
+      // Hırdavat birim fiyatları (₺). Ray: çift fiyatı.
+      hirdavat: { minifix: 4, kavela: 0.5, vida: 1.5, mentese: 55, rafPimi: 1, kulp: 75, ayak: 15, aski: 40, tepsi: 450, ray: 260 },
+    },
+    // Müşteri teklifi: işçilik modül başına, montaj götürü, kâr ve KDV yüzde.
+    teklif: { musteri: '', iscilikModul: 1200, montaj: 3000, karOrani: 25, kdv: 20, gecerlilik: 15 },
+    // Ebatlama yöntemi ve CNC (G-code) ayarları.
+    cnc: JSON.parse(JSON.stringify(CNC_VARSAYILAN)),
     moduller: [
       modul('alt', { ad: 'Çekmeceli', w: 450, kapak: 'cekmece', cekmeceSayisi: 3 }),
       modul('alt', ALT_TURLERI.evye.ozel),
@@ -200,6 +217,10 @@ export function dogrula(proje) {
   }
   for (const m of proje.moduller) {
     const ad = `${m.ad} (${m.w})`;
+    if (dolguMu(m)) {
+      if (m.w > 200) uyarilar.push(`${ad}: dolgu ${m.w} mm geniş; 200 mm üstünde dolap ya da açık raf daha uygun.`);
+      continue;
+    }
     if (makineMi(m)) {
       const std = m.altTur === 'camasir' ? [600] : [450, 600];
       if (!std.includes(m.w)) uyarilar.push(`${ad}: makine yeri genelde ${std.join(' ya da ')} mm; makinenin ölçüsünü kontrol edin.`);

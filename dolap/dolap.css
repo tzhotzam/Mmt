@@ -164,3 +164,64 @@ button.tehlike { color: #ff9fb0; border-color: rgba(244, 63, 94, 0.4); }
 }
 body.baski-etiket-sayfa { }
 .modul-kart .rozet { padding-right: 20px; }
+@media print {
+  .etiket { height: 37mm; position: relative; }
+  .etiket .barkod { position: absolute; left: 3mm; right: 3mm; bottom: 2mm; width: calc(100% - 6mm); height: 7mm; }
+}
+@media print {
+  .teklif { font: 10pt/1.4 Helvetica, Arial, sans-serif; color: #000; }
+  .tk-bas { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 0.5mm solid #000; padding-bottom: 3mm; margin-bottom: 4mm; }
+  .tk-bas h1 { margin: 0 0 1mm; font-size: 18pt; }
+  .tk-tarih { text-align: right; font-size: 9pt; }
+  .tk-cizim svg { width: 100%; height: auto; max-height: 95mm; margin-bottom: 3mm; }
+  .tk-tablo, .tk-toplam { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 9pt; }
+  .tk-tablo th, .tk-tablo td { border-bottom: 0.2mm solid #999; padding: 1.2mm 2mm; text-align: left; color: #000; white-space: normal; }
+  .tk-toplam td { padding: 1.2mm 2mm; color: #000; text-align: left; border: 0; }
+  .tk-toplam td:last-child { text-align: right; white-space: nowrap; }
+  .tk-genel td { font-size: 13pt; font-weight: 700; border-top: 0.5mm solid #000 !important; }
+  .tk-not { font-size: 8pt; color: #444; margin-top: 4mm; }
+}
+
+.ust-dugmeler { display: flex; align-items: center; gap: 8px; }
+.ust-dugmeler button { padding: 6px 12px; font-size: 16px; }
+
+/* Modül kütüphanesi */
+.katalog { margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.katalog-bas { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.katalog-bas b { font-size: 13px; }
+.katalog-bas .seg { padding: 7px 12px; font-size: 12px; }
+.katalog-liste { display: flex; flex-direction: column; gap: 6px; }
+.katalog-oge { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.katalog-oge > span { min-width: 112px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.katalog-oge button { padding: 6px 9px; font-size: 12px; min-width: 40px; background: var(--panel); font-variant-numeric: tabular-nums; }
+.katalog-oge button:hover { border-color: var(--accent); color: var(--accent); }
+.katalog-oge .sil { min-width: 0; color: #ff9fb0; }
+
+/* Boşluk doldurma */
+#notlar li { margin: 4px 0; }
+#notlar .doldur { margin-left: 8px; padding: 4px 10px; font-size: 11.5px; border-color: var(--accent); color: var(--accent); background: transparent; }
+
+/* Ebatlama kesim sırası */
+.kesim-sirasi { margin: 10px 0 0; padding: 10px 12px 10px 30px; max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.kesim-sirasi li.a1 { color: var(--text); font-weight: 650; margin-top: 4px; }
+.kesim-sirasi li.a2 { margin-left: 10px; color: var(--accent-2); }
+.kesim-sirasi li.a3, .kesim-sirasi li.a4 { margin-left: 22px; }
+.kesim-sirasi li.a0 { list-style: none; margin-left: -18px; font-style: italic; }
+
+/* Artık stoğu, takımlar, G-code */
+.artik-listesi, .takim-listesi { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.artik-satir, .takim-satir { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px; }
+.takim-satir { grid-template-columns: 60px 1fr 1fr auto; }
+.takim-satir input, .takim-satir select { padding: 6px 8px; font-size: 14px; }
+.artik-satir button, .takim-satir button { padding: 5px 10px; font-size: 11.5px; }
+.artik-ekle { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 6px; margin-bottom: 8px; }
+.artik-ekle input, .artik-ekle select { padding: 7px 8px; font-size: 14px; }
+.artik-dugmeler { margin-bottom: 4px; }
+.gcode-dugmeler { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.gcode-satir { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.gcode-satir b { color: var(--text); min-width: 150px; }
+.gcode-satir button { padding: 6px 10px; font-size: 12px; }
+#teklif-tablo tfoot td { font-weight: 700; color: var(--text); }
+#teklif-tablo td:first-child { white-space: normal; }
+.kesim-sirasi { list-style: none; padding-left: 12px; }
+.kesim-sirasi li.a0 { margin-left: 0; }

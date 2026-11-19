@@ -8,7 +8,7 @@
 //
 // Bu dosya tarayıcıya bağlı değildir.
 
-import { makineMi } from './model.js';
+import { makineMi, dolguMu } from './model.js';
 
 const TEZGAH = 40;
 const KOSE_DOLGU = 50;   // kör köşede kapak ve kulpun açılması için pay
@@ -100,9 +100,9 @@ export function yerlestir(proje) {
  * @returns {{ uyarilar: string[], notlar: string[] }}
  */
 export function mekanNotlari(proje, konumlar) {
-  const uyarilar = [], notlar = [];
+  const uyarilar = [], notlar = [], bosluklar = [];
   const mekan = proje.mekan;
-  if (!mekan) return { uyarilar, notlar };
+  if (!mekan) return { uyarilar, notlar, bosluklar };
   const duvarlar = mekan.tip === 'L' ? ['A', 'B'] : ['A'];
   const uzunluk = { A: mekan.duvarA, B: mekan.duvarB };
   const engeller = (mekan.engeller || []).map((e) => ({ ...e, duvar: mekan.tip === 'L' ? e.duvar : 'A' }));
@@ -127,7 +127,7 @@ export function mekanNotlari(proje, konumlar) {
     for (const r of ['alt', 'ust']) {
       const a = proje.moduller.findIndex((m, i) => konumlar[i].duvar === 'A' && konumlar[i].s === 0 && siralar(m).includes(r));
       const bVar = proje.moduller.some((m, i) => konumlar[i].duvar === 'B' && siralar(m).includes(r));
-      if (a >= 0 && bVar && !proje.moduller[a].kose && !makineMi(proje.moduller[a]) && proje.moduller[a].tip !== 'boy') {
+      if (a >= 0 && bVar && !proje.moduller[a].kose && !makineMi(proje.moduller[a]) && !dolguMu(proje.moduller[a]) && proje.moduller[a].tip !== 'boy') {
         notlar.push(`M${a + 1} ${proje.moduller[a].ad}: köşede; önü B duvarındaki dolaplarla kapanıyor. "Köşe dolabı" işaretlerseniz kapağı açık kısma alınır.`);
       }
     }
@@ -155,20 +155,27 @@ export function mekanNotlari(proje, konumlar) {
         if (kose >= 0) imlec = proje.moduller[kose].d + proje.malzeme.kapak.kalinlik;
       }
       const son = Math.max(...proje.moduller.map((m, i) => (konumlar[i].duvar === d && siralar(m).includes(r) ? konumlar[i].s + m.w : 0)));
-      const bosluklar = [];
+      const araliklar = [];
       for (const [a, b] of dolu) {
-        if (a > imlec + 1) bosluklar.push([imlec, a]);
+        if (a > imlec + 1) araliklar.push([imlec, a]);
         imlec = Math.max(imlec, b);
       }
       // Sıranın sonu ile duvar sonu (yalnız A duvarının alt sırası ve B: tezgâh duvara kadar gider).
-      if (uzunluk[d] > imlec + 1 && imlec >= son) bosluklar.push([imlec, uzunluk[d]]);
-      for (const [a, b] of bosluklar) {
+      if (uzunluk[d] > imlec + 1 && imlec >= son) araliklar.push([imlec, uzunluk[d]]);
+      for (const [a, b] of araliklar) {
         const L = Math.round(b - a);
         if (L < 2) continue;
         const ne = L <= 150 ? 'dolgu (pervaz) ile kapatın' : L >= 300 ? `${L} mm'lik dolap sığar` : 'dolgu ya da açık raf';
         notlar.push(`${d} duvarı ${SIRA_AD[r]}: ${Math.round(a)}–${Math.round(b)} arası ${L} mm boş; ${ne}.`);
+        // Boşluktan önce biten modül: doldurulacak modüller onun ardına eklenir.
+        let onceki = -1, enSon = -Infinity;
+        proje.moduller.forEach((m, i) => {
+          const k = konumlar[i];
+          if (k.duvar === d && siralar(m).includes(r) && k.s + m.w <= a + 1 && k.s + m.w > enSon) { enSon = k.s + m.w; onceki = i; }
+        });
+        bosluklar.push({ duvar: d, sira: r, a: Math.round(a), b: Math.round(b), L, onceki });
       }
     }
   }
-  return { uyarilar, notlar };
+  return { uyarilar, notlar, bosluklar };
 }

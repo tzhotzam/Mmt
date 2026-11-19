@@ -1,10 +1,12 @@
 // Dolap programının arayüzü: proje durumu → hesap → çizim.
 
 import { varsayilanProje, modul, LEVHA_HAZIR, kapakTuru, ALT_TURLERI, BOY_TURLERI, UST_TURLERI, ENGEL_TURLERI, engel, makineMi, bolmeliOlabilir, bolumler } from './model.js';
-import { cepheSvg, etiketlerHtml } from './teknik.js';
+import { cepheSvg, etiketlerHtml, teklifHtml } from './teknik.js';
 import { gruplar as renkGruplari, renkAdi, renkCss, renkBul } from './renkler.js';
 import { projeyiCoz } from './govde.js';
-import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi, MALZEME_ADI } from './kesim.js';
+import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi, teklifHesapla, stokAnahtari, MALZEME_ADI } from './kesim.js';
+import { levhaGcode, POSTLAR, CNC_VARSAYILAN, sureYaz } from './gcode.js';
+import { KATALOG, katalogOzel, boslukDoldur, STANDART } from './katalog.js';
 import { levhaDxf, levhalarDxf } from './dxf.js';
 import { olustur3d } from './onizleme3d.js';
 import { parcaCiz, levhaCiz, DELIK_RENK, DELIK_AD } from './cizim2d.js';
@@ -78,7 +80,7 @@ function sonra() {
 
 function hesapla() {
   cozum = projeyiCoz(proje);
-  plan = levhaPlani(cozum.parcalar, proje);
+  plan = levhaPlani(cozum.parcalar, proje, artiklar);
   if (!plan[durum.levhaMalzeme]) durum.levhaMalzeme = Object.keys(plan)[0] || 'govde';
   const lv = plan[durum.levhaMalzeme]?.levhalar.length || 0;
   durum.levhaNo = Math.min(durum.levhaNo, Math.max(0, lv - 1));
@@ -92,10 +94,315 @@ function hesapla() {
   levhaOzeti();
   hirdavatTablosu();
   kartelaCiz();
+  artikCiz();
+  gcodeCiz();
+  teklifCiz();
   gorunumCiz();
   uc?.guncelle(cozum, proje, durum.modulId);
   sakla();
+  gecmiseYaz();
 }
+
+// ------------------------------------------------------------ geri al / yinele
+
+let gecmis = [], gecmisNo = -1, gecmisGeri = false;
+function gecmiseYaz() {
+  if (gecmisGeri) { gecmisGeri = false; return dugmeDurumu(); }
+  const j = JSON.stringify(proje);
+  if (gecmis[gecmisNo] === j) return dugmeDurumu();
+  gecmis = gecmis.slice(0, gecmisNo + 1);
+  gecmis.push(j);
+  if (gecmis.length > 80) gecmis.shift();
+  gecmisNo = gecmis.length - 1;
+  dugmeDurumu();
+}
+function dugmeDurumu() {
+  $('#geri-al').disabled = gecmisNo <= 0;
+  $('#yinele').disabled = gecmisNo >= gecmis.length - 1;
+}
+function gecmisGit(yon) {
+  const n = gecmisNo + yon;
+  if (n < 0 || n >= gecmis.length) return;
+  clearTimeout(hesapZaman);
+  gecmisNo = n;
+  gecmisGeri = true;
+  proje = birlestir(JSON.parse(gecmis[n]));
+  if (!proje.moduller.some((m) => m.id === durum.modulId)) durum.modulId = proje.moduller[0]?.id ?? null;
+  ayarlariDoldur();
+  formuDoldur();
+  hesapla();
+}
+$('#geri-al').addEventListener('click', () => gecmisGit(-1));
+$('#yinele').addEventListener('click', () => gecmisGit(1));
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  if (e.target.matches?.('input[type="text"]')) return;     // yazı alanında tarayıcının kendi geri alması
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); gecmisGit(-1); }
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); gecmisGit(1); }
+});
+
+// ------------------------------------------------------------ modül kütüphanesi
+
+const BENIM = 'dolap-modullerim';
+let katalogSekme = 'Alt';
+const benimOku = () => { try { return JSON.parse(localStorage.getItem(BENIM) || '[]'); } catch { return []; } };
+const benimYaz = (l) => { try { localStorage.setItem(BENIM, JSON.stringify(l)); } catch { /* yer yok */ } };
+
+function katalogCiz() {
+  const kap = $('#katalog-liste');
+  kap.innerHTML = '';
+  if (katalogSekme === 'benim') {
+    const l = benimOku();
+    if (!l.length) {
+      kap.innerHTML = '<p class="hint">Henüz kayıtlı modül yok. Bir modülü düzenleyip "Kütüphaneme" düğmesine basın.</p>';
+      return;
+    }
+    l.forEach((k, i) => {
+      const d = document.createElement('div');
+      d.className = 'katalog-oge';
+      d.innerHTML = `<span></span><button type="button">${k.w / 10}</button><button type="button" class="sil" aria-label="Sil">✕</button>`;
+      d.querySelector('span').textContent = k.ad;
+      d.children[1].addEventListener('click', () => modulEkle(k.tip, { ...k, id: undefined }));
+      d.children[2].addEventListener('click', () => { const y = benimOku(); y.splice(i, 1); benimYaz(y); katalogCiz(); });
+      kap.appendChild(d);
+    });
+    return;
+  }
+  const g = KATALOG.find((x) => x.grup === katalogSekme);
+  for (const oge of g.ogeler) {
+    const d = document.createElement('div');
+    d.className = 'katalog-oge';
+    const ad = document.createElement('span');
+    ad.textContent = oge.ad;
+    d.appendChild(ad);
+    for (const w of oge.w) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = String(w / 10);
+      b.title = `${oge.ad} ${w} mm`;
+      b.addEventListener('click', () => modulEkle(oge.tip, katalogOzel(oge, w)));
+      d.appendChild(b);
+    }
+    kap.appendChild(d);
+  }
+}
+for (const b of $$('[data-katalog]')) {
+  b.addEventListener('click', () => {
+    katalogSekme = b.dataset.katalog;
+    for (const x of $$('[data-katalog]')) x.classList.toggle('active', x === b);
+    katalogCiz();
+  });
+}
+
+/** Seçili modülün ardına ekle (L mutfakta onun duvarına). */
+function modulEkle(tip, ozel, sonraIndex = null) {
+  const { id: _yok, ...temiz } = ozel;
+  const m = modul(tip, temiz);
+  const sec = seciliModul();
+  if (proje.mekan?.tip === 'L' && !ozel.duvar) m.duvar = sec?.duvar || 'A';
+  const i = sonraIndex ?? proje.moduller.findIndex((x) => x.id === durum.modulId);
+  proje.moduller.splice(i >= 0 ? i + 1 : proje.moduller.length, 0, m);
+  durum.modulId = m.id;
+  formuDoldur();
+  hesapla();
+  return m;
+}
+
+$('#m-kutuphane').addEventListener('click', () => {
+  const m = seciliModul();
+  if (!m) return;
+  const { id, ...kopya } = m;
+  const l = benimOku();
+  l.push(kopya);
+  benimYaz(l);
+  katalogSekme = 'benim';
+  for (const x of $$('[data-katalog]')) x.classList.toggle('active', x.dataset.katalog === 'benim');
+  katalogCiz();
+});
+
+/** Boşluğu standart modüllerle doldur: modüller boşluktan önceki modülün ardına eklenir. */
+function boslugaDoldur(b) {
+  const tip = b.sira === 'ust' ? 'ust' : 'alt';
+  const oneri = boslukDoldur(b.L, STANDART[tip]);
+  const kapakli = KATALOG.find((g) => g.grup === (tip === 'ust' ? 'Üst' : 'Alt')).ogeler[0];
+  let sonra = b.onceki >= 0 ? b.onceki : (() => {
+    // Boşluktan önce modül yok: o duvar/sıradaki ilk modülün önüne.
+    const ilk = cozum.moduller.filter(({ m, konum }) => konum.duvar === b.duvar && (m.tip === tip || m.tip === 'boy'))
+      .sort((x, y) => x.konum.s - y.konum.s)[0];
+    return ilk ? proje.moduller.indexOf(ilk.m) - 1 : proje.moduller.length - 1;
+  })();
+  const yeni = [];
+  for (const w of oneri.genislikler) yeni.push(modul(tip, { ...katalogOzel(kapakli, w), duvar: b.duvar }));
+  if (oneri.dolgu) yeni.push(modul(tip, { ad: 'Dolgu', w: oneri.dolgu, duvar: b.duvar, [tip === 'ust' ? 'ustTur' : 'altTur']: 'dolgu' }));
+  if (!yeni.length) return;
+  proje.moduller.splice(sonra + 1, 0, ...yeni);
+  durum.modulId = yeni[0].id;
+  formuDoldur();
+  hesapla();
+}
+
+// ------------------------------------------------------------ artık levha stoğu
+
+const ARTIK = 'dolap-artiklar';
+let artiklar = (() => { try { return JSON.parse(localStorage.getItem(ARTIK) || '[]'); } catch { return []; } })();
+const artikSakla = () => { try { localStorage.setItem(ARTIK, JSON.stringify(artiklar)); } catch { /* yer yok */ } };
+
+/** Mevcut projedeki malzeme grupları (artık eklerken seçilecek). */
+function malzemeSecenekleri() {
+  const s = [];
+  for (const [mz, renk] of [['govde', proje.malzeme.govde.renk], ['arkalik', '']]) {
+    s.push({ anahtar: stokAnahtari(mz, renk, proje.malzeme[mz].kalinlik), ad: `${MALZEME_ADI[mz]} · ${proje.malzeme[mz].ad}` });
+  }
+  const renkler = new Set([proje.malzeme.kapak.renk, ...proje.moduller.map((m) => m.kapakRenk).filter(Boolean)]);
+  for (const r of renkler) s.push({ anahtar: stokAnahtari('kapak', r, proje.malzeme.kapak.kalinlik), ad: `Kapak · ${renkAdi(r)}` });
+  return s;
+}
+
+function artikCiz() {
+  const sec = malzemeSecenekleri();
+  const ad = (a) => sec.find((x) => x.anahtar === a.anahtar)?.ad || a.ad || a.anahtar;
+  const kullanilan = new Set(Object.values(plan).flatMap((x) => x.levhalar.map((l) => l.artik).filter(Boolean)));
+  const kap = $('#artik-listesi');
+  kap.innerHTML = artiklar.length ? '' : '<p class="hint">Stokta artık yok.</p>';
+  for (const a of artiklar) {
+    const d = document.createElement('div');
+    d.className = 'artik-satir';
+    d.innerHTML = `<span><b>${a.w} × ${a.h}</b> · ${kac(ad(a))}${kullanilan.has(a.id) ? ' · <i>bu işte kullanılıyor</i>' : ''}</span><button type="button" class="ghost tehlike">Sil</button>`;
+    d.querySelector('button').addEventListener('click', () => { artiklar = artiklar.filter((x) => x.id !== a.id); artikSakla(); hesapla(); });
+    kap.appendChild(d);
+  }
+  const s = $('#artik-malz');
+  const onceki = s.value;
+  s.innerHTML = '';
+  for (const x of sec) s.add(new Option(x.ad, x.anahtar));
+  if (sec.some((x) => x.anahtar === onceki)) s.value = onceki;
+  for (const el of $$('[data-ebatlama]')) el.hidden = proje.levha.yontem !== 'ebatlama';
+}
+
+$('#artik-ekle').addEventListener('click', () => {
+  const w = parseFloat($('#artik-w').value), h = parseFloat($('#artik-h').value);
+  if (!(w >= 100 && h >= 100)) { $('#artik-w').focus(); return; }
+  const anahtar = $('#artik-malz').value;
+  artiklar.push({ id: `a${Date.now().toString(36)}`, anahtar, ad: $('#artik-malz').selectedOptions[0]?.textContent, w, h });
+  artikSakla();
+  $('#artik-w').value = $('#artik-h').value = '';
+  hesapla();
+});
+$('#artik-oner').addEventListener('click', () => {
+  // Tam levhalarda kalan en büyük dikdörtgen, 300 × 300'den büyükse stoğa.
+  let n = 0;
+  for (const x of Object.values(plan)) {
+    for (const lv of x.levhalar) {
+      const k = lv.kalan;
+      if (lv.artik || !k || Math.min(k.w, k.h) < 300) continue;
+      artiklar.push({ id: `a${Date.now().toString(36)}${n}`, anahtar: x.stokAnahtar, ad: x.ad, w: Math.floor(k.w), h: Math.floor(k.h) });
+      n++;
+    }
+  }
+  artikSakla();
+  hesapla();
+  if (!n) $('#artik-oner').textContent = '300 × 300 üstü artık kalmadı';
+});
+$('#artik-dus').addEventListener('click', () => {
+  const kullanilan = new Set(Object.values(plan).flatMap((x) => x.levhalar.map((l) => l.artik).filter(Boolean)));
+  artiklar = artiklar.filter((a) => !kullanilan.has(a.id));
+  artikSakla();
+  hesapla();
+});
+
+// ------------------------------------------------------------ G-code
+
+function cncAyar() {
+  if (!proje.cnc) proje.cnc = JSON.parse(JSON.stringify(CNC_VARSAYILAN));
+  return proje.cnc;
+}
+
+function takimCiz() {
+  const c = cncAyar();
+  const kap = $('#takim-listesi');
+  const imza = JSON.stringify(c.takimlar.map((t) => [t.no, t.tur]));
+  if (kap.dataset.imza === imza) return;
+  kap.dataset.imza = imza;
+  kap.innerHTML = '';
+  c.takimlar.forEach((t, i) => {
+    const d = document.createElement('div');
+    d.className = 'takim-satir';
+    d.innerHTML = `<span>T${t.no}</span>
+      <select aria-label="Tür"><option value="freze">Freze</option><option value="matkap">Matkap</option></select>
+      <input type="number" min="1" max="40" step="0.5" aria-label="Çap (mm)">
+      <button type="button" class="ghost tehlike">Sil</button>`;
+    const [sel, inp, sil] = [d.querySelector('select'), d.querySelector('input'), d.querySelector('button')];
+    sel.value = t.tur;
+    inp.value = t.cap;
+    sel.addEventListener('change', () => { t.tur = sel.value; sonra(); });
+    inp.addEventListener('input', () => { const v = parseFloat(inp.value); if (v > 0) { t.cap = v; sonra(); } });
+    sil.addEventListener('click', () => { c.takimlar.splice(i, 1); hesapla(); });
+    kap.appendChild(d);
+  });
+}
+$('#takim-ekle').addEventListener('click', () => {
+  const c = cncAyar();
+  const no = Math.max(0, ...c.takimlar.map((t) => t.no)) + 1;
+  c.takimlar.push({ no, tur: 'matkap', cap: 35 });
+  hesapla();
+});
+
+function levhaGcodeUret(anahtar, i) {
+  const x = plan[anahtar];
+  return levhaGcode(x.levhalar[i], x.kalinlik, cncAyar(), { baslik: `${proje.ad} ${x.ad}`, levhaNo: i + 1 });
+}
+
+function gcodeCiz() {
+  takimCiz();
+  const kap = $('#gcode-dugmeler');
+  kap.innerHTML = '';
+  const uyari = new Set();
+  if (proje.levha.yontem === 'ebatlama') {
+    kap.innerHTML = '<p class="hint">Ebatlama seçili: parçalar testereyle kesilir. G-code için kesim yöntemini CNC nesting yapın.</p>';
+    $('#gcode-uyari').hidden = true;
+    return;
+  }
+  const post = POSTLAR[cncAyar().post] || POSTLAR.ncstudio;
+  for (const [anahtar, x] of Object.entries(plan)) {
+    const d = document.createElement('div');
+    d.className = 'gcode-satir';
+    const ad = x.anahtar !== x.malzeme ? renkAdi(x.renk) : MALZEME_ADI[x.malzeme];
+    d.innerHTML = `<b>${kac(ad)}</b>`;
+    x.levhalar.forEach((lv, i) => {
+      const r = levhaGcodeUret(anahtar, i);
+      r.uyarilar.forEach((u) => uyari.add(u));
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = `Levha ${i + 1} · ${sureYaz(r.sure)}`;
+      b.title = `Takımlar: ${r.takimlar.map((t) => 'T' + t).join(', ')}`;
+      b.addEventListener('click', () => indir(`${dosyaAdi()}_${dosyaParcasi(x)}_levha${i + 1}.${post.uzanti}`, levhaGcodeUret(anahtar, i).metin, 'text/plain'));
+      d.appendChild(b);
+    });
+    kap.appendChild(d);
+  }
+  const u = $('#gcode-uyari');
+  u.hidden = !uyari.size;
+  u.innerHTML = uyari.size ? `<ul>${[...uyari].map((x) => `<li>${kac(x)}</li>`).join('')}</ul>` : '';
+}
+
+// ------------------------------------------------------------ teklif
+
+function teklifCiz() {
+  const h = teklifHesapla(cozum, plan, proje);
+  const satir = (a, b, kalin) => `<tr${kalin ? ' class="kalin"' : ''}><td>${a}</td><td>${para(b)}</td></tr>`;
+  $('#teklif-tablo').innerHTML = '<tbody>' +
+    satir('Malzeme (levha, bant, cam)', h.malz) +
+    satir('Hırdavat', h.hird) +
+    satir(`İşçilik (${h.modulSay} modül) + montaj`, h.iscilik) +
+    satir('Maliyet', h.maliyetToplam) +
+    satir(`Kâr %${proje.teklif?.karOrani ?? 0}`, h.kar) +
+    satir(`KDV %${proje.teklif?.kdv ?? 0}`, h.kdv) +
+    `</tbody><tfoot><tr><td>Müşteriye fiyat (KDV dahil)</td><td>${para(h.toplam)}</td></tr></tfoot>`;
+}
+$('#teklif-yazdir').addEventListener('click', () => {
+  yazdir(teklifHtml(cozum, proje, teklifHesapla(cozum, plan, proje)), 'portrait');
+});
 
 const seciliModul = () => proje.moduller.find((m) => m.id === durum.modulId) || null;
 const seciliParca = () => cozum?.parcalar.find((p) => p.no === durum.parcaNo) || null;
@@ -412,7 +719,8 @@ function ozet() {
   const m = maliyet(cozum, plan, proje);
   const levhalar = Object.values(plan).map((x) => {
     const ad = x.anahtar !== x.malzeme ? `kapak (${renkBul(x.renk).ad})` : MALZEME_ADI[x.malzeme].toLowerCase();
-    return `${ad} ${x.levhalar.length}`;
+    const a = x.levhalar.filter((l) => l.artik).length;
+    return `${ad} ${x.levhalar.length - a}${a ? ` + ${a} artık` : ''}`;
   }).join(' · ');
   const chip = (a, b) => `<span class="chip">${a} <b>${b}</b></span>`;
   $('#ozet').innerHTML =
@@ -434,7 +742,27 @@ function ozet() {
   const nk = $('#notlar');
   nk.hidden = !n.length;
   nk.querySelector('summary').textContent = `Mekân notları (${n.length})`;
-  nk.querySelector('ul').innerHTML = n.map((x) => `<li>${kac(x)}</li>`).join('');
+  const ul = nk.querySelector('ul');
+  ul.innerHTML = '';
+  const bos = cozum.bosluklar || [];
+  for (const x of n) {
+    const li = document.createElement('li');
+    li.textContent = x;
+    const b = bos.find((q) => x.startsWith(`${q.duvar} duvarı`) && x.includes(`${q.a}–${q.b}`));
+    if (b && b.L >= 20) {
+      const o = boslukDoldur(b.L, STANDART[b.sira === 'ust' ? 'ust' : 'alt']);
+      const ne = [...o.genislikler.map((w) => w / 10), ...(o.dolgu ? [`dolgu ${o.dolgu} mm`] : [])].join(' + ');
+      if (ne) {
+        const d = document.createElement('button');
+        d.type = 'button';
+        d.className = 'doldur';
+        d.textContent = `Doldur: ${ne}`;
+        d.addEventListener('click', () => boslugaDoldur(b));
+        li.appendChild(d);
+      }
+    }
+    ul.appendChild(li);
+  }
 }
 
 // ------------------------------------------------------------ mekân ve engeller
@@ -624,6 +952,29 @@ $('#levha-dxf').addEventListener('click', () => {
   const lv = plan[durum.levhaMalzeme]?.levhalar[durum.levhaNo];
   if (lv) indir(`${dosyaAdi()}_${dosyaParcasi(plan[durum.levhaMalzeme])}_levha${durum.levhaNo + 1}.dxf`, levhaDxf(lv, dxfSecenek()), 'application/dxf');
 });
+$('#levha-gcode').addEventListener('click', () => {
+  const x = plan[durum.levhaMalzeme];
+  if (!x) return;
+  const post = POSTLAR[cncAyar().post] || POSTLAR.ncstudio;
+  indir(`${dosyaAdi()}_${dosyaParcasi(x)}_levha${durum.levhaNo + 1}.${post.uzanti}`, levhaGcodeUret(durum.levhaMalzeme, durum.levhaNo).metin, 'text/plain');
+});
+$('#levha-yazdir').addEventListener('click', () => {
+  // Bütün levhalar: çizim + (ebatlamada) kesim sırası, her levha ayrı sayfa.
+  const tuval = document.createElement('canvas');
+  tuval.style.width = '1600px';
+  tuval.style.height = '1100px';
+  document.body.appendChild(tuval);
+  let html = '';
+  for (const x of Object.values(plan)) {
+    x.levhalar.forEach((lv, i) => {
+      levhaCiz(tuval, lv, { baslik: `${proje.ad} · ${x.ad} · levha ${i + 1}/${x.levhalar.length} · ${lv.w}×${lv.h}${lv.artik ? ' (artık)' : ''}` });
+      html += `<div style="break-after: page"><img src="${tuval.toDataURL('image/png')}" style="width:100%">` +
+        (lv.kesimler ? `<ol style="columns:2;font:9pt Helvetica,Arial">${lv.kesimler.map((k) => `<li>${kac(k.metin)}</li>`).join('')}</ol>` : '') + '</div>';
+    });
+  }
+  tuval.remove();
+  yazdir(html);
+});
 $('#view-levha').addEventListener('click', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
   const x = e.clientX - r.left, y = e.clientY - r.top;
@@ -661,8 +1012,9 @@ function yazdir(html, yon = 'landscape') {
 
 function hirdavatTablosu() {
   const h = hirdavatListesi(cozum, proje);
-  $('#hirdavat-tablo').innerHTML = '<thead><tr><th>Hırdavat</th><th>Adet</th></tr></thead><tbody>' +
-    h.map((x) => `<tr><td>${kac(x.ad)}</td><td>${x.adet}</td></tr>`).join('') + '</tbody>';
+  $('#hirdavat-tablo').innerHTML = '<thead><tr><th>Hırdavat</th><th>Adet</th><th>Tutar</th></tr></thead><tbody>' +
+    h.map((x) => `<tr><td>${kac(x.ad)}</td><td>${x.adet}</td><td>${para(x.tutar)}</td></tr>`).join('') +
+    `</tbody><tfoot><tr><td>Toplam</td><td></td><td>${para(h.reduce((a, x) => a + x.tutar, 0))}</td></tr></tfoot>`;
   const m = maliyet(cozum, plan, proje);
   $('#maliyet-tablo').innerHTML = '<thead><tr><th>Malzeme</th><th>Miktar</th><th>Tutar</th></tr></thead><tbody>' +
     m.kalemler.map((k) => `<tr><td>${kac(k.ad)}</td><td>${k.miktar}</td><td>${para(k.tutar)}</td></tr>`).join('') +
@@ -700,8 +1052,12 @@ function gorunumCiz() {
     $('#levha-malzeme').value = durum.levhaMalzeme;
     levhaKutulari = levhaCiz($('#view-levha'), lv, {
       seciliNo: durum.parcaNo,
-      baslik: lv ? `${x.ad} · ${lv.w}×${lv.h} · %${Math.round(lv.doluluk * 100)} dolu · ${lv.yerlesim.length} parça` : '',
+      baslik: lv ? `${x.ad} · ${lv.w}×${lv.h}${lv.artik ? ' (artık)' : ''} · %${Math.round(lv.doluluk * 100)} dolu · ${lv.yerlesim.length} parça` : '',
     });
+    const ks = $('#kesim-sirasi');
+    ks.hidden = !lv?.kesimler;
+    ks.innerHTML = lv?.kesimler ? lv.kesimler.map((k) => `<li class="a${k.asama}">${kac(k.metin)}</li>`).join('') : '';
+    $('#levha-gcode').hidden = proje.levha.yontem === 'ebatlama';
   } else if (durum.gorunum === 'cizim') {
     const sel = $('#cizim-duvar');
     const L = proje.mekan.tip === 'L';
@@ -804,8 +1160,10 @@ function kac(s) {
 
 // ------------------------------------------------------------ başlangıç
 
+cncAyar();
 ayarlariDoldur();
 formuDoldur();
+katalogCiz();
 hesapla();
 olustur3d($('#view-3d'), { secince: modulSec }).then((x) => {
   uc = x;

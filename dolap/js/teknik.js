@@ -89,7 +89,7 @@ export function cepheSvg(cozum, proje, duvar = 'A') {
     }
     // Ön yüzler: kapak, çekmece önü, panel, baza
     for (const p of parcalar) {
-      if (!['kapak', 'cekmeceOn', 'baza'].includes(p.grup)) continue;
+      if (!['kapak', 'cekmeceOn', 'baza', 'dolgu'].includes(p.grup)) continue;
       const k = p.kutu;
       const px = x0 + k.x, py = y0 + k.y;
       yaz(`<rect x="${X(px)}" y="${Y(py + k.sy)}" width="${k.sx}" height="${k.sy}" fill="none" stroke="#000" stroke-width="3"/>`);
@@ -193,6 +193,39 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
+// Code 39: her karakter 9 öge (5 çubuk + 4 boşluk), 3'ü kalın. Sıra: ç b ç b ç b ç b ç.
+const C39 = {
+  '0': 'nnnwwnwnn', '1': 'wnnwnnnnw', '2': 'nnwwnnnnw', '3': 'wnwwnnnnn', '4': 'nnnwwnnnw',
+  '5': 'wnnwwnnnn', '6': 'nnwwwnnnn', '7': 'nnnwnnwnw', '8': 'wnnwnnwnn', '9': 'nnwwnnwnn',
+  A: 'wnnnnwnnw', B: 'nnwnnwnnw', C: 'wnwnnwnnn', D: 'nnnnwwnnw', E: 'wnnnwwnnn', F: 'nnwnwwnnn',
+  G: 'nnnnnwwnw', H: 'wnnnnwwnn', I: 'nnwnnwwnn', J: 'nnnnwwwnn', K: 'wnnnnnnww', L: 'nnwnnnnww',
+  M: 'wnwnnnnwn', N: 'nnnnwnnww', O: 'wnnnwnnwn', P: 'nnwnwnnwn', Q: 'nnnnnnwww', R: 'wnnnnnwwn',
+  S: 'nnwnnnwwn', T: 'nnnnwnwwn', U: 'wwnnnnnnw', V: 'nwwnnnnnw', W: 'wwwnnnnnn', X: 'nwnnwnnnw',
+  Y: 'wwnnwnnnn', Z: 'nwwnwnnnn', '-': 'nwnnnnwnw', '.': 'wwnnnnwnn', ' ': 'nwwnnnwnn', '*': 'nwnnwnwnn',
+};
+
+/**
+ * Code 39 barkod (SVG). Okuyucular başta ve sonda '*' bekler; desteklenmeyen
+ * karakter '-' olur.
+ * @returns {string}
+ */
+export function barkodSvg(metin, { yukseklik = 40, dar = 1.4, oran = 2.5 } = {}) {
+  const s = `*${String(metin).toUpperCase().replace(/[^0-9A-Z. -]/g, '-')}*`;
+  let x = 10 * dar;                 // sessiz bölge
+  const cubuk = [];
+  for (const ch of s) {
+    const desen = C39[ch];
+    for (let i = 0; i < 9; i++) {
+      const w = desen[i] === 'w' ? dar * oran : dar;
+      if (i % 2 === 0) cubuk.push(`<rect x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="${yukseklik}"/>`);
+      x += w;
+    }
+    x += dar;                        // karakter arası boşluk
+  }
+  x += 9 * dar;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${x.toFixed(2)} ${yukseklik}" preserveAspectRatio="none" class="barkod"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${cubuk.join('')}</g></svg>`;
+}
+
 /**
  * Yazdırılacak parça etiketleri (A4'e 3 × 8 etiket). Her levha parçası için
  * bir etiket: numara, modül, ölçü, bant, delinen yüz, renk.
@@ -211,6 +244,39 @@ export function etiketlerHtml(cozum, proje) {
       <div class="et-olcu">${sayi(p.kesimBoy)} × ${sayi(p.kesimEn)}</div>
       <div class="et-alt">M${p.modulNo} ${esc(p.modulAd)} · ${esc(bantYaz(p))}${p.delikler.length ? ` · delik: ${esc(p.yuz)}` : ''}${p.pencere ? ' · camlı' : ''}</div>
       ${p.renk ? `<div class="et-alt">${esc(renkAdi(p.renk))}</div>` : ''}
+      ${barkodSvg(p.no)}
     </div>`).join('');
   return `<div class="etiket-sayfa">${kartlar}</div>`;
+}
+
+/**
+ * Müşteriye verilecek teklif: modül listesi, önden görünüş, tek toplam.
+ * İç maliyet kırılımı (malzeme, kâr) müşteri teklifinde gösterilmez.
+ * @returns {string} HTML
+ */
+export function teklifHtml(cozum, proje, hesap, tarih = new Date()) {
+  const t = proje.teklif || {};
+  const para = (v) => `${Math.round(v).toLocaleString('tr-TR')} ₺`;
+  const gun = (d) => d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const son = new Date(tarih.getTime() + (t.gecerlilik || 15) * 864e5);
+  const satirlar = cozum.moduller.filter(({ parcalar, m }) => parcalar.length || makineMi(m)).map(({ m, no }) => {
+    const renk = m.kapakRenk || proje.malzeme.kapak.renk;
+    const tur = makineMi(m) ? 'Makine yeri' : { alt: 'Alt dolap', ust: 'Üst dolap', boy: 'Boy dolap' }[m.tip];
+    return `<tr><td>M${no}</td><td>${esc(m.ad)}</td><td>${tur}</td><td>${m.w} × ${m.h} × ${m.d}</td><td>${makineMi(m) && m.altTur !== 'bulasik' ? '—' : esc(renkAdi(renk))}</td></tr>`;
+  }).join('');
+  const duvarlar = proje.mekan?.tip === 'L' ? ['A', 'B'] : ['A'];
+  return `<div class="teklif">
+    <div class="tk-bas"><div><h1>Mutfak teklifi</h1><div>${esc(proje.ad || '')}${t.musteri ? ` · ${esc(t.musteri)}` : ''}</div></div>
+      <div class="tk-tarih">${gun(tarih)}<br>Geçerlilik: ${gun(son)}</div></div>
+    ${duvarlar.map((d) => `<div class="tk-cizim">${cepheSvg(cozum, proje, d)}</div>`).join('')}
+    <table class="tk-tablo"><thead><tr><th>No</th><th>Modül</th><th>Tür</th><th>G × Y × D (mm)</th><th>Kapak</th></tr></thead><tbody>${satirlar}</tbody></table>
+    <table class="tk-toplam">
+      <tr><td>Gövde: ${esc(proje.malzeme.govde.ad)}, ${esc(renkAdi(proje.malzeme.govde.renk))}</td><td></td></tr>
+      <tr><td>Kapak: ${esc(proje.malzeme.kapak.ad)}</td><td></td></tr>
+      <tr><td>Malzeme, hırdavat, üretim${t.montaj ? ' ve montaj' : ''}</td><td>${para(hesap.ara)}</td></tr>
+      <tr><td>KDV %${t.kdv || 0}</td><td>${para(hesap.kdv)}</td></tr>
+      <tr class="tk-genel"><td>Toplam</td><td>${para(hesap.toplam)}</td></tr>
+    </table>
+    <p class="tk-not">Tezgâh, evye, ankastre cihazlar ve tesisat işleri fiyata dahil değildir. Ölçüler yerinde son kez alınır.</p>
+  </div>`;
 }

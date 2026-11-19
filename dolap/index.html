@@ -22,7 +22,11 @@
 <header class="topbar">
   <div class="ust-satir">
     <h1>Dolap Tasarım</h1>
-    <a class="gecis" href="../index.html">Panel programı →</a>
+    <div class="ust-dugmeler">
+      <button type="button" id="geri-al" class="ghost kucuk" title="Geri al (Ctrl+Z)" aria-label="Geri al" disabled>↶</button>
+      <button type="button" id="yinele" class="ghost kucuk" title="Yinele (Ctrl+Y)" aria-label="Yinele" disabled>↷</button>
+      <a class="gecis" href="../index.html">Panel programı →</a>
+    </div>
   </div>
 </header>
 
@@ -55,7 +59,10 @@
       <span id="levha-no" class="levha-no"></span>
       <button type="button" id="levha-sonraki" class="ghost kucuk" aria-label="Sonraki levha">▶</button>
       <button type="button" id="levha-dxf" class="primary kucuk">Bu levha DXF</button>
+      <button type="button" id="levha-gcode" class="kucuk">G-code</button>
+      <button type="button" id="levha-yazdir" class="ghost kucuk">Yazdır</button>
     </div>
+    <ul id="kesim-sirasi" class="kesim-sirasi" hidden></ul>
     <div id="ctl-parca" class="sahne-alt lejant" hidden></div>
     <div id="ctl-cizim" class="sahne-alt" hidden>
       <select id="cizim-duvar" aria-label="Duvar"><option value="A">A duvarı</option><option value="B">B duvarı</option></select>
@@ -101,17 +108,18 @@
     <section class="panel">
       <h2>1 · Modüller</h2>
       <div id="modul-listesi" class="modul-listesi"></div>
-      <div class="ekle-satir">
-        <button type="button" data-ekle="alt">+ Alt dolap</button>
-        <button type="button" data-ekle="ust">+ Üst dolap</button>
-        <button type="button" data-ekle="boy">+ Boy dolap</button>
-        <button type="button" data-ekle="alt:evye">+ Evye dolabı</button>
-        <button type="button" data-ekle="alt:bulasik">+ Bulaşık mak.</button>
-        <button type="button" data-ekle="alt:camasir">+ Çamaşır mak.</button>
-        <button type="button" data-ekle="alt:firin">+ Fırın + ocak</button>
-        <button type="button" data-ekle="ust:davlumbaz">+ Davlumbaz</button>
-        <button type="button" data-ekle="boy:firin">+ Fırın kolonu</button>
-        <button type="button" data-ekle="boy:buzdolabi">+ Buzdolabı</button>
+      <div class="katalog">
+        <div class="katalog-bas">
+          <b>Modül kütüphanesi</b>
+          <div class="segmented-buttons" id="katalog-sekme" role="tablist" aria-label="Kütüphane">
+            <button type="button" class="seg active" data-katalog="Alt">Alt</button>
+            <button type="button" class="seg" data-katalog="Üst">Üst</button>
+            <button type="button" class="seg" data-katalog="Boy">Boy</button>
+            <button type="button" class="seg" data-katalog="benim">Benim</button>
+          </div>
+        </div>
+        <div id="katalog-liste" class="katalog-liste"></div>
+        <p class="hint">Genişliğe dokununca modül seçili modülün ardına eklenir (60 = 600 mm).</p>
       </div>
 
       <div id="modul-duzen" class="modul-duzen" hidden>
@@ -204,6 +212,7 @@
           <button type="button" id="m-sola" class="ghost" aria-label="Sola taşı">◀ Sola</button>
           <button type="button" id="m-saga" class="ghost" aria-label="Sağa taşı">Sağa ▶</button>
           <button type="button" id="m-kopya" class="ghost">Kopyala</button>
+          <button type="button" id="m-kutuphane" class="ghost">Kütüphaneme</button>
           <button type="button" id="m-sil" class="ghost tehlike">Sil</button>
         </div>
       </div>
@@ -288,9 +297,30 @@
         <label>Parça arası (mm) <input type="number" data-yol="levha.aralik" min="0" max="40" step="1">
           <small>freze çapı + pay</small></label>
         <label class="check"><input type="checkbox" data-yol="levha.damar"> Damar yönü korunsun</label>
+        <label class="onemli">Kesim yöntemi
+          <select data-yol="levha.yontem">
+            <option value="cnc">CNC nesting (router)</option>
+            <option value="ebatlama">Ebatlama (daire testere, giyotin)</option>
+          </select>
+        </label>
+        <label data-ebatlama>Testere kalınlığı (mm) <input type="number" data-yol="levha.testere" min="1" max="8" step="0.1"></label>
         <label>Bant kalınlığı (mm) <input type="number" data-yol="bant.kalinlik" min="0" max="3" step="0.1"></label>
         <label class="check"><input type="checkbox" data-yol="bant.kesimdenDus"> Bandı kesimden düş</label>
       </div>
+      <h3 class="alt-baslik">Artık levha stoğu</h3>
+      <div id="artik-listesi" class="artik-listesi"></div>
+      <div class="artik-ekle">
+        <select id="artik-malz" aria-label="Malzeme"></select>
+        <input type="number" id="artik-w" placeholder="Boy" min="100" step="1" aria-label="Boy (mm)">
+        <input type="number" id="artik-h" placeholder="En" min="100" step="1" aria-label="En (mm)">
+        <button type="button" id="artik-ekle">Ekle</button>
+      </div>
+      <div class="actions artik-dugmeler">
+        <button type="button" id="artik-oner" class="ghost">Bu işin artıklarını stoğa ekle</button>
+        <button type="button" id="artik-dus" class="ghost">Kullanılan artıkları stoktan düş</button>
+      </div>
+      <p class="hint">Stoktaki artıklar aynı malzeme ve renkte tam levhadan önce kullanılır ve maliyete girmez.
+        Stok bu cihazda saklanır.</p>
     </section>
 
     <!-- ---------------- KESİM LİSTESİ ---------------- -->
@@ -324,6 +354,39 @@
         <label class="check"><input type="checkbox" id="dxf-levha" checked> Levha sınırı (LEVHA katmanı)</label>
       </div>
       <div id="dxf-dugmeler" class="actions"></div>
+      <h3 class="alt-baslik">G-code (doğrudan makineye)</h3>
+      <div class="grid">
+        <label class="onemli">Kontrol ünitesi
+          <select data-yol="cnc.post">
+            <option value="ncstudio">NcStudio (Weihong)</option>
+            <option value="syntec">Syntec</option>
+            <option value="mach3">Mach3 / Mach4</option>
+            <option value="grbl">GRBL</option>
+            <option value="fanuc">Fanuc</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" data-yol="cnc.atc"> Otomatik takım değiştirici (ATC)</label>
+        <label>Z sıfırı
+          <select data-yol="cnc.zSifir">
+            <option value="ust">Malzeme üstü</option>
+            <option value="tabla">Tabla yüzeyi</option>
+          </select>
+        </label>
+        <label>Paso derinliği (mm) <input type="number" data-yol="cnc.pasoDerinlik" min="1" max="30" step="0.5"></label>
+        <label>İlerleme (mm/dk) <input type="number" data-yol="cnc.ilerleme" min="500" max="30000" step="100"></label>
+        <label>Dalış (mm/dk) <input type="number" data-yol="cnc.dalis" min="100" max="10000" step="100"></label>
+        <label>Devir (d/dk) <input type="number" data-yol="cnc.devir" min="6000" max="30000" step="500"></label>
+        <label>Tablaya giriş (mm) <input type="number" data-yol="cnc.tablaPay" min="0" max="2" step="0.1"></label>
+        <label class="check"><input type="checkbox" data-yol="cnc.kopru"> Küçük parçalara köprü</label>
+      </div>
+      <h3 class="alt-baslik">Takımlar</h3>
+      <div id="takim-listesi" class="takim-listesi"></div>
+      <div class="actions"><button type="button" id="takim-ekle" class="ghost">+ Takım</button></div>
+      <div id="gcode-uyari" class="warnings" hidden></div>
+      <div id="gcode-dugmeler" class="gcode-dugmeler"></div>
+      <p class="hint">Sıfır noktası levhanın sol-alt köşesi. Sıra: delikler (matkapla), menteşe ve minifix cepleri
+        (frezeyle helisel), cam lambası, pencere, sonra küçükten büyüğe parça kesimi. İlk çalıştırmadan önce
+        simülatörde açıp bakın.</p>
       <details>
         <summary>Katmanlar</summary>
         <ul class="katmanlar">
@@ -359,9 +422,39 @@
       </details>
     </section>
 
+    <!-- ---------------- TEKLİF ---------------- -->
+    <section class="panel">
+      <h2>7 · Teklif</h2>
+      <div class="grid">
+        <label>Müşteri <input type="text" data-yol="teklif.musteri"></label>
+        <label>İşçilik / modül (₺) <input type="number" data-yol="teklif.iscilikModul" min="0" step="50"></label>
+        <label>Montaj (₺) <input type="number" data-yol="teklif.montaj" min="0" step="100"></label>
+        <label class="onemli">Kâr (%) <input type="number" data-yol="teklif.karOrani" min="0" max="300" step="1"></label>
+        <label>KDV (%) <input type="number" data-yol="teklif.kdv" min="0" max="50" step="1"></label>
+        <label>Geçerlilik (gün) <input type="number" data-yol="teklif.gecerlilik" min="1" max="90" step="1"></label>
+      </div>
+      <div class="table-wrap"><table id="teklif-tablo"></table></div>
+      <details class="gelismis">
+        <summary>Hırdavat birim fiyatları <small>(₺)</small></summary>
+        <div class="grid">
+          <label>Minifix <input type="number" data-yol="fiyat.hirdavat.minifix" min="0" step="0.5"></label>
+          <label>Kavela <input type="number" data-yol="fiyat.hirdavat.kavela" min="0" step="0.1"></label>
+          <label>Konfirmat <input type="number" data-yol="fiyat.hirdavat.vida" min="0" step="0.1"></label>
+          <label>Menteşe <input type="number" data-yol="fiyat.hirdavat.mentese" min="0" step="1"></label>
+          <label>Raf pimi <input type="number" data-yol="fiyat.hirdavat.rafPimi" min="0" step="0.1"></label>
+          <label>Kulp <input type="number" data-yol="fiyat.hirdavat.kulp" min="0" step="1"></label>
+          <label>Ayak <input type="number" data-yol="fiyat.hirdavat.ayak" min="0" step="1"></label>
+          <label>Askı takımı <input type="number" data-yol="fiyat.hirdavat.aski" min="0" step="1"></label>
+          <label>Evye tepsisi <input type="number" data-yol="fiyat.hirdavat.tepsi" min="0" step="10"></label>
+          <label>Çekmece rayı (çift) <input type="number" data-yol="fiyat.hirdavat.ray" min="0" step="5"></label>
+        </div>
+      </details>
+      <div class="actions"><button type="button" id="teklif-yazdir" class="primary">Müşteri teklifini yazdır / PDF</button></div>
+    </section>
+
     <!-- ---------------- PROJE ---------------- -->
     <section class="panel">
-      <h2>7 · Proje</h2>
+      <h2>8 · Proje</h2>
       <div class="grid">
         <label>Proje adı <input type="text" data-yol="ad"></label>
       </div>

@@ -77,6 +77,8 @@ const ASSETS = [
   './dolap/js/renkler.js',
   './dolap/js/mekan.js',
   './dolap/js/teknik.js',
+  './dolap/js/gcode.js',
+  './dolap/js/katalog.js',
 ];
 
 self.addEventListener('install', (e) => {

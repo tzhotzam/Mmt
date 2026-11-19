@@ -4,7 +4,7 @@ import { HIRDAVAT } from './model.js';
 import { bantUzunlugu, rayBoyu } from './govde.js';
 import { yerlestirLevha } from './yerlesim.js';
 import { renkAdi } from './renkler.js';
-import { CAM_TURU, makineMi, evyeMi } from './model.js';
+import { CAM_TURU, makineMi, evyeMi, dolguMu } from './model.js';
 
 export const MALZEME_ADI = { govde: 'Gövde', kapak: 'Kapak', arkalik: 'Arkalık', cam: 'Cam', aluminyum: 'Alüminyum' };
 const LEVHALIK = new Set(['govde', 'kapak', 'arkalik']);
@@ -86,14 +86,25 @@ export function kesimCsv(satirlar, proje) {
  * Malzemeye göre levha planı. Damar açıksa gövde ve kapak parçaları
  * dönmez (boy, levhanın uzun kenarı boyunca kalır).
  */
-export function levhaPlani(parcalar, proje) {
+/** Artık stoğunda eşleşme anahtarı: aynı malzeme, renk ve kalınlık. */
+export function stokAnahtari(malzeme, renk, kalinlik) {
+  return `${malzeme}|${renk || ''}|${kalinlik}`;
+}
+
+/**
+ * @param {Array} [artiklar] stoktaki artıklar [{id, anahtar, w, h}]; eşleşenler tam levhadan önce kullanılır
+ */
+export function levhaPlani(parcalar, proje, artiklar = []) {
   const sonuc = {};
   // Her malzeme ayrı levha; kapakta her renk ayrı levha.
   const gruplar = [];
   for (const malzeme of ['govde', 'kapak', 'arkalik']) {
     const liste = parcalar.filter((p) => p.malzeme === malzeme);
     if (!liste.length) continue;
-    if (malzeme !== 'kapak') { gruplar.push({ anahtar: malzeme, malzeme, renk: '', liste }); continue; }
+    if (malzeme !== 'kapak') {
+      gruplar.push({ anahtar: malzeme, malzeme, renk: malzeme === 'govde' ? proje.malzeme.govde.renk : '', liste });
+      continue;
+    }
     const renkler = [...new Set(liste.map((p) => p.renk))];
     for (const renk of renkler) {
       gruplar.push({
@@ -104,9 +115,12 @@ export function levhaPlani(parcalar, proje) {
   }
   for (const { anahtar, malzeme, renk, liste } of gruplar) {
     const donebilir = !(proje.levha.damar && malzeme !== 'arkalik');
+    const kalinlik = proje.malzeme[malzeme].kalinlik;
+    const sa = stokAnahtari(malzeme, renk, kalinlik);
     const r = yerlestirLevha(
       liste.map((p) => ({ id: p.no, w: p.kesimBoy, h: p.kesimEn, donebilir })),
       proje.levha,
+      artiklar.filter((a) => a.anahtar === sa),
     );
     const bul = new Map(liste.map((p) => [p.no, p]));
     for (const lv of r.levhalar) for (const y of lv.yerlesim) y.parca = bul.get(y.id);
@@ -115,7 +129,8 @@ export function levhaPlani(parcalar, proje) {
       malzeme,
       renk,
       ad: proje.malzeme[malzeme].ad + (malzeme === 'kapak' && renk ? ` · ${renkAdi(renk)}` : ''),
-      kalinlik: proje.malzeme[malzeme].kalinlik,
+      kalinlik,
+      stokAnahtar: sa,
       levhalar: r.levhalar,
       sigmayan: r.sigmayan.map((x) => bul.get(x.id)),
     };
@@ -141,7 +156,7 @@ export function hirdavatListesi(cozum, proje, hir = HIRDAVAT) {
   }
   for (const { m, parcalar } of cozum.moduller) {
     if (m.tip === 'ust') say.aski += 2;
-    else if (!makineMi(m)) say.ayak += m.w > 600 ? 6 : 4;
+    else if (!makineMi(m) && !dolguMu(m)) say.ayak += m.w > 600 ? 6 : 4;
     if (evyeMi(m)) say.tepsi = (say.tepsi || 0) + 1;
     const taban = parcalar.filter((p) => p.grup === 'cekmeceTaban').length;
     if (taban) {
@@ -150,18 +165,19 @@ export function hirdavatListesi(cozum, proje, hir = HIRDAVAT) {
     }
   }
   const liste = [
-    ['Minifix (takım)', say.minifix],
-    ['Kavela Ø8', say.kavela],
-    ['Konfirmat vida 7×50', say.vida],
-    ['Menteşe (bindirme, frenli)', say.mentese],
-    ['Raf pimi', say.rafPimi],
-    ['Kulp' + (proje.kulpAraligi ? ` (${proje.kulpAraligi} mm)` : ''), Math.round(say.kulp)],
-    ['Dolap ayağı', say.ayak],
-    ['Üst dolap askı takımı', say.aski],
-    ['Evye altı alüminyum tepsi', say.tepsi || 0],
+    ['Minifix (takım)', say.minifix, 'minifix'],
+    ['Kavela Ø8', say.kavela, 'kavela'],
+    ['Konfirmat vida 7×50', say.vida, 'vida'],
+    ['Menteşe (bindirme, frenli)', say.mentese, 'mentese'],
+    ['Raf pimi', say.rafPimi, 'rafPimi'],
+    ['Kulp' + (proje.kulpAraligi ? ` (${proje.kulpAraligi} mm)` : ''), Math.round(say.kulp), 'kulp'],
+    ['Dolap ayağı', say.ayak, 'ayak'],
+    ['Üst dolap askı takımı', say.aski, 'aski'],
+    ['Evye altı alüminyum tepsi', say.tepsi || 0, 'tepsi'],
   ];
-  for (const [L, n] of [...raylar].sort((a, b) => b[0] - a[0])) liste.push([`Çekmece rayı ${L} mm (çift)`, n]);
-  return liste.filter(([, n]) => n > 0).map(([ad, adet]) => ({ ad, adet }));
+  for (const [L, n] of [...raylar].sort((a, b) => b[0] - a[0])) liste.push([`Çekmece rayı ${L} mm (çift)`, n, 'ray']);
+  const bf = proje.fiyat?.hirdavat || {};
+  return liste.filter(([, n]) => n > 0).map(([ad, adet, anahtar]) => ({ ad, adet, anahtar, birim: bf[anahtar] ?? 0, tutar: adet * (bf[anahtar] ?? 0) }));
 }
 
 /**
@@ -192,8 +208,10 @@ export function maliyet(cozum, plan, proje) {
   const fiyatlar = { govde: f.levha, kapak: f.kapakLevha, arkalik: f.arkalikLevha };
   const kalemler = [];
   for (const k of Object.keys(plan)) {
-    const n = plan[k].levhalar.length;
-    kalemler.push({ ad: `${plan[k].ad} levha`, miktar: `${n} adet`, tutar: n * (fiyatlar[plan[k].malzeme] || 0) });
+    // Stoktan kullanılan artık levha bedava sayılır (zaten ödenmiş).
+    const n = plan[k].levhalar.filter((l) => !l.artik).length;
+    const a = plan[k].levhalar.length - n;
+    kalemler.push({ ad: `${plan[k].ad} levha`, miktar: `${n} adet${a ? ` + ${a} artık` : ''}`, tutar: n * (fiyatlar[plan[k].malzeme] || 0) });
   }
   kalemler.push({ ad: `PVC bant ${proje.bant.kalinlik} mm`, miktar: `${bantM} m`, tutar: bantM * f.bantMetre });
   for (const [malz, ad, fiyat] of [['cam', 'Cam', f.camM2 || 0], ['aluminyum', 'Alüminyum cam kapak', f.aluminyumM2 || 0]]) {
@@ -201,4 +219,21 @@ export function maliyet(cozum, plan, proje) {
     if (m2 > 0) kalemler.push({ ad, miktar: `${String(Math.round(m2 * 100) / 100).replace('.', ',')} m²`, tutar: Math.round(m2 * fiyat) });
   }
   return { bantM, kalemler, toplam: kalemler.reduce((a, k) => a + k.tutar, 0) };
+}
+
+/**
+ * Teklif: malzeme + hırdavat + işçilik, üstüne kâr ve KDV.
+ * İşçilik modül başına (makine boşluğu sayılmaz) + montaj.
+ */
+export function teklifHesapla(cozum, plan, proje) {
+  const t = proje.teklif || {};
+  const malz = maliyet(cozum, plan, proje).toplam;
+  const hird = hirdavatListesi(cozum, proje).reduce((a, h) => a + h.tutar, 0);
+  const modulSay = cozum.moduller.filter(({ m, parcalar }) => parcalar.length && !(makineMi(m) && m.altTur !== 'bulasik')).length;
+  const iscilik = modulSay * (t.iscilikModul || 0) + (t.montaj || 0);
+  const maliyetToplam = malz + hird + iscilik;
+  const kar = Math.round(maliyetToplam * (t.karOrani || 0) / 100);
+  const ara = maliyetToplam + kar;
+  const kdv = Math.round(ara * (t.kdv || 0) / 100);
+  return { malz, hird, iscilik, modulSay, maliyetToplam, kar, ara, kdv, toplam: ara + kdv };
 }

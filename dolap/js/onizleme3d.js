@@ -2,7 +2,7 @@
 // döner, çekmeceler kayar. Bir modüle tıklayınca seçilir.
 
 import { renkBul } from './renkler.js';
-import { makineMi } from './model.js';
+import { makineMi, dolguMu } from './model.js';
 
 let THREE = null, OrbitControls = null;
 
@@ -417,7 +417,7 @@ export async function olustur3d(kap, { secince } = {}) {
 
       if (makineMi(m)) mg.add(makine(m, proje));
 
-      if (m.tip !== 'ust' && !makineMi(m) && proje.ayakYukseklik > 0) {
+      if (m.tip !== 'ust' && !makineMi(m) && !dolguMu(m) && proje.ayakYukseklik > 0) {
         const a = proje.ayakYukseklik;
         const xs = m.w > 600 ? [60, m.w / 2, m.w - 60] : [60, m.w - 60];
         for (const x of xs) {

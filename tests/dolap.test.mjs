@@ -5,10 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { varsayilanProje, modul, engel, HIRDAVAT, kapakTuru, ALT_TURLERI, BOY_TURLERI, UST_TURLERI, makineMi } from '../dolap/js/model.js';
-import { cepheSvg, etiketlerHtml } from '../dolap/js/teknik.js';
+import { cepheSvg, etiketlerHtml, barkodSvg, teklifHtml } from '../dolap/js/teknik.js';
+import { levhaGcode, pasolar, CNC_VARSAYILAN } from '../dolap/js/gcode.js';
+import { KATALOG as MODUL_KATALOG, katalogOzel, boslukDoldur } from '../dolap/js/katalog.js';
 import { projeyiCoz, yerlestir, menteseSayisi, baglantiNoktalari, bantUzunlugu } from '../dolap/js/govde.js';
 import { yerlestirLevha, levhaNoktasi } from '../dolap/js/yerlesim.js';
-import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi } from '../dolap/js/kesim.js';
+import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi, teklifHesapla, stokAnahtari } from '../dolap/js/kesim.js';
 import { levhaDxf, levhalarDxf, delikKatmani } from '../dolap/js/dxf.js';
 import { KATALOG, renkBul, renkAdi, renkCss } from '../dolap/js/renkler.js';
 
@@ -554,6 +556,154 @@ test('cephe SVG: modül numaraları, duvar ölçüsü, engeller; etiketler her l
   p.moduller.push(modul('alt', { duvar: 'B' }));
   const c2 = projeyiCoz(p);
   assert.ok(cepheSvg(c2, p, 'B').includes(`>M${c2.moduller.length}<`));
+});
+
+console.log('G-code');
+
+/** G-code'u satır satır izleyip hareketleri çıkarır (basit yorumlayıcı). */
+function gcodeIzle(metin) {
+  const k = { x: null, y: null, z: null };
+  const hareket = [];
+  for (let satir of metin.split(/\r?\n/)) {
+    satir = satir.replace(/^N\d+\s*/, '').trim();
+    if (!satir || satir.startsWith('(') || satir === '%') continue;
+    const g = satir.match(/^G([0123])\b/);
+    const v = (h) => { const m = satir.match(new RegExp(`${h}(-?[\\d.]+)`)); return m ? parseFloat(m[1]) : null; };
+    if (g) {
+      const yeni = { x: v('X') ?? k.x, y: v('Y') ?? k.y, z: v('Z') ?? k.z };
+      hareket.push({ g: +g[1], once: { ...k }, ...yeni, satir });
+      Object.assign(k, yeni);
+    }
+  }
+  return hareket;
+}
+
+test('G-code: güvenli başlangıç, derinlik sınırı, levha içinde, yatay hareket hep yukarıda', () => {
+  const p = varsayilanProje();
+  const c = projeyiCoz(p);
+  const plan = levhaPlani(c.parcalar, p);
+  for (const x of Object.values(plan)) {
+    x.levhalar.forEach((lv, i) => {
+      const r = levhaGcode(lv, x.kalinlik, p.cnc, { levhaNo: i + 1 });
+      const h = gcodeIzle(r.metin);
+      assert.ok(h.length > 10, 'boş program');
+      assert.equal(h[0].g, 0);
+      assert.equal(h[0].z, CNC_VARSAYILAN.guvenliZ, 'ilk hareket güvenli Z değil');
+      const enDerin = -(x.kalinlik + CNC_VARSAYILAN.tablaPay);
+      const pay = CNC_VARSAYILAN.takimlar[0].cap;
+      for (const m of h) {
+        assert.ok(m.z >= enDerin - 1e-6, `${m.satir}: tablaya fazla giriyor`);
+        if (m.x !== null) assert.ok(m.x >= -pay && m.x <= lv.w + pay, `${m.satir}: levha dışı X`);
+        if (m.y !== null) assert.ok(m.y >= -pay && m.y <= lv.h + pay, `${m.satir}: levha dışı Y`);
+        // Hızlı (G0) yatay hareket malzemenin içinde olamaz.
+        if (m.g === 0 && (m.x !== m.once.x || m.y !== m.once.y)) assert.ok(m.z > 0, `${m.satir}: malzeme içinde hızlı hareket`);
+      }
+      assert.ok(/M30/.test(r.metin));
+      assert.ok(!/[^\x00-\x7F]/.test(r.metin), 'ASCII dışı karakter');
+      assert.ok(r.sure > 0);
+    });
+  }
+});
+
+test('G-code: her parça kesiliyor, takım değişimi ATC / duraklama, eksik takım uyarısı', () => {
+  const p = varsayilanProje();
+  const c = projeyiCoz(p);
+  const plan = levhaPlani(c.parcalar, p);
+  const lv = plan.govde.levhalar[0];
+  const r = levhaGcode(lv, 18, p.cnc);
+  for (const y of lv.yerlesim) assert.ok(r.metin.includes(`(Parca ${y.parca.no})`), `${y.parca.no} kesilmiyor`);
+  assert.ok(/\nM0\r?\n/.test(r.metin) && !/T\d+ M6/.test(r.metin), 'tek iş milinde M0 ile duraklamalı');
+  const atc = levhaGcode(lv, 18, { ...p.cnc, atc: true, post: 'syntec' });
+  assert.ok(/T1 M6/.test(atc.metin) && /^%/.test(atc.metin) && /\nN\d+ /.test(atc.metin));
+  const eksik = levhaGcode(lv, 18, { ...p.cnc, takimlar: [{ no: 1, tur: 'freze', cap: 6 }] });
+  assert.ok(eksik.uyarilar.some((u) => u.includes('Ø5')), 'Ø5 matkap eksik uyarısı yok');
+  // Ø15 kam ve Ø35 çanak frezeyle helisel: G3 yayları var.
+  assert.ok(/G3 /.test(r.metin));
+  assert.deepEqual(pasolar(18.3, 9).map((v) => +v.toFixed(3)), [6.1, 12.2, 18.3]);
+});
+
+console.log('ebatlama, artık, barkod, teklif, kütüphane');
+
+test('giyotin: şeritler levha boyunca, parçalar şeritte, çakışma yok, kesim sırası var', () => {
+  const p = varsayilanProje();
+  p.levha.yontem = 'ebatlama';
+  const c = projeyiCoz(p);
+  const plan = levhaPlani(c.parcalar, p);
+  for (const x of Object.values(plan)) {
+    for (const lv of x.levhalar) {
+      assert.ok(lv.kesimler.some((k) => k.tip === 'serit'));
+      const parcaKesim = lv.kesimler.filter((k) => k.tip === 'parca').map((k) => k.id).sort();
+      assert.deepEqual(parcaKesim, lv.yerlesim.map((y) => y.id).sort());
+      const y = lv.yerlesim;
+      for (let i = 0; i < y.length; i++) for (let j = i + 1; j < y.length; j++) {
+        const a = y[i], b = y[j];
+        const ic = a.x < b.x + b.w - 1e-6 && b.x < a.x + a.w - 1e-6 && a.y < b.y + b.h - 1e-6 && b.y < a.y + a.h - 1e-6;
+        assert.ok(!ic, `${a.id} ile ${b.id} çakışıyor`);
+      }
+      for (const a of y) assert.ok(a.x + a.w <= lv.w - p.levha.kenarPay + 1e-6 && a.y + a.h <= lv.h - p.levha.kenarPay + 1e-6);
+    }
+  }
+});
+
+test('artık stoğu tam levhadan önce kullanılır, maliyete girmez', () => {
+  const p = varsayilanProje();
+  const c = projeyiCoz(p);
+  const once = levhaPlani(c.parcalar, p);
+  const sa = stokAnahtari('arkalik', '', 8);
+  const sonra = levhaPlani(c.parcalar, p, [{ id: 'x1', anahtar: sa, w: 2800, h: 2070 }]);
+  assert.equal(sonra.arkalik.levhalar.filter((l) => l.artik === 'x1').length, 1);
+  assert.equal(sonra.arkalik.levhalar.filter((l) => !l.artik).length, once.arkalik.levhalar.length - 1);
+  assert.ok(maliyet(c, sonra, p).toplam < maliyet(c, once, p).toplam);
+  // Başka malzemenin artığı kullanılmaz.
+  const yanlis = levhaPlani(c.parcalar, p, [{ id: 'x2', anahtar: stokAnahtari('kapak', 'yok', 18), w: 2800, h: 2070 }]);
+  assert.ok(Object.values(yanlis).every((x) => x.levhalar.every((l) => !l.artik)));
+  // Kalan artık önerisi var.
+  assert.ok(once.govde.levhalar.some((l) => l.kalan && l.kalan.w > 0));
+});
+
+test('barkod: Code 39, başta ve sonda *, 3 kalın çubuk / karakter', () => {
+  const svg = barkodSvg('M1-01');
+  assert.ok(svg.startsWith('<svg'));
+  const cubuk = (svg.match(/<rect x=/g) || []).length;
+  assert.equal(cubuk, ('*M1-01*'.length) * 5);
+});
+
+test('teklif: malzeme + hırdavat + işçilik, kâr ve KDV doğru; HTML toplamı taşıyor', () => {
+  const p = varsayilanProje();
+  p.teklif = { ...p.teklif, karOrani: 30, kdv: 20, iscilikModul: 1000, montaj: 2000 };
+  const c = projeyiCoz(p);
+  const plan = levhaPlani(c.parcalar, p);
+  const h = teklifHesapla(c, plan, p);
+  assert.equal(h.malz, maliyet(c, plan, p).toplam);
+  assert.equal(h.hird, hirdavatListesi(c, p).reduce((a, x) => a + x.tutar, 0));
+  assert.equal(h.iscilik, h.modulSay * 1000 + 2000);
+  assert.equal(h.kar, Math.round((h.malz + h.hird + h.iscilik) * 0.3));
+  assert.equal(h.toplam, h.ara + h.kdv);
+  assert.ok(h.hird > 0);
+  const html = teklifHtml(c, p, h, new Date(2026, 10, 19));
+  assert.ok(html.includes(Math.round(h.toplam).toLocaleString('tr-TR')));
+  for (const x of c.moduller) assert.ok(html.includes(`<td>M${x.no}</td>`) || !x.parcalar.length);
+});
+
+test('kütüphane ve boşluk doldurma: standart ölçüler, dolgu ≤ 150', () => {
+  const alt = MODUL_KATALOG.find((g) => g.grup === 'Alt');
+  const o = katalogOzel(alt.ogeler[0], 600);
+  assert.equal(o.w, 600);
+  assert.equal(o.ad, 'Kapaklı alt 60');
+  for (const L of [450, 600, 1150, 1850, 2850, 3333]) {
+    const r = boslukDoldur(L);
+    const top = r.genislikler.reduce((a, w) => a + w, 0) + r.dolgu + r.kalan;
+    assert.equal(top, L, `${L}: ${JSON.stringify(r)}`);
+    assert.ok(r.dolgu <= 150);
+  }
+  assert.deepEqual(boslukDoldur(1200).genislikler, [600, 600]);
+  // Dolgu modülü: tek panel, ayak yok.
+  const p = varsayilanProje();
+  p.mekan.engeller = [];
+  p.moduller = [modul('alt', { w: 100, altTur: 'dolgu' })];
+  const c = projeyiCoz(p);
+  assert.deepEqual(c.parcalar.map((q) => q.ad).sort(), ['Baza', 'Dolgu paneli']);
+  assert.ok(!hirdavatListesi(c, p).some((x) => x.anahtar === 'ayak'));
 });
 
 console.log('renkler');
