@@ -54,6 +54,7 @@ export async function olustur3d(kap, { secince } = {}) {
   zemin.receiveShadow = true;
   const duvar = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xb9b4ab, roughness: 1 }));
   duvar.receiveShadow = true;
+  duvar.visible = false;          // duvarlar mekândan çizilir
   sahne.add(zemin, duvar);
 
   let grup = new THREE.Group();
@@ -244,6 +245,105 @@ export async function olustur3d(kap, { secince } = {}) {
     return g;
   }
 
+  const duvarMalz = new THREE.MeshStandardMaterial({ color: 0xc9c4ba, roughness: 1 });
+  const camPencere = new THREE.MeshStandardMaterial({ color: 0xbfe3f2, emissive: 0x3a5866, roughness: 0.1, envMapIntensity: 1.4 });
+  const pencereCerceve = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.5 });
+  const kapiMalz = new THREE.MeshStandardMaterial({ color: 0x8a6748, roughness: 0.7 });
+  const prizMalz = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+
+  /** Duvarlar ve engeller. Duvarın ekseni köşeden başlar (mekan.js ile aynı). */
+  function odaCiz(proje) {
+    const mk = proje.mekan;
+    if (!mk) return;
+    const H = mk.tavan, K = 120;
+    const A = kutu(mk.duvarA + (mk.tip === 'L' ? K : 0), H, K, duvarMalz);
+    A.position.set(mk.duvarA / 2 - (mk.tip === 'L' ? K / 2 : 0), H / 2, -K / 2);
+    grup.add(A);
+    if (mk.tip === 'L') {
+      const B = kutu(K, H, mk.duvarB, duvarMalz);
+      B.position.set(-K / 2, H / 2, mk.duvarB / 2);
+      grup.add(B);
+    }
+    for (const e of mk.engeller || []) {
+      const duvarB = mk.tip === 'L' && e.duvar === 'B';
+      const h = Math.min(e.h, H - e.y);
+      // Duvar ekseninde (s, y, derinlik) → dünya.
+      const yerlestirE = (obj, s, y, d) => {
+        if (duvarB) obj.position.set(d, y, s); else obj.position.set(s, y, d);
+        if (duvarB) obj.rotation.y = Math.PI / 2;
+        grup.add(obj);
+      };
+      if (e.tip === 'kolon') {
+        const k = kutu(e.w, h, Math.max(20, e.d), duvarMalz);
+        yerlestirE(k, e.x + e.w / 2, e.y + h / 2, Math.max(20, e.d) / 2);
+        if (duvarB) k.rotation.y = -Math.PI / 2;
+      } else if (e.tip === 'pencere') {
+        const c = kutu(e.w, h, 30, pencereCerceve);
+        yerlestirE(c, e.x + e.w / 2, e.y + h / 2, 15);
+        const g = new THREE.Mesh(new THREE.PlaneGeometry(e.w - 80, h - 80), camPencere);
+        yerlestirE(g, e.x + e.w / 2, e.y + h / 2, 31);
+        if (duvarB) g.rotation.y = Math.PI / 2;
+        const ara = kutu(30, h - 60, 34, pencereCerceve);
+        yerlestirE(ara, e.x + e.w / 2, e.y + h / 2, 17);
+      } else if (e.tip === 'kapi') {
+        const k = kutu(e.w, h, 40, kapiMalz);
+        yerlestirE(k, e.x + e.w / 2, e.y + h / 2, 20);
+      } else {
+        const k = kutu(Math.min(e.w, 120), Math.min(e.h, 120), 12, prizMalz);
+        yerlestirE(k, e.x + e.w / 2, e.y + e.h / 2, 6);
+      }
+    }
+  }
+
+  const firinCam = new THREE.MeshStandardMaterial({ color: 0x121417, roughness: 0.08, envMapIntensity: 1.5 });
+  const siyahMetal = new THREE.MeshStandardMaterial({ color: 0x2a2c30, metalness: 0.6, roughness: 0.35 });
+
+  /** Modülün içindeki cihaz (modül koordinatında). */
+  function cihaz(c, m, proje) {
+    const g = new THREE.Group();
+    if (c.tip === 'firin' || c.tip === 'mikrodalga') {
+      const d = Math.min(c.d - 20, 550);
+      const govde = kutu(c.w - 4, c.h - 4, d, inox);
+      govde.position.set(c.x + c.w / 2, c.y + c.h / 2, m.d - d / 2 - 2);
+      const cam = kutu(c.w - 40, c.h * (c.tip === 'firin' ? 0.62 : 0.7), 6, firinCam);
+      cam.position.set(c.x + c.w / 2 - (c.tip === 'mikrodalga' ? 40 : 0), c.y + c.h * (c.tip === 'firin' ? 0.42 : 0.5), m.d + 2);
+      const panel = kutu(c.w - 4, c.tip === 'firin' ? 90 : c.h - 8, 6, siyahMetal);
+      if (c.tip === 'firin') panel.position.set(c.x + c.w / 2, c.y + c.h - 50, m.d + 1);
+      else { panel.scale.x = 0.18; panel.position.set(c.x + c.w - 60, c.y + c.h / 2, m.d + 1); }
+      g.add(govde, cam, panel);
+    } else if (c.tip === 'ocak') {
+      const ust = proje.tezgah ? 38 : 0;
+      const o = kutu(Math.min(580, c.w - 20), 6, 500, firinCam);
+      o.position.set(c.w / 2, c.y + ust + 3, c.d / 2 + 10);
+      g.add(o);
+      for (const [dx, dz, r] of [[-130, -110, 95], [130, -110, 75], [-130, 110, 75], [130, 110, 95]]) {
+        const h = new THREE.Mesh(new THREE.TorusGeometry(r, 3, 6, 40), siyahMetal);
+        h.rotation.x = Math.PI / 2;
+        h.position.set(c.w / 2 + dx, c.y + ust + 7, c.d / 2 + 10 + dz);
+        g.add(h);
+      }
+    } else if (c.tip === 'buzdolabi') {
+      const d = Math.min(c.d, 640);
+      const b = kutu(c.w, c.h, d, inox);
+      b.position.set(c.x + c.w / 2, c.y + c.h / 2, d / 2 + 10);
+      const cizgi = kutu(c.w - 6, 6, 4, siyahMetal);
+      cizgi.position.set(c.x + c.w / 2, c.y + c.h * 0.62, d + 12);
+      const kol = kutu(20, 400, 30, siyahMetal);
+      kol.position.set(c.x + c.w - 50, c.y + c.h * 0.8, d + 25);
+      const kol2 = kol.clone();
+      kol2.position.y = c.y + c.h * 0.45;
+      g.add(b, cizgi, kol, kol2);
+    } else if (c.tip === 'davlumbaz') {
+      const gd = 500, gh = 70;
+      const sap = kutu(Math.min(260, c.w * 0.45), Math.max(100, c.h - gh), 240, inox);
+      sap.position.set(c.w / 2, gh + Math.max(100, c.h - gh) / 2, 130);
+      const kasa = kutu(Math.min(c.w - 10, 600), gh, gd, inox);
+      kasa.position.set(c.w / 2, gh / 2, gd / 2);
+      g.add(sap, kasa);
+    }
+    return g;
+  }
+
   function temizle() {
     grup.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     sahne.remove(grup);
@@ -257,12 +357,14 @@ export async function olustur3d(kap, { secince } = {}) {
     sonCozum = cozum; sonProje = proje; sonSecili = seciliId;
     temizle();
     const mat = malzemeler(proje);
-    let minX = Infinity, maxX = -Infinity, maxY = 0, maxZ = 0;
+    odaCiz(proje);
 
-    for (const { m, konum, parcalar } of cozum.moduller) {
+    for (const { m, konum, parcalar, cihazlar } of cozum.moduller) {
       const mg = new THREE.Group();
       mg.position.set(konum.x, konum.y, konum.z);
+      mg.rotation.y = konum.rotY || 0;
       grup.add(mg);
+      for (const c of cihazlar || []) mg.add(cihaz(c, m, proje));
       const kayit = { id: m.id, mesh: [] };
       modulKutulari.push(kayit);
       const secili = m.id === seciliId;
@@ -331,23 +433,21 @@ export async function olustur3d(kap, { secince } = {}) {
         tz.position.set(m.w / 2, m.h + 19, (m.d + 20) / 2);
         mg.add(tz);
       }
-      minX = Math.min(minX, konum.x);
-      maxX = Math.max(maxX, konum.x + m.w);
-      maxY = Math.max(maxY, konum.y + m.h);
-      maxZ = Math.max(maxZ, m.d);
     }
-    if (!cozum.moduller.length) { minX = 0; maxX = 1000; maxY = 1000; maxZ = 600; }
 
-    const genis = maxX - minX;
-    const cx = (minX + maxX) / 2;
-    zemin.scale.set(genis + 3000, maxZ + 3000, 1);
-    zemin.position.set(cx, 0, (maxZ + 3000) / 2 - 300);
-    duvar.scale.set(genis + 3000, maxY + 800, 1);
-    duvar.position.set(cx, (maxY + 800) / 2, 0);
+    // Kadraj odaya göre: A duvarı boyunca, L'de B duvarı da görünsün.
+    const mk = proje.mekan || { tip: 'duz', duvarA: 3000, duvarB: 0, tavan: 2600 };
+    const LA = mk.duvarA, LB = mk.tip === 'L' ? mk.duvarB : 0;
+    const maxY = Math.min(mk.tavan, 2400);
+    const maxZ = mk.tip === 'L' ? Math.min(LB, 1800) : 600;
+    const genis = Math.max(LA, LB * 0.8);
+    const cx = mk.tip === 'L' ? LA * 0.45 : LA / 2;
+    zemin.scale.set(LA + 4000, Math.max(LB, 600) + 4000, 1);
+    zemin.position.set(LA / 2, 0, (Math.max(LB, 600) + 4000) / 2 - 400);
 
     const r = Math.max(genis, maxY) * 1.2;
-    gunes.position.set(cx - r * 0.4, maxY + r * 0.8, r);
-    gunes.target.position.set(cx, maxY / 2, 0);
+    gunes.position.set(cx + r * 0.3, maxY + r * 0.8, r);
+    gunes.target.position.set(cx, maxY / 2, maxZ / 3);
     const sc = gunes.shadow.camera;
     sc.left = -r; sc.right = r; sc.top = r; sc.bottom = -r; sc.near = 10; sc.far = r * 4;
     sc.updateProjectionMatrix();

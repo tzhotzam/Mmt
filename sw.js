@@ -75,6 +75,8 @@ const ASSETS = [
   './dolap/js/cizim2d.js',
   './dolap/js/onizleme3d.js',
   './dolap/js/renkler.js',
+  './dolap/js/mekan.js',
+  './dolap/js/teknik.js',
 ];
 
 self.addEventListener('install', (e) => {

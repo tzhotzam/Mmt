@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { varsayilanProje, modul, HIRDAVAT, kapakTuru, ALT_TURLERI, makineMi } from '../dolap/js/model.js';
+import { varsayilanProje, modul, engel, HIRDAVAT, kapakTuru, ALT_TURLERI, BOY_TURLERI, UST_TURLERI, makineMi } from '../dolap/js/model.js';
+import { cepheSvg, etiketlerHtml } from '../dolap/js/teknik.js';
 import { projeyiCoz, yerlestir, menteseSayisi, baglantiNoktalari, bantUzunlugu } from '../dolap/js/govde.js';
 import { yerlestirLevha, levhaNoktasi } from '../dolap/js/yerlesim.js';
 import { kesimListesi, kesimCsv, levhaPlani, hirdavatListesi, maliyet, camListesi } from '../dolap/js/kesim.js';
@@ -196,6 +197,7 @@ test('kesim ölçüsü = net − bantlı kenarlar', () => {
 
 test('duvar dizilimi: boy dolap iki sırayı birden itiyor', () => {
   const p = varsayilanProje();
+  p.mekan.engeller = [];
   p.moduller = [modul('alt', { w: 600 }), modul('ust', { w: 400 }), modul('boy', { w: 600 }), modul('alt', { w: 500 }), modul('ust', { w: 500 })];
   const k = yerlestir(p);
   assert.deepEqual(k.map((x) => x.x), [0, 0, 600, 1200, 1200]);
@@ -366,6 +368,192 @@ test('çamaşır makinesi: parça yok, dizilimde yer tutuyor, standart dışı �
   assert.deepEqual(c.uyarilar, []);
   p.moduller[1].w = 550;
   assert.ok(projeyiCoz(p).uyarilar.some((u) => u.includes('makine yeri')));
+});
+
+console.log('mekân');
+
+/** Engelsiz, tek duvarlı boş proje. */
+function bosProje(ozel = {}) {
+  const p = varsayilanProje();
+  p.mekan = { tip: 'duz', duvarA: 4000, duvarB: 3000, tavan: 2700, engeller: [], ...ozel };
+  return p;
+}
+
+test('pencere üst dolabı iter, alt dolaba dokunmaz; kolon iki sırayı da iter', () => {
+  const p = bosProje({ engeller: [engel('pencere', { x: 600, w: 800 }), engel('kolon', { x: 2000, w: 300 })] });
+  p.moduller = [modul('alt', { w: 600 }), modul('alt', { w: 800 }), modul('alt', { w: 600 }),
+    modul('ust', { w: 600 }), modul('ust', { w: 600 }), modul('ust', { w: 600 })];
+  const c = projeyiCoz(p);
+  assert.deepEqual(c.moduller.map((x) => x.konum.s), [0, 600, 1400, 0, 1400, 2300]);
+  // 1400+600 = 2000: kolona değiyor ama girmiyor; üst sıra 2000'den kolon yüzünden 2300'e atladı.
+  assert.deepEqual(c.uyarilar, []);
+  assert.ok(c.notlar.some((n) => n.includes('alt sıra') && n.includes('2300–4000')), c.notlar.join(' | '));
+});
+
+test('kolonun önüne dolap: derinlik kolon kadar kısalır, parçalar da kısa', () => {
+  const p = bosProje({ engeller: [engel('kolon', { x: 300, w: 300, d: 120, onune: true })] });
+  p.moduller = [modul('alt', { w: 600 })];
+  const c = projeyiCoz(p);
+  assert.equal(c.moduller[0].konum.s, 0);
+  assert.equal(c.moduller[0].konum.dAzalt, 120);
+  assert.equal(bul(c.parcalar, 'Sol yan').en, 560 - 120 - 8);
+  assert.ok(c.notlar.some((n) => n.includes('kolonun önünde')));
+});
+
+test('duvardan ve tavandan taşma uyarılır, küçük boşluk dolgu önerir', () => {
+  const p = bosProje({ duvarA: 1300, tavan: 2000 });
+  p.moduller = [modul('alt', { w: 600 }), modul('alt', { w: 600 }), modul('boy', { w: 600 })];
+  const c = projeyiCoz(p);
+  assert.ok(c.uyarilar.some((u) => u.includes('taşıyor') && u.includes('500 mm')));
+  assert.ok(c.uyarilar.some((u) => u.includes('tavanı')));
+  const q = bosProje({ duvarA: 1300 });
+  q.moduller = [modul('alt', { w: 600 }), modul('alt', { w: 600 })];
+  assert.ok(projeyiCoz(q).notlar.some((n) => n.includes('100 mm') && n.includes('dolgu')));
+});
+
+test('L mutfak: B duvarı köşe dolabının önünden başlar, kör kısım B derinliğinden', () => {
+  const p = bosProje({ tip: 'L' });
+  p.moduller = [modul('alt', { w: 1100, kose: true }), modul('alt', { w: 600, duvar: 'B' }),
+    modul('ust', { w: 900, kose: true }), modul('ust', { w: 600, duvar: 'B' })];
+  const c = projeyiCoz(p);
+  const [a, b, ua, ub] = c.moduller;
+  assert.equal(b.konum.duvar, 'B');
+  assert.equal(b.konum.s, 560 + 18);
+  assert.equal(ub.konum.s, 320 + 18);
+  assert.equal(b.konum.x, 0);
+  assert.equal(b.konum.z, b.konum.s + 600);
+  assert.ok(Math.abs(b.konum.rotY - Math.PI / 2) < 1e-9);
+  assert.equal(a.konum.kor, 560 + 18 + 50);
+  assert.equal(ua.konum.kor, 320 + 18 + 50);
+  const kor = a.parcalar.find((q) => q.ad === 'Kör panel');
+  const kapak = a.parcalar.find((q) => q.grup === 'kapak' && q.hareket);
+  assert.ok(kor && kapak);
+  assert.equal(kapak.hareket.mentese, 'sag');
+  // Kör panel köşeye sıfır başlar: arada 3 mm, dış kenarda 1,5 mm boşluk.
+  assert.ok(Math.abs(kor.kutu.sx + kapak.kutu.sx + 3 + 1.5 - 1100) < 0.6);
+  // Kapak B dolabının arkasında kalan bölgeye girmiyor.
+  assert.ok(kapak.kutu.x >= 560 + 18);
+  assert.ok(!c.uyarilar.some((u) => u.includes('köşe')), c.uyarilar.join(' | '));
+});
+
+test('L mutfak: köşedeki düz dolap için not, düz mutfakta köşe işareti uyarı', () => {
+  const p = bosProje({ tip: 'L' });
+  p.moduller = [modul('alt', { w: 1000 }), modul('alt', { w: 600, duvar: 'B' })];
+  assert.ok(projeyiCoz(p).notlar.some((n) => n.includes('Köşe dolabı')));
+  const q = bosProje();
+  q.moduller = [modul('alt', { w: 1000, kose: true })];
+  assert.ok(projeyiCoz(q).uyarilar.some((u) => u.includes('köşe dolabı')));
+});
+
+console.log('bölme ve cihaz yerleri');
+
+test('ara bölme: dikmeler, bölüm başına raf ve kapak, ölçüler toplamı tutuyor', () => {
+  const p = bosProje();
+  p.moduller = [modul('alt', { w: 1000, bolme: 1, rafSayisi: 1 })];
+  const c = projeyiCoz(p);
+  const dikme = c.parcalar.filter((q) => q.grup === 'dikme');
+  assert.equal(dikme.length, 1);
+  assert.equal(dikme[0].boy, 720 - 2 * 18);
+  const raf = c.parcalar.filter((q) => q.grup === 'raf');
+  assert.equal(raf.length, 2);
+  const cw = (1000 - 3 * 18) / 2;
+  for (const r of raf) assert.equal(r.boy, cw - 2);
+  const kap = c.parcalar.filter((q) => q.grup === 'kapak');
+  assert.equal(kap.length, 2);
+  assert.ok(Math.abs(kap[0].en + kap[1].en + 3 * 2 - 1000) < 0.6);
+  assert.deepEqual(kap.map((k) => k.hareket.mentese), ['sol', 'sag']);
+  // Dikme alt tablaya ve iki kuşağa konfirmatla bağlı.
+  const vida = c.parcalar.flatMap((q) => q.delikler).filter((d) => d.tur === 'vida');
+  assert.equal(vida.length, dikme[0].kenarDelik.length);
+  assert.equal(vida.length, baglantiNoktalari(552).length + 2);
+  // Raf pimleri dikmede boydan geçer.
+  assert.ok(dikme[0].delikler.filter((d) => d.tur === 'raf').every((d) => d.derinlik === 'gecer'));
+});
+
+test('bölmeli dolapta bir bölüm çekmece, orta kapak dikmeye menteşelenir', () => {
+  const p = bosProje();
+  p.moduller = [modul('alt', { w: 1200, bolme: 2, bolumler: ['raf', 'cekmece', 'raf'], cekmeceSayisi: 3 })];
+  const c = projeyiCoz(p);
+  assert.equal(c.parcalar.filter((q) => q.grup === 'cekmeceOn').length, 3);
+  assert.equal(c.parcalar.filter((q) => q.grup === 'kapak').length, 2);
+  const p3 = bosProje();
+  p3.moduller = [modul('ust', { w: 1200, bolme: 2 })];
+  const c3 = projeyiCoz(p3);
+  const dikmeler = c3.parcalar.filter((q) => q.grup === 'dikme');
+  assert.ok(dikmeler.some((d) => d.delikler.some((x) => x.tur === 'mentese')), 'orta kapağın menteşesi dikmede değil');
+  for (const q of c3.parcalar) for (const d of q.delikler) {
+    assert.ok(d.x >= 0 && d.x <= q.boy && d.y >= 0 && d.y <= q.en, `${q.ad} deliği dışarıda`);
+  }
+});
+
+test('fırın altı: fırın rafı, alt panel, arkalık yok, ocak ve fırın cihazı', () => {
+  const p = bosProje();
+  p.moduller = [modul('alt', ALT_TURLERI.firin.ozel)];
+  const c = projeyiCoz(p);
+  assert.ok(bul(c.parcalar, 'Fırın rafı') && bul(c.parcalar, 'Fırın altı panel'));
+  assert.ok(!c.parcalar.some((q) => q.grup === 'arkalik' || q.grup === 'raf'));
+  assert.deepEqual(c.moduller[0].cihazlar.map((x) => x.tip).sort(), ['firin', 'ocak']);
+  const raf = bul(c.parcalar, 'Fırın rafı');
+  assert.equal(720 - 18 - (raf.kutu.y + 18), 600);   // fırın nişi 600
+});
+
+test('fırın kolonu: üç sabit raf, iki arkalık, nişte kapak yok', () => {
+  const p = bosProje();
+  p.moduller = [modul('boy', BOY_TURLERI.firin.ozel)];
+  const c = projeyiCoz(p);
+  assert.deepEqual(c.uyarilar, []);
+  for (const ad of ['Fırın rafı', 'Fırın üstü raf', 'Mikrodalga üstü raf']) assert.ok(bul(c.parcalar, ad), ad);
+  assert.equal(c.parcalar.filter((q) => q.grup === 'arkalik').length, 2);
+  const kap = c.parcalar.filter((q) => q.grup === 'kapak');
+  const m = c.moduller[0].m;
+  for (const k of kap) {
+    assert.ok(k.kutu.y + k.kutu.sy <= m.firinAlt || k.kutu.y >= m.firinAlt + 590 + 18 + 380, `${k.ad} nişi kapatıyor`);
+  }
+  assert.deepEqual(c.moduller[0].cihazlar.map((x) => x.tip), ['firin', 'mikrodalga']);
+});
+
+test('buzdolabı yeri: alt tabla yok, köprü dolap üstte, baza yok', () => {
+  const p = bosProje();
+  p.moduller = [modul('boy', BOY_TURLERI.buzdolabi.ozel)];
+  const c = projeyiCoz(p);
+  assert.ok(!bul(c.parcalar, 'Alt tabla') && !bul(c.parcalar, 'Baza'));
+  const kt = bul(c.parcalar, 'Köprü alt tabla');
+  assert.equal(kt.kutu.y, 2000 - 400);
+  for (const k of c.parcalar.filter((q) => q.grup === 'kapak')) assert.ok(k.kutu.y >= 1600);
+  assert.equal(c.moduller[0].cihazlar[0].tip, 'buzdolabi');
+});
+
+test('davlumbaz: kısa dolap üst kota hizalı, 0 ise parça yok', () => {
+  const p = bosProje();
+  p.moduller = [modul('ust', UST_TURLERI.davlumbaz.ozel)];
+  const c = projeyiCoz(p);
+  const yan = bul(c.parcalar, 'Sol yan');
+  assert.equal(yan.boy, 360);
+  assert.equal(yan.kutu.y, 720 - 360);
+  p.moduller[0].kisaH = 0;
+  const c0 = projeyiCoz(p);
+  assert.equal(c0.parcalar.length, 0);
+  assert.equal(c0.moduller[0].cihazlar[0].tip, 'davlumbaz');
+});
+
+console.log('teknik çizim');
+
+test('cephe SVG: modül numaraları, duvar ölçüsü, engeller; etiketler her levha parçasına', () => {
+  const p = varsayilanProje();
+  const c = projeyiCoz(p);
+  const svg = cepheSvg(c, p, 'A');
+  assert.ok(svg.startsWith('<svg') && svg.trim().endsWith('</svg>'));
+  for (const x of c.moduller) assert.ok(svg.includes(`>M${x.no}<`), `M${x.no} yok`);
+  assert.ok(svg.includes(`>${p.mekan.duvarA}<`), 'duvar ölçüsü yok');
+  assert.ok(svg.includes('PENCERE') && svg.includes('BUZDOLABI') && svg.includes('FIRIN'));
+  const html = etiketlerHtml(c, p);
+  const levhalik = c.parcalar.filter((q) => ['govde', 'kapak', 'arkalik'].includes(q.malzeme)).length;
+  assert.equal((html.match(/class="etiket"/g) || []).length, levhalik);
+  // L mutfakta B duvarı da çizilir.
+  p.mekan.tip = 'L';
+  p.moduller.push(modul('alt', { duvar: 'B' }));
+  const c2 = projeyiCoz(p);
+  assert.ok(cepheSvg(c2, p, 'B').includes(`>M${c2.moduller.length}<`));
 });
 
 console.log('renkler');

@@ -235,6 +235,22 @@ Aynı uygulamanın içinde ikinci bir program: mutfak ve mobilya dolabı
 tasarlar. Üst çubuktaki **Dolap tasarım →** bağlantısıyla (masaüstünde
 *Program* menüsü, `Ctrl+2`) açılır.
 
+- **Mekân:** düz ya da L mutfak; duvar uzunlukları, tavan, kolon, pencere,
+  kapı ve tesisat yerleri. Dolaplar engellere çarpmadan dizilir (pencere üst
+  sırayı, kolon ve kapı iki sırayı iter). Kolonda "önüne dolap" seçilirse
+  dolabın derinliği kolon kadar kısalır. Duvardan / tavandan taşma uyarılır,
+  kalan boşluklar dolgu ya da dolap önerisiyle not edilir.
+- **Köşe dolap (kör köşe):** L mutfakta A duvarının köşedeki alt / üst
+  dolabı. B duvarı bu dolabın önünden başlar; kör kısım B dolaplarının
+  derinliği + kapak + 50 mm dolgudan hesaplanır, önüne sabit kör panel gelir.
+- **Ara bölme:** alt ve üst dolapta 1–3 dikme; her bölüm raf + kapak ya da
+  çekmece. Dikmeler konfirmatla bağlanır, raf pimleri dikmede boydan geçer.
+- **Cihaz yerleri:** tezgâh altı ankastre fırın + ocak, fırın kolonu
+  (fırın + mikrodalga nişi), buzdolabı yeri + üstte köprü dolap, davlumbaz
+  yeri + üstte kısa dolap.
+- **Teknik çizim:** duvar duvar ölçülü önden görünüş (SVG, yazdır / PDF);
+  modül numaraları, kapak açılış yönleri, ölçü zincirleri, kotlar.
+  Parça etiketleri A4'e yazdırılır.
 - **Modüller:** alt (tezgâh altı), üst (duvar) ve boy dolap. Genişlik,
   yükseklik, derinlik; tek / çift kapak, çekmeceli ya da açık raf; raf
   sayısı; boy dolapta sabit raf ve iki kat kapak. Modüller duvar boyunca
@@ -703,6 +719,8 @@ js/
 dolap/                dolap tasarım programı
   index.html, dolap.css
   js/model.js         proje, varsayılanlar, hırdavat ölçüleri, doğrulama
+  js/mekan.js         duvarlar, engeller, L köşe, boşluk / taşma notları
+  js/teknik.js        ölçülü önden görünüş (SVG) ve parça etiketleri
   js/renkler.js       renk kataloğu (Kastamonu Entegre dekorları + genel)
   js/govde.js         modül → parçalar: ölçü, bant, delik, 3B kutu
   js/yerlesim.js      dikdörtgen levha yerleşimi (MaxRects)

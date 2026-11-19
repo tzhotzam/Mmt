@@ -33,11 +33,13 @@
       <button class="tab active" data-view="3d" role="tab" aria-selected="true">3B</button>
       <button class="tab" data-view="levha" role="tab" aria-selected="false">Levha</button>
       <button class="tab" data-view="parca" role="tab" aria-selected="false">Parça</button>
+      <button class="tab" data-view="cizim" role="tab" aria-selected="false">Çizim</button>
     </div>
     <div class="stage">
       <div id="view-3d" class="view active"></div>
       <canvas id="view-levha" class="view"></canvas>
       <canvas id="view-parca" class="view"></canvas>
+      <div id="view-cizim" class="view cizim-kagit"></div>
     </div>
 
     <div id="ctl-3d" class="sahne-alt">
@@ -55,12 +57,46 @@
       <button type="button" id="levha-dxf" class="primary kucuk">Bu levha DXF</button>
     </div>
     <div id="ctl-parca" class="sahne-alt lejant" hidden></div>
+    <div id="ctl-cizim" class="sahne-alt" hidden>
+      <select id="cizim-duvar" aria-label="Duvar"><option value="A">A duvarı</option><option value="B">B duvarı</option></select>
+      <button type="button" id="cizim-svg" class="ghost kucuk">SVG indir</button>
+      <button type="button" id="cizim-yazdir" class="primary kucuk">Yazdır / PDF</button>
+    </div>
 
     <div id="ozet" class="summary"></div>
     <div id="uyarilar" class="warnings" hidden></div>
+    <details id="notlar" class="notes" hidden><summary></summary><ul></ul></details>
   </section>
 
   <div class="sag-kolon">
+    <!-- ---------------- MEKÂN ---------------- -->
+    <section class="panel">
+      <h2>0 · Mekân</h2>
+      <div class="grid">
+        <label class="onemli">Mutfak
+          <select data-yol="mekan.tip">
+            <option value="duz">Düz (tek duvar)</option>
+            <option value="L">L (köşeli, iki duvar)</option>
+          </select>
+        </label>
+        <label class="onemli">A duvarı (mm) <input type="number" data-yol="mekan.duvarA" min="500" max="12000" step="1">
+          <small data-mekan="L">köşeden sağa</small></label>
+        <label class="onemli" data-mekan="L">B duvarı (mm) <input type="number" data-yol="mekan.duvarB" min="500" max="12000" step="1">
+          <small>köşeden, A'ya dik</small></label>
+        <label>Tavan (mm) <input type="number" data-yol="mekan.tavan" min="2000" max="4000" step="1"></label>
+      </div>
+      <h3 class="alt-baslik">Kolon, pencere, kapı, tesisat</h3>
+      <div id="engel-listesi" class="engel-listesi"></div>
+      <div class="ekle-satir">
+        <button type="button" data-engel="kolon">+ Kolon</button>
+        <button type="button" data-engel="pencere">+ Pencere</button>
+        <button type="button" data-engel="kapi">+ Kapı</button>
+        <button type="button" data-engel="tesisat">+ Tesisat / priz</button>
+      </div>
+      <p class="hint">Konum, duvarın köşe (sol) ucundan ölçülür. Dolaplar engellere çarpmadan dizilir; kalan boşluklar
+        önizlemenin altındaki notlarda yazar. Kolonda "önüne dolap" işaretlenirse dolap kolonun önünden geçer ve derinliği kısalır.</p>
+    </section>
+
     <!-- ---------------- MODÜLLER ---------------- -->
     <section class="panel">
       <h2>1 · Modüller</h2>
@@ -72,6 +108,10 @@
         <button type="button" data-ekle="alt:evye">+ Evye dolabı</button>
         <button type="button" data-ekle="alt:bulasik">+ Bulaşık mak.</button>
         <button type="button" data-ekle="alt:camasir">+ Çamaşır mak.</button>
+        <button type="button" data-ekle="alt:firin">+ Fırın + ocak</button>
+        <button type="button" data-ekle="ust:davlumbaz">+ Davlumbaz</button>
+        <button type="button" data-ekle="boy:firin">+ Fırın kolonu</button>
+        <button type="button" data-ekle="boy:buzdolabi">+ Buzdolabı</button>
       </div>
 
       <div id="modul-duzen" class="modul-duzen" hidden>
@@ -84,6 +124,13 @@
               <option value="boy">Boy</option>
             </select>
           </label>
+          <label data-goster="L">Duvar
+            <select data-m="duvar">
+              <option value="A">A duvarı</option>
+              <option value="B">B duvarı</option>
+            </select>
+          </label>
+          <label class="check" data-goster="koseOlabilir"><input type="checkbox" data-m="kose"> Köşe dolabı (kör köşe)</label>
           <label class="onemli">Genişlik (mm) <input type="number" data-m="w" min="150" max="1600" step="1"></label>
           <label class="onemli">Yükseklik (mm) <input type="number" data-m="h" min="200" max="2600" step="1"></label>
           <label class="onemli">Derinlik (mm) <input type="number" data-m="d" min="150" max="800" step="1">
@@ -92,11 +139,34 @@
             <select data-m="altTur">
               <option value="normal">Normal dolap</option>
               <option value="evye">Evye dolabı</option>
+              <option value="firin">Fırın altı (ankastre fırın + ocak)</option>
               <option value="bulasik">Bulaşık makinesi (ankastre)</option>
               <option value="bulasikSolo">Bulaşık makinesi (solo, boşluk)</option>
               <option value="camasir">Çamaşır makinesi (boşluk)</option>
             </select>
           </label>
+          <label data-goster="boy">Boy dolap türü
+            <select data-m="boyTur">
+              <option value="normal">Normal boy dolap</option>
+              <option value="firin">Fırın kolonu (fırın + mikrodalga)</option>
+              <option value="buzdolabi">Buzdolabı yeri + üst dolap</option>
+            </select>
+          </label>
+          <label data-goster="ust">Üst dolap türü
+            <select data-m="ustTur">
+              <option value="normal">Normal üst dolap</option>
+              <option value="davlumbaz">Davlumbaz yeri (+ üstte kısa dolap)</option>
+            </select>
+          </label>
+          <label data-goster="davlumbaz">Kısa dolap yüksekliği (mm) <input type="number" data-m="kisaH" min="0" max="700" step="10">
+            <small>0 = dolap yok, yalnız davlumbaz</small></label>
+          <label data-goster="boyFirin">Fırın alt kotu (mm) <input type="number" data-m="firinAlt" min="200" max="1400" step="10">
+            <small>gövde altından</small></label>
+          <label class="check" data-goster="boyFirin"><input type="checkbox" data-m="mikrodalga"> Mikrodalga nişi</label>
+          <label data-goster="boyBuz">Buzdolabı üstü dolap (mm) <input type="number" data-m="kopruH" min="200" max="800" step="10"></label>
+          <label data-goster="bolmeli">Ara bölme (dikme) <input type="number" data-m="bolme" min="0" max="3" step="1">
+            <small>0–3; her bölüme ayrı kapak</small></label>
+          <div data-goster="bolmeVar" id="bolum-icerik" class="bolum-icerik"></div>
           <label data-goster="govdeli">Kapak
             <select data-m="kapak">
               <option value="otomatik">Otomatik (600 üstü çift)</option>
@@ -125,10 +195,10 @@
           </label>
           <label data-goster="cekmece">Çekmece sayısı <input type="number" data-m="cekmeceSayisi" min="1" max="6" step="1"></label>
           <label data-goster="raf">Raf sayısı <input type="number" data-m="rafSayisi" min="0" max="8" step="1">
-            <small data-goster="boy">sabit rafın altında</small></label>
-          <label data-goster="boy">Sabit raf (mm) <input type="number" data-m="sabitRaf" min="300" max="2300" step="1">
+            <small data-goster="boyUstRaf">alt bölümde</small></label>
+          <label data-goster="boyNormal">Sabit raf (mm) <input type="number" data-m="sabitRaf" min="300" max="2300" step="1">
             <small>gövde altından</small></label>
-          <label data-goster="boy">Üst raf sayısı <input type="number" data-m="ustRafSayisi" min="0" max="6" step="1"></label>
+          <label data-goster="boyUstRaf">Üst raf sayısı <input type="number" data-m="ustRafSayisi" min="0" max="6" step="1"></label>
         </div>
         <div class="modul-dugmeler">
           <button type="button" id="m-sola" class="ghost" aria-label="Sola taşı">◀ Sola</button>
@@ -235,6 +305,7 @@
         Bant sütunları: kaç uzun kenar (boy) / kaç kısa kenar (en) bantlanacak.</p>
       <div class="actions">
         <button type="button" id="csv" class="primary">Kesim listesi (Excel CSV)</button>
+        <button type="button" id="etiket-yazdir">Parça etiketleri (yazdır)</button>
       </div>
       <div id="cam-kutu" hidden>
         <h3 class="alt-baslik">Cam ve hazır kapak siparişi</h3>
@@ -306,6 +377,7 @@
 
 <footer>Ölçüler ve delik konumları bir öneridir. İlk kesimden önce bir parçayı deneyip hırdavat kataloğunuzla karşılaştırın.</footer>
 
+<div id="baski" class="baski"></div>
 <script type="module" src="js/ana.js"></script>
 </body>
 </html>

@@ -126,3 +126,41 @@ button.tehlike { color: #ff9fb0; border-color: rgba(244, 63, 94, 0.4); }
 
 .alt-baslik { margin: 16px 0 8px; font-size: 12px; font-weight: 650; color: var(--text); }
 .cam-etiket { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 4px; font-size: 10px; color: #0b0e12; background: var(--accent-2); }
+
+/* Mekân ve engeller */
+.engel-listesi { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.engel {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 6px; align-items: end;
+  padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);
+}
+.engel .engel-bas { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 650; color: var(--text); }
+.engel .engel-bas button { padding: 5px 10px; font-size: 11.5px; }
+.engel input, .engel select { padding: 7px 8px; font-size: 14px; background: var(--panel); }
+.engel label.check { padding-top: 0; }
+.ekle-satir { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+.bolum-icerik { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+
+/* Teknik çizim: beyaz kâğıt */
+.cizim-kagit { background: #fff; overflow: auto; }
+.cizim-kagit svg { width: 100%; height: 100%; display: block; }
+.cizim-kagit.view { display: none; }
+.cizim-kagit.view.active { display: block; }
+
+/* Yazdırma: yalnız #baski görünür */
+.baski { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body.baski-acik > *:not(#baski) { display: none !important; }
+  body.baski-acik { background: #fff !important; padding: 0 !important; }
+  body.baski-acik #baski { display: block; color: #000; }
+  #baski svg { width: 100%; height: auto; max-height: 185mm; }
+  body.baski-etiket { }
+  .etiket-sayfa { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
+  .etiket { border: 0.3mm solid #000; border-radius: 2mm; padding: 2.5mm 3mm; height: 33mm; break-inside: avoid; font: 9pt/1.25 Helvetica, Arial, sans-serif; }
+  .etiket .et-ust { display: flex; justify-content: space-between; font-size: 12pt; }
+  .etiket .et-ad { font-weight: 700; margin-top: 1mm; }
+  .etiket .et-olcu { font-size: 14pt; font-weight: 700; margin: 1mm 0; }
+  .etiket .et-alt { font-size: 7.5pt; color: #333; }
+}
+body.baski-etiket-sayfa { }
+.modul-kart .rozet { padding-right: 20px; }
